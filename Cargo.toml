@@ -17,4 +17,4 @@ num-traits = "0.2"
 mzdata = { path = "../mzdata/" }
 mzsignal = { path = "../mzsignal/" }
 mzpeaks = { path = "../mzpeaks/" }
-chemical_elements = { path = "../chemical-elements/" }
+chemical_elements = { path = "../chemical-elements/", features=['mzpeaks']}

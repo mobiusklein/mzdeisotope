@@ -34,8 +34,10 @@ pub trait Span1D {
     }
 }
 
-
-impl<T> Span1D for &T where T: Span1D {
+impl<T> Span1D for &T
+where
+    T: Span1D,
+{
     type DimType = T::DimType;
 
     fn start(&self) -> Self::DimType {
@@ -45,10 +47,7 @@ impl<T> Span1D for &T where T: Span1D {
     fn end(&self) -> Self::DimType {
         (*self).end()
     }
-
-
 }
-
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct SimpleInterval<V: PartialOrd> {
@@ -333,7 +332,7 @@ impl<'members, V: Real + Copy + Sum, T: Span1D<DimType = V>> IntervalTree<V, T> 
     pub fn drain(&mut self) -> Vec<T> {
         let mut results = Vec::new();
         if self.is_empty() {
-            return  results
+            return results;
         }
         let mut stack = VecDeque::new();
         stack.push_back(0);
@@ -399,8 +398,7 @@ impl<'members, V: Real + Copy + Sum, T: Span1D<DimType = V>> IntervalTree<V, T> 
                 } else {
                     let diff = V::from(1e-6).unwrap();
                     for rec in members {
-                        if (rec.start() - center).abs() < diff
-                            && (rec.end() - center).abs() < diff
+                        if (rec.start() - center).abs() < diff && (rec.end() - center).abs() < diff
                         {
                             contained.push(rec)
                         } else if center > rec.end() {
@@ -470,9 +468,7 @@ impl<'members, V: Real + Copy + Sum + Default, T: Span1D<DimType = V>> Default
     }
 }
 
-impl<'members, V: Real + Copy + Sum, T: Span1D<DimType = V>> Span1D
-    for IntervalTree<V, T>
-{
+impl<'members, V: Real + Copy + Sum, T: Span1D<DimType = V>> Span1D for IntervalTree<V, T> {
     type DimType = V;
 
     fn start(&self) -> Self::DimType {
@@ -496,9 +492,7 @@ pub struct IntervalTreeNode<V: Real + Copy + Sum, T: Span1D<DimType = V>> {
     pub right_child: Option<usize>,
 }
 
-impl<V: Real + Copy + Sum, T: Span1D<DimType = V>> Span1D
-    for IntervalTreeNode<V, T>
-{
+impl<V: Real + Copy + Sum, T: Span1D<DimType = V>> Span1D for IntervalTreeNode<V, T> {
     type DimType = V;
 
     fn start(&self) -> Self::DimType {
@@ -549,10 +543,9 @@ impl<'members, V: Real + Sum, T: Span1D<DimType = V>> IntervalTreeNode<V, T> {
     }
 }
 
-
 pub struct PreorderIter<'a, V: Real + Copy + Sum, T: Span1D<DimType = V>> {
     tree: &'a IntervalTree<V, T>,
-    stack: VecDeque<usize>
+    stack: VecDeque<usize>,
 }
 
 impl<'a, V: Real + Copy + Sum, T: Span1D<DimType = V>> Iterator for PreorderIter<'a, V, T> {
@@ -561,14 +554,13 @@ impl<'a, V: Real + Copy + Sum, T: Span1D<DimType = V>> Iterator for PreorderIter
     fn next(&mut self) -> Option<Self::Item> {
         self.next_node()
     }
-
 }
 
 impl<'a, V: Real + Copy + Sum, T: Span1D<DimType = V>> PreorderIter<'a, V, T> {
     pub fn new(tree: &'a IntervalTree<V, T>) -> Self {
         Self {
             tree,
-            stack: VecDeque::from(vec![0])
+            stack: VecDeque::from(vec![0]),
         }
     }
 
@@ -583,16 +575,11 @@ impl<'a, V: Real + Copy + Sum, T: Span1D<DimType = V>> PreorderIter<'a, V, T> {
                     self.stack.push_back(left_index);
                 };
                 Some(node)
-            },
-            None => {
-                None
             }
+            None => None,
         }
     }
 }
-
-
-
 
 #[cfg(test)]
 mod test {
@@ -638,7 +625,6 @@ mod test {
 
         let spanning = tree.contains_point(7.0);
         assert_eq!(spanning.len(), 4);
-
 
         let ivs2: Vec<&SimpleInterval<f64>> = ivs.iter().collect();
         let tree = IntervalTree::new(ivs2);

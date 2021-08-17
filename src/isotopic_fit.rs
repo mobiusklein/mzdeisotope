@@ -1,20 +1,18 @@
 use chemical_elements::isotopic_pattern::TheoreticalIsotopicPattern;
-use mzpeaks::prelude::*;
 
-use crate::interval::Span1D;
+use crate::peaks::PeakKey;
 
 #[derive(Debug, Clone)]
-pub struct IsotopicFit<'peaks, C: CentroidLike + Clone> {
-    pub experimental: Vec<C>,
+pub struct IsotopicFit {
+    pub experimental: Vec<PeakKey>,
     pub theoretical: TheoreticalIsotopicPattern,
-    pub seed_peak: &'peaks C,
-    pub monoisotopic_peak: &'peaks C,
+    pub seed_peak: PeakKey,
     pub charge: i32,
     pub score: f64,
     pub missed_peaks: u16,
 }
 
-impl<'peaks, C: CentroidLike + Clone> PartialEq for IsotopicFit<'peaks, C> {
+impl PartialEq for IsotopicFit {
     fn eq(&self, other: &Self) -> bool {
         let val = (self.score - other.score).abs() < 1e-6;
         if !val {
@@ -36,35 +34,40 @@ impl<'peaks, C: CentroidLike + Clone> PartialEq for IsotopicFit<'peaks, C> {
     }
 }
 
-impl<'peaks, C: CentroidLike + Clone> PartialOrd for IsotopicFit<'peaks, C> {
+impl PartialOrd for IsotopicFit {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         return self.score.partial_cmp(&other.score);
     }
 }
 
-impl<'peaks, C: CentroidLike + Clone> Eq for IsotopicFit<'peaks, C> {}
+impl Eq for IsotopicFit {}
 
-impl<'peaks, C: CentroidLike + Clone> Ord for IsotopicFit<'peaks, C> {
+impl Ord for IsotopicFit {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.partial_cmp(other).unwrap()
     }
 }
 
-impl<'peaks, C: CentroidLike + Clone> std::hash::Hash for IsotopicFit<'peaks, C> {
+impl std::hash::Hash for IsotopicFit {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        match self.experimental.first() {
-            Some(peak) => (peak.mz().round() as i64).hash(state),
-            None => {}
+        if let Some(key) = self.experimental.first() {
+            match key {
+                PeakKey::Matched(i) => {
+                    i.hash(state)
+                },
+                PeakKey::Placeholder(i) => {
+                    i.hash(state)
+                }
+            }
         }
         self.charge.hash(state);
     }
 }
 
-impl<'peaks, C: CentroidLike + Clone> IsotopicFit<'peaks, C> {
+impl IsotopicFit {
     pub fn new(
-        experimental: Vec<C>,
-        seed_peak: &'peaks C,
-        monoisotopic_peak: &'peaks C,
+        experimental: Vec<PeakKey>,
+        seed_peak: PeakKey,
         theoretical: TheoreticalIsotopicPattern,
         charge: i32,
         score: f64,
@@ -73,7 +76,6 @@ impl<'peaks, C: CentroidLike + Clone> IsotopicFit<'peaks, C> {
         Self {
             experimental,
             seed_peak,
-            monoisotopic_peak,
             theoretical,
             charge,
             score,
@@ -87,26 +89,5 @@ impl<'peaks, C: CentroidLike + Clone> IsotopicFit<'peaks, C> {
 
     pub fn is_empty(&self) -> bool {
         self.len() == 0
-    }
-}
-
-
-impl<'peaks, C: CentroidLike + Clone> Span1D for IsotopicFit<'peaks, C> {
-    type DimType = f64;
-
-    fn start(&self) -> Self::DimType {
-        if let Some(peak) = self.experimental.first() {
-            peak.mz()
-        } else {
-            0.0
-        }
-    }
-
-    fn end(&self) -> Self::DimType {
-        if let Some(peak) = self.experimental.last() {
-            peak.mz()
-        } else {
-            0.0
-        }
     }
 }
