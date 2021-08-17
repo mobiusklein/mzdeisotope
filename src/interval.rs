@@ -6,13 +6,13 @@ use std::iter::Sum;
 /** An inclusive interval over a single dimension
 */
 pub trait Span1D {
-    type DimType: PartialOrd;
+    type DimType: PartialOrd + Copy;
 
-    fn start(&self) -> &Self::DimType;
-    fn end(&self) -> &Self::DimType;
+    fn start(&self) -> Self::DimType;
+    fn end(&self) -> Self::DimType;
 
     fn contains(&self, i: &Self::DimType) -> bool {
-        self.start() <= i && i <= self.end()
+        self.start() <= *i && *i <= self.end()
     }
 
     fn overlaps<T: Span1D<DimType = Self::DimType>>(&self, interval: &T) -> bool {
@@ -38,11 +38,11 @@ pub trait Span1D {
 impl<T> Span1D for &T where T: Span1D {
     type DimType = T::DimType;
 
-    fn start(&self) -> &Self::DimType {
+    fn start(&self) -> Self::DimType {
         (*self).start()
     }
 
-    fn end(&self) -> &Self::DimType {
+    fn end(&self) -> Self::DimType {
         (*self).end()
     }
 
@@ -62,15 +62,15 @@ impl<V: PartialOrd> SimpleInterval<V> {
     }
 }
 
-impl<V: PartialOrd> Span1D for SimpleInterval<V> {
+impl<V: PartialOrd + Copy> Span1D for SimpleInterval<V> {
     type DimType = V;
 
-    fn start(&self) -> &Self::DimType {
-        &self.start
+    fn start(&self) -> Self::DimType {
+        self.start
     }
 
-    fn end(&self) -> &Self::DimType {
-        &self.end
+    fn end(&self) -> Self::DimType {
+        self.end
     }
 }
 
@@ -127,7 +127,7 @@ impl<'members, V: Real + Copy + Sum, T: Span1D<DimType = V>> IntervalTree<V, T> 
     pub fn insert(&mut self, interval: T) -> usize {
         if self.is_empty() {
             self.nodes.push(IntervalTreeNode::new(
-                (*interval.start() + *interval.end()) / V::from(2.0).unwrap(),
+                (interval.start() + interval.end()) / V::from(2.0).unwrap(),
                 vec![interval],
                 0,
                 None,
@@ -140,11 +140,11 @@ impl<'members, V: Real + Copy + Sum, T: Span1D<DimType = V>> IntervalTree<V, T> 
         let insert_in: usize;
         loop {
             let node = &self.nodes[index];
-            if node.contains(interval.start()) {
+            if node.contains(&interval.start()) {
                 let (left_index, left_spans) = match node.left_child {
                     Some(left_index) => {
                         let left_node = &self.nodes[left_index];
-                        if left_node.contains(interval.end()) {
+                        if left_node.contains(&interval.end()) {
                             (left_index, true)
                         } else {
                             (left_index, false)
@@ -155,7 +155,7 @@ impl<'members, V: Real + Copy + Sum, T: Span1D<DimType = V>> IntervalTree<V, T> 
                 let (right_index, right_spans) = match node.right_child {
                     Some(right_index) => {
                         let right_node = &self.nodes[right_index];
-                        if right_node.contains(interval.end()) {
+                        if right_node.contains(&interval.end()) {
                             (right_index, true)
                         } else {
                             (right_index, false)
@@ -175,11 +175,11 @@ impl<'members, V: Real + Copy + Sum, T: Span1D<DimType = V>> IntervalTree<V, T> 
                     index = dest;
                 }
             }
-            if node.contains(interval.end()) {
+            if node.contains(&interval.end()) {
                 let (right_index, right_spans) = match node.right_child {
                     Some(right_index) => {
                         let right_node = &self.nodes[right_index];
-                        if right_node.contains(interval.start()) {
+                        if right_node.contains(&interval.start()) {
                             (right_index, true)
                         } else {
                             (right_index, false)
@@ -198,22 +198,22 @@ impl<'members, V: Real + Copy + Sum, T: Span1D<DimType = V>> IntervalTree<V, T> 
         }
 
         let mut changed = if self.nodes[insert_in].start() > interval.start() {
-            self.nodes[insert_in].start = *interval.start();
+            self.nodes[insert_in].start = interval.start();
             true
         } else {
             false
         };
 
         changed |= if self.nodes[insert_in].end() < interval.end() {
-            self.nodes[insert_in].end = *interval.end();
+            self.nodes[insert_in].end = interval.end();
             true
         } else {
             false
         };
         self.nodes[insert_in].members.push(interval);
         if changed {
-            let start = *self.nodes[insert_in].start();
-            let end = *self.nodes[insert_in].end();
+            let start = self.nodes[insert_in].start();
+            let end = self.nodes[insert_in].end();
             let mut up = self.nodes[insert_in].parent;
             loop {
                 match up {
@@ -384,7 +384,7 @@ impl<'members, V: Real + Copy + Sum, T: Span1D<DimType = V>> IntervalTree<V, T> 
                 let center = if n > 0 {
                     let acc: V = members
                         .iter()
-                        .map(|i| (*i.start() + *i.end()) / V::from(2.0).unwrap())
+                        .map(|i| (i.start() + i.end()) / V::from(2.0).unwrap())
                         .sum();
                     acc / (V::from(n + 1).unwrap())
                 } else {
@@ -399,13 +399,13 @@ impl<'members, V: Real + Copy + Sum, T: Span1D<DimType = V>> IntervalTree<V, T> 
                 } else {
                     let diff = V::from(1e-6).unwrap();
                     for rec in members {
-                        if (*rec.start() - center).abs() < diff
-                            && (*rec.end() - center).abs() < diff
+                        if (rec.start() - center).abs() < diff
+                            && (rec.end() - center).abs() < diff
                         {
                             contained.push(rec)
-                        } else if center > *rec.end() {
+                        } else if center > rec.end() {
                             left.push(rec)
-                        } else if center < *rec.start() {
+                        } else if center < rec.start() {
                             right.push(rec)
                         } else {
                             contained.push(rec)
@@ -475,12 +475,12 @@ impl<'members, V: Real + Copy + Sum, T: Span1D<DimType = V>> Span1D
 {
     type DimType = V;
 
-    fn start(&self) -> &Self::DimType {
-        &self.nodes[0].start()
+    fn start(&self) -> Self::DimType {
+        self.nodes[0].start()
     }
 
-    fn end(&self) -> &Self::DimType {
-        &self.nodes[0].end()
+    fn end(&self) -> Self::DimType {
+        self.nodes[0].end()
     }
 }
 
@@ -501,12 +501,12 @@ impl<V: Real + Copy + Sum, T: Span1D<DimType = V>> Span1D
 {
     type DimType = V;
 
-    fn start(&self) -> &Self::DimType {
-        &self.start
+    fn start(&self) -> Self::DimType {
+        self.start
     }
 
-    fn end(&self) -> &Self::DimType {
-        &self.end
+    fn end(&self) -> Self::DimType {
+        self.end
     }
 }
 
@@ -535,11 +535,11 @@ impl<'members, V: Real + Sum, T: Span1D<DimType = V>> IntervalTreeNode<V, T> {
             inst.end = inst.center;
         } else {
             for interval in inst.members.iter() {
-                let i_start = *interval.start();
+                let i_start = interval.start();
                 if i_start < inst.start {
                     inst.start = i_start;
                 }
-                let i_end = *interval.end();
+                let i_end = interval.end();
                 if i_end > inst.end {
                     inst.end = i_end;
                 }

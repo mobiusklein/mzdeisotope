@@ -1,6 +1,8 @@
 use chemical_elements::isotopic_pattern::TheoreticalIsotopicPattern;
 use mzpeaks::prelude::*;
 
+use crate::interval::Span1D;
+
 #[derive(Debug, Clone)]
 pub struct IsotopicFit<'peaks, C: CentroidLike + Clone> {
     pub experimental: Vec<C>,
@@ -85,5 +87,26 @@ impl<'peaks, C: CentroidLike + Clone> IsotopicFit<'peaks, C> {
 
     pub fn is_empty(&self) -> bool {
         self.len() == 0
+    }
+}
+
+
+impl<'peaks, C: CentroidLike + Clone> Span1D for IsotopicFit<'peaks, C> {
+    type DimType = f64;
+
+    fn start(&self) -> Self::DimType {
+        if let Some(peak) = self.experimental.first() {
+            peak.mz()
+        } else {
+            0.0
+        }
+    }
+
+    fn end(&self) -> Self::DimType {
+        if let Some(peak) = self.experimental.last() {
+            peak.mz()
+        } else {
+            0.0
+        }
     }
 }
