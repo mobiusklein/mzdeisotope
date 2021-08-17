@@ -5,6 +5,11 @@ edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[[bin]]
+name = "mz-averagine"
+path = "src/averagine.rs"
+
+
 [dependencies]
 
 num-traits = "0.2"

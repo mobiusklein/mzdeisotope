@@ -320,11 +320,11 @@ impl<'members, V: Real + Copy + Sum, T: Span1D<DimType = V>> IntervalTree<V, T> 
         while !stack.is_empty() {
             let node = stack.pop_back().unwrap();
             results.extend(node.members.iter());
-            if let Some(left_index) = node.left_child {
-                stack.push_back(&self.nodes[left_index]);
-            }
             if let Some(right_index) = node.right_child {
                 stack.push_back(&self.nodes[right_index]);
+            }
+            if let Some(left_index) = node.left_child {
+                stack.push_back(&self.nodes[left_index]);
             }
         }
         results
@@ -340,11 +340,11 @@ impl<'members, V: Real + Copy + Sum, T: Span1D<DimType = V>> IntervalTree<V, T> 
         while !stack.is_empty() {
             let index = stack.pop_back().unwrap();
             results.extend(self.nodes[index].members.drain(..));
-            if let Some(left_index) = self.nodes[index].left_child {
-                stack.push_back(left_index);
-            }
             if let Some(right_index) = self.nodes[index].right_child {
                 stack.push_back(right_index);
+            }
+            if let Some(left_index) = self.nodes[index].left_child {
+                stack.push_back(left_index);
             }
         }
         results
@@ -354,6 +354,10 @@ impl<'members, V: Real + Copy + Sum, T: Span1D<DimType = V>> IntervalTree<V, T> 
         let members = self.drain();
         let new = Self::new(members);
         self.nodes = new.nodes;
+    }
+
+    pub fn iter(&self) -> PreorderIter<V, T> {
+        PreorderIter::new(self)
     }
 
     pub fn new(intervals: Vec<T>) -> IntervalTree<V, T> {
@@ -544,6 +548,51 @@ impl<'members, V: Real + Sum, T: Span1D<DimType = V>> IntervalTreeNode<V, T> {
         inst
     }
 }
+
+
+pub struct PreorderIter<'a, V: Real + Copy + Sum, T: Span1D<DimType = V>> {
+    tree: &'a IntervalTree<V, T>,
+    stack: VecDeque<usize>
+}
+
+impl<'a, V: Real + Copy + Sum, T: Span1D<DimType = V>> Iterator for PreorderIter<'a, V, T> {
+    type Item = &'a IntervalTreeNode<V, T>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.next_node()
+    }
+
+}
+
+impl<'a, V: Real + Copy + Sum, T: Span1D<DimType = V>> PreorderIter<'a, V, T> {
+    pub fn new(tree: &'a IntervalTree<V, T>) -> Self {
+        Self {
+            tree,
+            stack: VecDeque::from(vec![0])
+        }
+    }
+
+    pub fn next_node(&mut self) -> Option<&'a IntervalTreeNode<V, T>> {
+        match self.stack.pop_back() {
+            Some(index) => {
+                let node = &self.tree.nodes[index];
+                if let Some(right_index) = node.right_child {
+                    self.stack.push_back(right_index);
+                };
+                if let Some(left_index) = node.left_child {
+                    self.stack.push_back(left_index);
+                };
+                Some(node)
+            },
+            None => {
+                None
+            }
+        }
+    }
+}
+
+
+
 
 #[cfg(test)]
 mod test {
