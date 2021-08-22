@@ -52,12 +52,8 @@ impl std::hash::Hash for IsotopicFit {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         if let Some(key) = self.experimental.first() {
             match key {
-                PeakKey::Matched(i) => {
-                    i.hash(state)
-                },
-                PeakKey::Placeholder(i) => {
-                    i.hash(state)
-                }
+                PeakKey::Matched(i) => i.hash(state),
+                PeakKey::Placeholder(i) => i.hash(state),
             }
         }
         self.charge.hash(state);
