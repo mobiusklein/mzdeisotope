@@ -1,5 +1,9 @@
+use std::collections::HashSet;
+
 use chemical_elements::isotopic_pattern::{Peak as TheoreticalPeak, TheoreticalIsotopicPattern};
 use mzpeaks::prelude::*;
+
+use crate::isotopic_fit::IsotopicFit;
 
 #[derive(Debug, Clone, Copy)]
 pub enum ScoreInterpretation {
@@ -86,5 +90,53 @@ impl IsotopicPatternScorer for MSDeconvScorer {
         theoretical: &TheoreticalIsotopicPattern,
     ) -> f64 {
         MSDeconvScorer::score(self, experimental, theoretical)
+    }
+}
+
+pub trait IsotopicFitFilter {
+    fn filter(&self, mut fits: HashSet<IsotopicFit>) -> HashSet<IsotopicFit> {
+        fits.retain(|f| self.test(f));
+        fits
+    }
+    fn test(&self, fit: &IsotopicFit) -> bool;
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct MaximizingFitFilter {
+    pub threshold: f64,
+}
+
+impl MaximizingFitFilter {
+    pub fn new(threshold: f64) -> Self {
+        Self { threshold }
+    }
+}
+
+impl IsotopicFitFilter for MaximizingFitFilter {
+    fn test(&self, fit: &IsotopicFit) -> bool {
+        fit.score >= self.threshold
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct MinimizingFitFilter {
+    pub threshold: f64,
+}
+
+impl MinimizingFitFilter {
+    pub fn new(threshold: f64) -> Self {
+        Self { threshold }
+    }
+}
+
+impl Default for MinimizingFitFilter {
+    fn default() -> Self {
+        Self { threshold: 1.0 }
+    }
+}
+
+impl IsotopicFitFilter for MinimizingFitFilter {
+    fn test(&self, fit: &IsotopicFit) -> bool {
+        self.threshold >= fit.score
     }
 }

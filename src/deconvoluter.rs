@@ -1,13 +1,15 @@
 use std::collections::HashSet;
 use std::ops::Range;
 
-use crate::charge::ChargeIterator;
+use crate::charge::{ChargeIterator, ChargeRangeIter};
 use crate::isotopic_fit::IsotopicFit;
 use crate::isotopic_model::{
     isotopic_shift, CachingIsotopicModel, IsotopicPatternGenerator, PROTON,
 };
 use crate::peaks::{PeakKey, WorkingPeakSet};
-use crate::scorer::{IsotopicPatternScorer, MSDeconvScorer};
+use crate::scorer::{
+    IsotopicFitFilter, IsotopicPatternScorer, MSDeconvScorer, MaximizingFitFilter,
+};
 
 use chemical_elements::isotopic_pattern::TheoreticalIsotopicPattern;
 use mzpeaks::prelude::*;
@@ -97,18 +99,22 @@ pub struct DeconvoluterType<
     C: CentroidLike + Clone + From<CentroidPeak>,
     I: IsotopicPatternGenerator,
     S: IsotopicPatternScorer,
+    F: IsotopicFitFilter,
 > {
     pub peaks: WorkingPeakSet<C>,
     pub isotopic_model: I,
     pub scorer: S,
+    pub fit_filter: F,
     pub scaling_method: TIDScalingMethod,
+    pub max_missed_peaks: u16,
 }
 
 impl<
         C: CentroidLike + Clone + From<CentroidPeak>,
         I: IsotopicPatternGenerator,
         S: IsotopicPatternScorer,
-    > RelativePeakSearch<C> for DeconvoluterType<C, I, S>
+        F: IsotopicFitFilter,
+    > RelativePeakSearch<C> for DeconvoluterType<C, I, S, F>
 {
 }
 
@@ -116,8 +122,15 @@ impl<
         C: CentroidLike + Clone + From<CentroidPeak>,
         I: IsotopicPatternGenerator,
         S: IsotopicPatternScorer,
-    > ExhaustivePeakSearch<C> for DeconvoluterType<C, I, S>
+        F: IsotopicFitFilter,
+    > ExhaustivePeakSearch<C> for DeconvoluterType<C, I, S, F>
 {
+    fn check_isotopic_fit(&self, fit: &IsotopicFit) -> bool {
+        if fit.missed_peaks > self.max_missed_peaks {
+            return false;
+        }
+        self.fit_filter.test(fit)
+    }
 }
 
 pub trait IsotopicPatternFitter<C: CentroidLike> {
@@ -127,20 +140,30 @@ pub trait IsotopicPatternFitter<C: CentroidLike> {
     fn between(&mut self, m1: f64, m2: f64) -> Range<usize>;
     fn get_peak(&self, key: PeakKey) -> &C;
     fn create_key(&mut self, mz: f64) -> PeakKey;
+    fn peak_count(&self) -> usize;
 }
 
 impl<
         C: CentroidLike + Clone + From<CentroidPeak>,
         I: IsotopicPatternGenerator,
         S: IsotopicPatternScorer,
-    > DeconvoluterType<C, I, S>
+        F: IsotopicFitFilter,
+    > DeconvoluterType<C, I, S, F>
 {
-    pub fn new(peaks: MZPeakSetType<C>, isotopic_model: I, scorer: S) -> Self {
+    pub fn new(
+        peaks: MZPeakSetType<C>,
+        isotopic_model: I,
+        scorer: S,
+        fit_filter: F,
+        max_missed_peaks: u16,
+    ) -> Self {
         Self {
             peaks: WorkingPeakSet::new(peaks),
             isotopic_model,
             scorer,
+            fit_filter,
             scaling_method: TIDScalingMethod::default(),
+            max_missed_peaks,
         }
     }
 }
@@ -149,7 +172,8 @@ impl<
         C: CentroidLike + Clone + From<CentroidPeak>,
         I: IsotopicPatternGenerator,
         S: IsotopicPatternScorer,
-    > IsotopicPatternFitter<C> for DeconvoluterType<C, I, S>
+        F: IsotopicFitFilter,
+    > IsotopicPatternFitter<C> for DeconvoluterType<C, I, S, F>
 {
     fn fit_theoretical_isotopic_pattern(&mut self, peak: PeakKey, charge: i32) -> IsotopicFit {
         let mz = self.peaks.get(&peak).mz();
@@ -179,6 +203,10 @@ impl<
     fn create_key(&mut self, mz: f64) -> PeakKey {
         let i = self.peaks.placeholders.create(mz);
         PeakKey::Placeholder(i)
+    }
+
+    fn peak_count(&self) -> usize {
+        self.peaks.len()
     }
 }
 
@@ -293,18 +321,16 @@ pub trait ExhaustivePeakSearch<C: CentroidLike>:
         fit.score >= 0.0
     }
 
-    fn find_all_peak_charge_pairs(
+    fn _find_all_peak_charge_pairs_iter<I: ChargeIterator>(
         &mut self,
         mz: f64,
         error_tolerance: f64,
-        charge_range: (i32, i32),
+        charge_iter: I,
         left_search_limit: i8,
         right_search_limit: i8,
         recalculate_starting_peak: bool,
     ) -> HashSet<(PeakKey, i32)> {
         let mut solutions = HashSet::new();
-        let charge_iter = ChargeIterator::from(charge_range);
-
         for charge in charge_iter {
             let key = self.has_peak(mz, error_tolerance);
             solutions.insert((key, charge));
@@ -353,10 +379,70 @@ pub trait ExhaustivePeakSearch<C: CentroidLike>:
 
         solutions
     }
+
+    fn find_all_peak_charge_pairs(
+        &mut self,
+        mz: f64,
+        error_tolerance: f64,
+        charge_range: (i32, i32),
+        left_search_limit: i8,
+        right_search_limit: i8,
+        recalculate_starting_peak: bool,
+    ) -> HashSet<(PeakKey, i32)> {
+        let charge_iter = ChargeRangeIter::from(charge_range);
+        self._find_all_peak_charge_pairs_iter(
+            mz,
+            error_tolerance,
+            charge_iter,
+            left_search_limit,
+            right_search_limit,
+            recalculate_starting_peak,
+        )
+    }
+
+    fn skip_peak(&self, peak: &C) -> bool {
+        peak.mz() <= 0.0 || peak.intensity() <= 0.0
+    }
+
+    fn step_deconvolve(
+        &mut self,
+        error_tolerance: f64,
+        charge_range: (i32, i32),
+        left_search_limit: i8,
+        right_search_limit: i8,
+    ) -> HashSet<IsotopicFit> {
+        let mut solutions: HashSet<IsotopicFit> = HashSet::new();
+        let n = self.peak_count();
+        if n == 0 {
+            return solutions;
+        }
+        for i in (0..n).rev() {
+            let peak = self.get_peak(PeakKey::Matched(i as u32));
+            if self.skip_peak(peak) {
+                continue;
+            }
+            let mz = peak.mz();
+            let peak_charge_set = self.find_all_peak_charge_pairs(
+                mz,
+                error_tolerance,
+                charge_range,
+                left_search_limit,
+                right_search_limit,
+                true,
+            );
+            let fits = self.fit_peaks_at_charge(peak_charge_set);
+            solutions.extend(fits);
+        }
+        solutions
+    }
 }
 
-pub type AveragineDeconvoluter<'lifespan> =
-    DeconvoluterType<CentroidPeak, CachingIsotopicModel<'lifespan>, MSDeconvScorer>;
+pub type AveragineDeconvoluter<'lifespan> = DeconvoluterType<
+    CentroidPeak,
+    CachingIsotopicModel<'lifespan>,
+    MSDeconvScorer,
+    MaximizingFitFilter,
+>;
 
 #[cfg(test)]
 mod test {
@@ -375,6 +461,8 @@ mod test {
             peaks,
             IsotopicModels::Peptide.into(),
             MSDeconvScorer::default(),
+            MaximizingFitFilter::default(),
+            1,
         );
         let p = PeakKey::Matched(0);
         let fit1 = task.fit_theoretical_isotopic_pattern(p, 1);
@@ -394,6 +482,8 @@ mod test {
             peaks,
             IsotopicModels::Peptide.into(),
             MSDeconvScorer::default(),
+            MaximizingFitFilter::default(),
+            1,
         );
         let solution_space = task.find_all_peak_charge_pairs(300.0, 10.0, (1, 8), 1, 1, true);
         assert_eq!(solution_space.len(), 10);

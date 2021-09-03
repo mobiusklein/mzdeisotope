@@ -11,6 +11,22 @@ pub enum PeakKey {
     Placeholder(i64),
 }
 
+impl PeakKey {
+    pub fn is_matched(&self) -> bool {
+        match self {
+            PeakKey::Matched(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_placeholder(&self) -> bool {
+        match self {
+            PeakKey::Placeholder(_) => true,
+            _ => false,
+        }
+    }
+}
+
 impl std::hash::Hash for PeakKey {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         match self {
