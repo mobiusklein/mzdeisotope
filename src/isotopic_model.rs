@@ -1,10 +1,14 @@
+use std::collections::hash_map::{Entry, HashMap};
+
 use chemical_elements::isotopic_pattern::{
     BafflingRecursiveIsotopicPatternGenerator, TheoreticalIsotopicPattern,
 };
 use chemical_elements::{
     neutral_mass, ChemicalComposition, ElementSpecification, PROTON as _PROTON,
 };
-use std::collections::hash_map::{Entry, HashMap};
+
+use mzpeaks::CentroidLike;
+
 
 pub const PROTON: f64 = _PROTON;
 
@@ -278,6 +282,86 @@ impl From<IsotopicModels> for CachingIsotopicModel<'_> {
     fn from(source: IsotopicModels) -> CachingIsotopicModel<'static> {
         let model: IsotopicModel = source.into();
         model.into()
+    }
+}
+
+
+#[derive(Debug, Clone, Copy)]
+pub enum TIDScalingMethod {
+    Sum,
+    Max,
+    Top3,
+}
+
+impl Default for TIDScalingMethod {
+    fn default() -> Self {
+        TIDScalingMethod::Sum
+    }
+}
+
+impl TIDScalingMethod {
+    pub fn scale<C: CentroidLike>(
+        &self,
+        experimental: &[C],
+        theoretical: &mut TheoreticalIsotopicPattern,
+    ) {
+        if theoretical.len() == 0 {
+            return;
+        }
+        match self {
+            Self::Sum => {
+                let total: f32 = experimental.iter().map(|p| p.intensity()).sum();
+                theoretical
+                    .iter_mut()
+                    .for_each(|p| p.intensity *= total as f64);
+            }
+            Self::Max => {
+                let (index, peak) = experimental
+                    .iter()
+                    .enumerate()
+                    .max_by(|a, b| a.1.intensity().partial_cmp(&b.1.intensity()).unwrap())
+                    .unwrap();
+                let scale = peak.intensity() / theoretical[index].intensity();
+                theoretical
+                    .iter_mut()
+                    .for_each(|p| p.intensity *= scale as f64);
+            }
+            Self::Top3 => {
+                let mut t1_index: usize = 0;
+                let mut t2_index: usize = 0;
+                let mut t3_index: usize = 0;
+                let mut t1 = 0.0f32;
+                let mut t2 = 0.0f32;
+                let mut t3 = 0.0f32;
+
+                for (i, p) in experimental.iter().enumerate() {
+                    let y = p.intensity();
+                    if y > t1 {
+                        t3 = t2;
+                        t2 = t1;
+                        t1 = y;
+                        t3_index = t2_index;
+                        t2_index = t1_index;
+                        t1_index = i;
+                    } else if y > t2 {
+                        t3_index = t2_index;
+                        t3 = t2;
+                        t2 = y;
+                        t2_index = i;
+                    } else if y > t3 {
+                        t3_index = i;
+                        t3 = y;
+                    }
+                }
+
+                let mut scale = experimental[t1_index].intensity() / t1;
+                scale += experimental[t2_index].intensity() / t2;
+                scale += experimental[t3_index].intensity() / t3;
+                theoretical
+                    .iter_mut()
+                    .for_each(|p| p.intensity *= scale as f64);
+            }
+        }
     }
 }
 
