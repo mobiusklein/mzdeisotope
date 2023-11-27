@@ -16,13 +16,7 @@ pub trait Span1D {
     }
 
     fn overlaps<T: Span1D<DimType = Self::DimType>>(&self, interval: &T) -> bool {
-        ((self.start() <= interval.start()) && (self.end() >= interval.end()))
-            || (self.start() >= interval.start() && self.end() <= interval.end())
-            || (self.start() >= interval.start()
-                && (self.end() >= interval.end())
-                && self.start() <= interval.end())
-            || ((self.start() <= interval.start()) && (self.end() >= interval.end()))
-            || (self.start() <= interval.end() && (self.end() >= interval.end()))
+        self.end() >= interval.start() && interval.end() >= self.start()
     }
 
     fn is_contained_in_interval<T: Span1D<DimType = Self::DimType>>(&self, interval: &T) -> bool {
@@ -420,7 +414,7 @@ impl<'members, V: Real + Copy + Sum, T: Span1D<DimType = V>> IntervalTree<V, T> 
                         nodes[parent].left_child = Some(node_index);
                         let mut up = parent;
                         loop {
-                            let mut p = &mut nodes[up];
+                            let p = &mut nodes[up];
                             p.start = V::min(p.start, start);
                             if let Some(next) = p.parent {
                                 up = next
@@ -434,7 +428,7 @@ impl<'members, V: Real + Copy + Sum, T: Span1D<DimType = V>> IntervalTree<V, T> 
                         nodes[parent].right_child = Some(node_index);
                         let mut up = parent;
                         loop {
-                            let mut p = &mut nodes[up];
+                            let p = &mut nodes[up];
                             p.end = V::max(p.end, end);
                             if let Some(next) = p.parent {
                                 up = next;

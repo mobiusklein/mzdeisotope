@@ -7,9 +7,9 @@ pub trait ChargeIterator: Iterator<Item = i32> {}
 
 #[derive(Debug, Clone)]
 pub struct ChargeRangeIter {
-    min: i32,
-    max: i32,
-    sign: i8,
+    pub min: i32,
+    pub max: i32,
+    pub sign: i8,
     index: usize,
     size: usize,
 }

@@ -15,6 +15,9 @@ path = "src/averagine.rs"
 num-traits = "0.2"
 
 mzdata = { path = "../mzdata/" }
-mzsignal = { path = "../mzsignal/" }
-mzpeaks = { path = "../mzpeaks/" }
+mzpeaks = { version = "0.7.0" }
+mzsignal = { version = "0.3.1", default-features = false, optional = true}
 chemical_elements = { path = "../chemical-elements/", features=['mzpeaks']}
+
+[dev-dependencies]
+flate2 = "1.0.28"

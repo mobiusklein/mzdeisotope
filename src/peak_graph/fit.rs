@@ -1,5 +1,5 @@
-use std::collections::hash_map::Values;
-use std::collections::{HashMap, HashSet};
+use std::collections::hash_map::{HashMap, Values};
+use std::collections::hash_set::{Iter, HashSet};
 
 use crate::isotopic_fit::IsotopicFit;
 use crate::peaks::PeakKey;
@@ -21,14 +21,14 @@ pub struct FitNode {
 
 impl FitNode {
     pub fn from_fit(fit: &IsotopicFit, key: FitKey, start: f64, end: f64) -> Self {
-        let mut indices = HashSet::new();
-        indices.extend(fit.experimental.iter().copied());
+        let mut peak_indices = HashSet::new();
+        peak_indices.extend(fit.experimental.iter().copied());
         Self {
             key,
             score: fit.score,
             overlap_edges: HashSet::new(),
             edges: HashSet::new(),
-            peak_indices: indices,
+            peak_indices,
             start,
             end,
         }
@@ -52,7 +52,7 @@ impl FitNode {
         }
     }
 
-    pub fn peak_iter(&self) -> std::collections::hash_set::Iter<PeakKey> {
+    pub fn peak_iter(&self) -> Iter<PeakKey> {
         self.peak_indices.iter()
     }
 

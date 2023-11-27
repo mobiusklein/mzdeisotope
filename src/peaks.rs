@@ -1,14 +1,18 @@
 use chemical_elements::isotopic_pattern::TheoreticalIsotopicPattern;
 use mzpeaks::prelude::*;
-use mzpeaks::{CentroidPeak, IndexType, MZPeakSetType, MassErrorType};
+use mzpeaks::{CentroidPeak, IndexType, MZPeakSetType};
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::ops::Range;
 
+
+type Placeholder = i64;
+
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PeakKey {
     Matched(u32),
-    Placeholder(i64),
+    Placeholder(Placeholder),
 }
 
 impl PeakKey {
@@ -38,7 +42,7 @@ impl std::hash::Hash for PeakKey {
 
 #[derive(Debug)]
 pub struct PlaceholderCache<C: CentroidLike + Clone + From<CentroidPeak>> {
-    placeholders: HashMap<i64, C>,
+    placeholders: HashMap<Placeholder, C>,
 }
 
 impl<C: CentroidLike + Clone + From<CentroidPeak>> Default for PlaceholderCache<C> {
@@ -50,14 +54,14 @@ impl<C: CentroidLike + Clone + From<CentroidPeak>> Default for PlaceholderCache<
 }
 
 pub trait MZCaching {
-    fn key_for(&self, mz: f64) -> i64 {
-        let key = (mz * 1000.0).round() as i64;
+    fn key_for(&self, mz: f64) -> Placeholder {
+        let key = (mz * 1000.0).round() as Placeholder;
         key
     }
 }
 
 impl<C: CentroidLike + Clone + From<CentroidPeak>> PlaceholderCache<C> {
-    pub fn create(&mut self, mz: f64) -> i64 {
+    pub fn create(&mut self, mz: f64) -> Placeholder {
         let key = self.key_for(mz);
         self.placeholders
             .entry(key.clone())
@@ -76,7 +80,7 @@ impl<C: CentroidLike + Clone + From<CentroidPeak>> PlaceholderCache<C> {
         self.placeholders.get(&key)
     }
 
-    pub fn get_key(&self, key: &i64) -> &C {
+    pub fn get_key(&self, key: &Placeholder) -> &C {
         self.placeholders.get(key).unwrap()
     }
 
@@ -89,7 +93,7 @@ impl<C: CentroidLike + Clone + From<CentroidPeak>> MZCaching for PlaceholderCach
 
 #[derive(Debug, Clone, Default)]
 pub struct SliceCache {
-    range_to_indices: HashMap<(i64, i64), Range<usize>>,
+    range_to_indices: HashMap<(Placeholder, Placeholder), Range<usize>>,
 }
 
 impl MZCaching for SliceCache {}
@@ -99,12 +103,12 @@ impl SliceCache {
         self.range_to_indices.clear()
     }
 
-    pub fn entry(&mut self, m1: f64, m2: f64) -> Entry<(i64, i64), Range<usize>> {
+    pub fn entry(&mut self, m1: f64, m2: f64) -> Entry<(Placeholder, Placeholder), Range<usize>> {
         let key = self.key_from(m1, m2);
         self.range_to_indices.entry(key)
     }
 
-    pub fn key_from(&mut self, m1: f64, m2: f64) -> (i64, i64) {
+    pub fn key_from(&mut self, m1: f64, m2: f64) -> (Placeholder, Placeholder) {
         let i1 = self.key_for(m1);
         let i2 = self.key_for(m2);
         (i1, i2)
@@ -131,7 +135,7 @@ impl<C: CentroidLike + Clone + From<CentroidPeak>> WorkingPeakSet<C> {
         match self.slice_cache.entry(m1, m2) {
             Entry::Occupied(r) => r.get().clone(),
             Entry::Vacant(v) => {
-                let ivs = self.peaks.between(m1, m2, 0.001, MassErrorType::Absolute);
+                let ivs = self.peaks.between(m1, m2, Tolerance::Da(0.001));
                 let r = if ivs.is_empty() {
                     0..0
                 } else {
@@ -148,12 +152,12 @@ impl<C: CentroidLike + Clone + From<CentroidPeak>> WorkingPeakSet<C> {
     pub fn match_theoretical(
         &mut self,
         tid: &TheoreticalIsotopicPattern,
-        error_tolerance: f64,
+        error_tolerance: Tolerance,
     ) -> (Vec<PeakKey>, usize) {
         let mut peaks = Vec::with_capacity(tid.len());
         let mut missed = 0;
         for peak in tid.iter() {
-            let (key, missed_peak) = self.has_peak(peak.mz(), error_tolerance, MassErrorType::PPM);
+            let (key, missed_peak) = self.has_peak(peak.mz(), error_tolerance);
             peaks.push(key);
             missed += missed_peak as usize;
         }
@@ -163,10 +167,9 @@ impl<C: CentroidLike + Clone + From<CentroidPeak>> WorkingPeakSet<C> {
     pub fn has_peak(
         &mut self,
         mz: f64,
-        error_tolerance: f64,
-        error_type: MassErrorType,
+        error_tolerance: Tolerance,
     ) -> (PeakKey, bool) {
-        match self.peaks.has_peak(mz, error_tolerance, error_type) {
+        match self.peaks.has_peak(mz, error_tolerance) {
             Some(peak) => (PeakKey::Matched(peak.get_index()), false),
             None => (PeakKey::Placeholder(self.placeholders.create(mz)), true),
         }

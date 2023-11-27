@@ -1,7 +1,7 @@
 use std::ops::Range;
 use std::collections::HashSet;
 
-use mzpeaks::{CentroidLike, MassErrorType, MZLocated};
+use mzpeaks::{CentroidLike, Tolerance, MZLocated};
 
 use crate::peaks::PeakKey;
 use crate::charge::{ChargeIterator, ChargeRangeIter};
@@ -11,7 +11,7 @@ use crate::isotopic_fit::IsotopicFit;
 pub trait IsotopicPatternFitter<C: CentroidLike> {
     fn fit_theoretical_isotopic_pattern(&mut self, peak: PeakKey, charge: i32) -> IsotopicFit;
 
-    fn has_peak(&mut self, mz: f64, error_tolerance: f64) -> PeakKey;
+    fn has_peak(&mut self, mz: f64, error_tolerance: Tolerance) -> PeakKey;
     fn between(&mut self, m1: f64, m2: f64) -> Range<usize>;
     fn get_peak(&self, key: PeakKey) -> &C;
     fn create_key(&mut self, mz: f64) -> PeakKey;
@@ -24,7 +24,7 @@ pub trait RelativePeakSearch<C: CentroidLike>: IsotopicPatternFitter<C> {
         mz: f64,
         charge: i32,
         step: i8,
-        error_tolerance: f64,
+        error_tolerance: Tolerance,
     ) -> Option<PeakKey> {
         let prev = mz - isotopic_shift(charge) * step as f64;
         match self.has_peak(prev, error_tolerance) {
@@ -38,7 +38,7 @@ pub trait RelativePeakSearch<C: CentroidLike>: IsotopicPatternFitter<C> {
         mz: f64,
         charge: i32,
         step: i8,
-        error_tolerance: f64,
+        error_tolerance: Tolerance,
     ) -> Option<PeakKey> {
         let next = mz + isotopic_shift(charge) * step as f64;
         match self.has_peak(next, error_tolerance) {
@@ -53,13 +53,13 @@ pub trait RelativePeakSearch<C: CentroidLike>: IsotopicPatternFitter<C> {
         charge: i32,
         result: &mut HashSet<(PeakKey, i32)>,
         step: i8,
-        error_tolerance: f64,
+        error_tolerance: Tolerance,
     ) -> usize {
         let shift = isotopic_shift(charge);
         let next_peak = mz + (shift * step as f64);
+        let mass_iv = error_tolerance.bounds(next_peak);
         let iv = self.between(
-            MassErrorType::PPM.lower_bound(next_peak, error_tolerance),
-            MassErrorType::PPM.upper_bound(next_peak, error_tolerance),
+            mass_iv.0, mass_iv.1
         );
         for i in iv.clone() {
             let forward = self.get_peak(PeakKey::Matched(i as u32)).mz();
@@ -76,13 +76,14 @@ pub trait RelativePeakSearch<C: CentroidLike>: IsotopicPatternFitter<C> {
         charge: i32,
         result: &mut HashSet<(PeakKey, i32)>,
         step: i8,
-        error_tolerance: f64,
+        error_tolerance: Tolerance,
     ) -> usize {
         let shift = isotopic_shift(charge);
         let prev_peak = mz - shift;
+        let mass_iv = error_tolerance.bounds(prev_peak);
         let iv = self.between(
-            MassErrorType::PPM.lower_bound(prev_peak, error_tolerance),
-            MassErrorType::PPM.upper_bound(prev_peak, error_tolerance),
+            mass_iv.0,
+            mass_iv.1,
         );
         for i in iv.clone() {
             let prev_peak_mz = self.get_peak(PeakKey::Matched(i as u32)).mz();
@@ -132,7 +133,7 @@ pub trait ExhaustivePeakSearch<C: CentroidLike>:
     fn _find_all_peak_charge_pairs_iter<I: ChargeIterator>(
         &mut self,
         mz: f64,
-        error_tolerance: f64,
+        error_tolerance: Tolerance,
         charge_iter: I,
         left_search_limit: i8,
         right_search_limit: i8,
@@ -191,7 +192,7 @@ pub trait ExhaustivePeakSearch<C: CentroidLike>:
     fn find_all_peak_charge_pairs(
         &mut self,
         mz: f64,
-        error_tolerance: f64,
+        error_tolerance: Tolerance,
         charge_range: (i32, i32),
         left_search_limit: i8,
         right_search_limit: i8,
@@ -214,7 +215,7 @@ pub trait ExhaustivePeakSearch<C: CentroidLike>:
 
     fn step_deconvolve(
         &mut self,
-        error_tolerance: f64,
+        error_tolerance: Tolerance,
         charge_range: (i32, i32),
         left_search_limit: i8,
         right_search_limit: i8,

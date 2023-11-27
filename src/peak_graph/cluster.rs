@@ -188,7 +188,7 @@ struct NodeCombinationIterMut<'a> {
     pub nodes: Vec<&'a mut FitNode>,
     i: usize,
     j: usize,
-    n: usize,
+    pub n: usize,
 }
 
 impl<'a> NodeCombinationIterMut<'a> {
@@ -203,7 +203,7 @@ impl<'a> NodeCombinationIterMut<'a> {
     }
 
     pub fn advance(&mut self) -> Option<(&'a mut FitNode, &'a mut FitNode)> {
-        let n = self.nodes.len();
+        let n = self.n;
         if self.i >= n {
             return None;
         }

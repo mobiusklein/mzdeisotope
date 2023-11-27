@@ -2,8 +2,7 @@ use std::ops::Range;
 
 use crate::isotopic_fit::IsotopicFit;
 use crate::isotopic_model::{
-    CachingIsotopicModel, IsotopicPatternGenerator, PROTON,
-    TIDScalingMethod
+    CachingIsotopicModel, IsotopicPatternGenerator, TIDScalingMethod, PROTON,
 };
 use crate::peaks::{PeakKey, WorkingPeakSet};
 use crate::scorer::{
@@ -12,9 +11,8 @@ use crate::scorer::{
 
 use crate::deconv_traits::{ExhaustivePeakSearch, IsotopicPatternFitter, RelativePeakSearch};
 
-
 use mzpeaks::prelude::*;
-use mzpeaks::{CentroidPeak, MZPeakSetType, MassErrorType};
+use mzpeaks::{CentroidPeak, MZPeakSetType, Tolerance};
 
 
 #[derive(Debug)]
@@ -56,7 +54,6 @@ impl<
     }
 }
 
-
 impl<
         C: CentroidLike + Clone + From<CentroidPeak>,
         I: IsotopicPatternGenerator,
@@ -94,15 +91,15 @@ impl<
         let mut tid = self
             .isotopic_model
             .isotopic_cluster(mz, charge, PROTON, 0.95, 0.001);
-        let (keys, missed_peaks) = self.peaks.match_theoretical(&tid, 10.0);
+        let (keys, missed_peaks) = self.peaks.match_theoretical(&tid, Tolerance::PPM(10.0));
         let exp = self.peaks.collect_for(&keys);
         self.scaling_method.scale(&exp, &mut tid);
         let score = self.scorer.score(&exp, &tid);
         IsotopicFit::new(keys, peak, tid, charge, score, missed_peaks as u16)
     }
 
-    fn has_peak(&mut self, mz: f64, error_tolerance: f64) -> PeakKey {
-        let (peak, _missed) = self.peaks.has_peak(mz, error_tolerance, MassErrorType::PPM);
+    fn has_peak(&mut self, mz: f64, error_tolerance: Tolerance) -> PeakKey {
+        let (peak, _missed) = self.peaks.has_peak(mz, error_tolerance);
         peak
     }
 
@@ -124,7 +121,6 @@ impl<
     }
 }
 
-
 pub type AveragineDeconvoluter<'lifespan> = DeconvoluterType<
     CentroidPeak,
     CachingIsotopicModel<'lifespan>,
@@ -134,7 +130,16 @@ pub type AveragineDeconvoluter<'lifespan> = DeconvoluterType<
 
 #[cfg(test)]
 mod test {
+    use std::fs;
+    use std::io;
+
+    use flate2::bufread::GzDecoder;
+
+    use mzdata::MzMLReader;
+    use mzpeaks::prelude::*;
+
     use crate::isotopic_model::IsotopicModels;
+    use crate::scorer::MSDeconvScorer;
 
     use super::*;
 
@@ -173,7 +178,50 @@ mod test {
             MaximizingFitFilter::default(),
             1,
         );
-        let solution_space = task.find_all_peak_charge_pairs(300.0, 10.0, (1, 8), 1, 1, true);
-        assert_eq!(solution_space.len(), 10);
+        let solution_space =
+            task.find_all_peak_charge_pairs(300.0, Tolerance::PPM(10.0), (1, 8), 1, 1, true);
+        assert_eq!(solution_space.len(), 8);
+        let n_matched = solution_space
+            .iter()
+            .map(|(k, _)| k.is_matched() as i32)
+            .sum::<i32>();
+        assert_eq!(n_matched, 7);
+        let n_placeholders = solution_space
+            .iter()
+            .map(|(k, _)| k.is_placeholder() as i32)
+            .sum::<i32>();
+        assert_eq!(n_placeholders, 1);
+    }
+
+    #[test]
+    fn test_file() -> io::Result<()> {
+        let decoder = GzDecoder::new(io::BufReader::new(fs::File::open(
+            "./tests/data/20150710_3um_AGP_001_29_30.mzML.gz",
+        )?));
+        let mut reader = MzMLReader::new(decoder);
+        let scan = reader.next().unwrap();
+        let centroided = scan.into_centroid().unwrap();
+
+        let mut deconvoluter = AveragineDeconvoluter::new(
+            centroided.peaks,
+            IsotopicModels::Glycopeptide.into(),
+            MSDeconvScorer::new(0.02),
+            MaximizingFitFilter { threshold: 10.0 },
+            3,
+        );
+
+        let fits = deconvoluter.step_deconvolve(
+            Tolerance::PPM(10.0),
+            (1, 8),
+            1,
+            1
+        );
+
+        let best_fit = fits.iter().max().unwrap();
+        assert_eq!(best_fit.charge, 4);
+        assert_eq!(best_fit.missed_peaks, 0);
+        assert!((best_fit.score - 2897.064989589997).abs() < 1e-3);
+        assert_eq!(fits.len(), 3686);
+        Ok(())
     }
 }

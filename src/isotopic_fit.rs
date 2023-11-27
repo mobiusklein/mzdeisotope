@@ -1,3 +1,5 @@
+use std::hash::{Hash, Hasher};
+
 use chemical_elements::isotopic_pattern::TheoreticalIsotopicPattern;
 
 use crate::peaks::PeakKey;
@@ -48,13 +50,10 @@ impl Ord for IsotopicFit {
     }
 }
 
-impl std::hash::Hash for IsotopicFit {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+impl Hash for IsotopicFit {
+    fn hash<H: Hasher>(&self, state: &mut H) {
         if let Some(key) = self.experimental.first() {
-            match key {
-                PeakKey::Matched(i) => i.hash(state),
-                PeakKey::Placeholder(i) => i.hash(state),
-            }
+            key.hash(state);
         }
         self.charge.hash(state);
     }

@@ -118,7 +118,7 @@ impl<'lifespan, T: IntoIterator<Item = (&'static str, f64)>> From<T> for Isotopi
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialOrd)]
 pub struct IsotopicPatternSpec {
     pub mz: f64,
     pub charge: i32,
