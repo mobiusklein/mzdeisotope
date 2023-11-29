@@ -106,7 +106,7 @@ impl<'lifespan: 'transient, 'transient> IsotopicModel<'lifespan> {
 
         let mut scaled = ChemicalComposition::new();
         for (elt, count) in self.base_composition.iter() {
-            scaled.set(elt.clone(), (*count as f64 * scale).round() as i32);
+            scaled.set(*elt, (*count * scale).round() as i32);
         }
         let scaled_mass = scaled.mass();
         let delta = (scaled_mass - neutral).round() as i32;
@@ -172,11 +172,7 @@ impl PartialEq for IsotopicPatternSpec {
             false
         } else if (self.truncate_after - other.truncate_after).abs() > 1e-6 {
             false
-        } else if (self.ignore_below - other.ignore_below).abs() > 1e-6 {
-            false
-        } else {
-            true
-        }
+        } else { (self.ignore_below - other.ignore_below).abs() <= 1e-6 }
     }
 }
 
@@ -205,7 +201,7 @@ impl<'lifespan: 'transient, 'transient> CachingIsotopicModel<'lifespan> {
         Self {
             inner: IsotopicModel::new(base_composition),
             cache: HashMap::new(),
-            cache_truncation: cache_truncation,
+            cache_truncation,
         }
     }
 
@@ -258,7 +254,7 @@ impl<'lifespan> IsotopicPatternGenerator for CachingIsotopicModel<'lifespan> {
             Entry::Occupied(ent) => {
                 let res = ent.get();
                 let offset = mz - res.origin;
-                return res.clone_shifted(offset);
+                res.clone_shifted(offset)
             }
             Entry::Vacant(ent) => {
                 let res = self.inner.isotopic_cluster(
@@ -270,7 +266,7 @@ impl<'lifespan> IsotopicPatternGenerator for CachingIsotopicModel<'lifespan> {
                 );
                 let offset = mz - res.origin;
                 let out = ent.insert(res).clone_shifted(offset);
-                return out;
+                out
             }
         }
     }
@@ -319,18 +315,15 @@ impl From<IsotopicModels> for CachingIsotopicModel<'_> {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub enum TIDScalingMethod {
+    #[default]
     Sum,
     Max,
     Top3,
 }
 
-impl Default for TIDScalingMethod {
-    fn default() -> Self {
-        TIDScalingMethod::Sum
-    }
-}
+
 
 impl TIDScalingMethod {
     pub fn scale<C: CentroidLike>(

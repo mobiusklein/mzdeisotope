@@ -342,7 +342,7 @@ mod test {
         let best_fit = fits.iter().max().unwrap();
         assert_eq!(best_fit.charge, 4);
         assert_eq!(best_fit.missed_peaks, 0);
-        assert!((best_fit.score - 2897.064989589997).abs() < 1e-3);
+        assert!((best_fit.score - 2_897.065).abs() < 1e-3);
         assert_eq!(fits.len(), 3686);
         Ok(())
     }

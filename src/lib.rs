@@ -54,7 +54,7 @@ mod test {
         let max_int: f32 = eid.iter().map(|p| p.intensity()).sum();
         let tid = tid.scale_by(max_int as f64);
         let score = scorer.score(&eid, &tid);
-        assert!((score - 2735.188267035904).abs() < 1e-3);
+        assert!((score - 2_735.188_2).abs() < 1e-3);
         Ok(())
     }
 }

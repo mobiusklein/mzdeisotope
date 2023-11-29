@@ -38,7 +38,7 @@ impl PartialEq for IsotopicFit {
 
 impl PartialOrd for IsotopicFit {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        return self.score.partial_cmp(&other.score);
+        self.score.partial_cmp(&other.score)
     }
 }
 

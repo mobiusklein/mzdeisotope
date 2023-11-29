@@ -154,7 +154,7 @@ impl FitGraph {
     pub fn add_fit(&mut self, fit: IsotopicFit, start: f64, end: f64) -> &FitNode {
         let key = self.fit_nodes.len();
         let node = FitNode::from_fit(&fit, key, start, end);
-        self.fit_nodes.insert(key.clone(), node);
+        self.fit_nodes.insert(key, node);
         self.dependencies.insert(key, fit);
         self.fit_nodes.get(&key).unwrap()
     }
@@ -189,8 +189,7 @@ impl FitGraph {
             let nodes = cluster
                 .dependencies
                 .iter()
-                .map(|f| self.fit_nodes.remove(&f.key))
-                .flatten().collect();
+                .filter_map(|f| self.fit_nodes.remove(&f.key)).collect();
             result.push((cluster, nodes));
         }
         result
@@ -204,8 +203,7 @@ impl FitGraph {
                 let nodes: Vec<_> = cluster
                     .dependencies
                     .iter()
-                    .map(|f| self.fit_nodes.remove(&f.key))
-                    .flatten()
+                    .filter_map(|f| self.fit_nodes.remove(&f.key))
                     .collect();
                 FitSubgraph::new(cluster, nodes)
             })
@@ -252,7 +250,7 @@ impl FitSubgraph {
     pub fn new(cluster: DependenceCluster, fit_nodes: Vec<FitNode>) -> Self {
         Self {
             cluster,
-            fit_nodes: fit_nodes,
+            fit_nodes,
         }
     }
 

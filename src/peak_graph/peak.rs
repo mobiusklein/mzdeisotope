@@ -86,7 +86,7 @@ impl PeakGraph {
         fit_key: &FitKey,
     ) {
         for p in peak_iter {
-            match self.peak_nodes.get_mut(&p) {
+            match self.peak_nodes.get_mut(p) {
                 Some(p) => {
                     p.links.remove(fit_key);
                 }

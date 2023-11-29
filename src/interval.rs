@@ -332,7 +332,7 @@ impl<'members, V: Real + Copy + Sum, T: Span1D<DimType = V>> IntervalTree<V, T> 
         stack.push_back(0);
         while !stack.is_empty() {
             let index = stack.pop_back().unwrap();
-            results.extend(self.nodes[index].members.drain(..));
+            results.append(&mut self.nodes[index].members);
             if let Some(right_index) = self.nodes[index].right_child {
                 stack.push_back(right_index);
             }
@@ -591,12 +591,10 @@ mod test {
 
     #[test]
     fn test_intervals_contain() {
-        let ivs = vec![
-            SimpleInterval::new(0.0, 3.0),
+        let ivs = [SimpleInterval::new(0.0, 3.0),
             SimpleInterval::new(2.0, 5.0),
-            SimpleInterval::new(5.0, 10.0),
-        ];
-        let res = intervals_containg_point(&ivs[..], &2.5f64);
+            SimpleInterval::new(5.0, 10.0)];
+        let res = intervals_containg_point(&ivs[..], 2.5f64);
         assert_eq!(res.len(), 2);
     }
 

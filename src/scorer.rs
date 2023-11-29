@@ -56,8 +56,8 @@ impl MSDeconvScorer {
             return 0.0;
         };
 
-        let score = theoretical.intensity().sqrt() as ScoreType * mass_accuracy * abundance_diff as ScoreType;
-        score
+        
+        theoretical.intensity().sqrt() as ScoreType * mass_accuracy * abundance_diff as ScoreType
     }
 
     #[inline]
@@ -158,7 +158,7 @@ impl IsotopicPatternScorer for ScaledGTestScorer {
         experimental: &Vec<C>,
         theoretical: &TheoreticalIsotopicPattern,
     ) -> ScoreType {
-        ScaledGTestScorer::score(&self, experimental, theoretical)
+        ScaledGTestScorer::score(self, experimental, theoretical)
     }
 
     fn interpretation(&self) -> ScoreInterpretation {
@@ -180,7 +180,7 @@ impl IsotopicPatternScorer for PenalizedMSDeconvScorer {
         experimental: &Vec<C>,
         theoretical: &TheoreticalIsotopicPattern,
     ) -> ScoreType {
-        PenalizedMSDeconvScorer::score(&self, experimental, theoretical)
+        PenalizedMSDeconvScorer::score(self, experimental, theoretical)
     }
 }
 
@@ -304,7 +304,7 @@ mod test {
 
         let scorer = MSDeconvScorer::new(0.02);
         let score = scorer.score(&eid, &tid);
-        assert!((score - 292.9602522214597).abs() < 1e-3);
+        assert!((score - 292.960_27).abs() < 1e-3);
     }
 
     #[test]
@@ -314,7 +314,7 @@ mod test {
 
         let scorer = GTestScorer::default();
         let score = scorer.score(&eid, &tid);
-        assert!((score - 1.5561599731445313).abs() < 1e-3);
+        assert!((score - 1.556_16).abs() < 1e-3);
     }
 
     #[test]
@@ -324,6 +324,6 @@ mod test {
 
         let scorer = ScaledGTestScorer::default();
         let score = scorer.score(&eid, &tid);
-        assert!((score - 6.593763828277588e-5).abs() < 1e-3);
+        assert!((score - 6.593_764e-5).abs() < 1e-3);
     }
 }

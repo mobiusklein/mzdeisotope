@@ -34,7 +34,7 @@ impl DependenceCluster {
     }
 
     pub fn contains(&self, fit: &FitRef) -> bool {
-        self.dependencies.iter().position(|f| f == fit).is_some()
+        self.dependencies.iter().any(|f| f == fit)
     }
 
     pub fn mz_bounds(&self) -> (f64, f64) {
@@ -141,10 +141,10 @@ impl SubgraphSelection {
         layers.push(Vec::new());
         match self.score_ordering {
             ScoreInterpretation::HigherIsBetter => {
-                nodes.sort_by(|a, b| a.cmp(&b).reverse());
+                nodes.sort_by(|a, b| a.cmp(b).reverse());
             }
             ScoreInterpretation::LowerIsBetter => {
-                nodes.sort_by(|a, b| a.cmp(&b));
+                nodes.sort();
             }
         }
 
@@ -170,8 +170,7 @@ impl SubgraphSelection {
         }
         layers
             .iter()
-            .map(|layer| layer.first())
-            .flatten()
+            .filter_map(|layer| layer.first())
             .map(|node| node.create_ref())
             .collect()
     }

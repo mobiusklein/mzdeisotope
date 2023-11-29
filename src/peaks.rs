@@ -59,8 +59,8 @@ impl<C: CentroidLike + Clone + From<CentroidPeak>> Default for PlaceholderCache<
 
 pub trait MZCaching {
     fn key_for(&self, mz: f64) -> Placeholder {
-        let key = (mz * 1000.0).round() as Placeholder;
-        key
+        
+        (mz * 1000.0).round() as Placeholder
     }
 }
 
@@ -68,18 +68,18 @@ impl<C: CentroidLike + Clone + From<CentroidPeak>> PlaceholderCache<C> {
     pub fn create(&mut self, mz: f64) -> Placeholder {
         let key = self.key_for(mz);
         self.placeholders
-            .entry(key.clone())
+            .entry(key)
             .or_insert_with(|| CentroidPeak::new(mz, 1.0, IndexType::MAX).into());
-        return key;
+        key
     }
 
-    pub fn create_and_get<'a>(&'a mut self, mz: f64) -> &'a C {
+    pub fn create_and_get(&mut self, mz: f64) -> &C {
         let key = self.key_for(mz);
         self.create(mz);
         self.placeholders.get(&key).unwrap()
     }
 
-    pub fn get<'a>(&'a self, mz: f64) -> Option<&'a C> {
+    pub fn get(&self, mz: f64) -> Option<&C> {
         let key = self.key_for(mz);
         self.placeholders.get(&key)
     }
@@ -281,18 +281,16 @@ impl PeakKeyIter {
             } else {
                 None
             }
+        } else if self.current > 0 && self.current < self.total {
+            let res = PeakKey::Matched(self.current as u32);
+            self.current -= 1;
+            Some(res)
+        } else if self.current == 0 {
+            let res = PeakKey::Matched(self.current as u32);
+            self.current = usize::MAX;
+            Some(res)
         } else {
-            if self.current > 0 && self.current < self.total {
-                let res = PeakKey::Matched(self.current as u32);
-                self.current -= 1;
-                Some(res)
-            } else if self.current == 0 {
-                let res = PeakKey::Matched(self.current as u32);
-                self.current = usize::MAX;
-                Some(res)
-            } else {
-                None
-            }
+            None
         }
     }
 }

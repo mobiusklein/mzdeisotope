@@ -182,7 +182,7 @@ impl PeakDependenceGraph {
             dependency_history.insert(key, dependencies);
 
             for dep_key in dependency_history.get(&key).unwrap().iter() {
-                let fit_node = self.fit_nodes.get(&dep_key).unwrap();
+                let fit_node = self.fit_nodes.get(dep_key).unwrap();
                 for peak_key in fit_node.peak_iter().filter(|p| p.is_matched()) {
                     clusters.insert(*peak_key, key);
                 }
@@ -228,7 +228,7 @@ impl PeakDependenceGraph {
             let fits_of: Vec<_> = sols.into_iter().map(|fit_ref| {
                 match self.fit_nodes.dependencies.remove(&fit_ref.key) {
                     Some(fit) => {
-                        return (fit_ref, fit)
+                        (fit_ref, fit)
                     },
                     None => {
                         panic!("Failed to locate fit for {:?}", fit_ref);
