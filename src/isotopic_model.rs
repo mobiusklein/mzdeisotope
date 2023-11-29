@@ -9,7 +9,6 @@ use chemical_elements::{
 
 use mzpeaks::CentroidLike;
 
-
 pub const PROTON: f64 = _PROTON;
 
 pub type FractionalComposition<'a> = HashMap<ElementSpecification<'a>, f64>;
@@ -35,6 +34,41 @@ pub const NEUTRON_SHIFT: f64 = 1.0033548378;
 
 pub fn isotopic_shift(charge: i32) -> f64 {
     NEUTRON_SHIFT / charge as f64
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct IsotopicPatternParams {
+    pub truncate_after: f64,
+    pub ignore_below: f64,
+    pub incremental_truncation: Option<f64>,
+    pub charge_carrier: f64,
+}
+
+impl Default for IsotopicPatternParams {
+    fn default() -> Self {
+        Self {
+            truncate_after: 0.95,
+            ignore_below: 0.001,
+            incremental_truncation: None,
+            charge_carrier: PROTON
+        }
+    }
+}
+
+impl IsotopicPatternParams {
+    pub fn new(
+        truncate_after: f64,
+        ignore_below: f64,
+        incremental_truncation: Option<f64>,
+        charge_carrier: f64
+    ) -> Self {
+        Self {
+            truncate_after,
+            ignore_below,
+            incremental_truncation,
+            charge_carrier
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -284,7 +318,6 @@ impl From<IsotopicModels> for CachingIsotopicModel<'_> {
         model.into()
     }
 }
-
 
 #[derive(Debug, Clone, Copy)]
 pub enum TIDScalingMethod {

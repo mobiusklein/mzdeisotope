@@ -21,3 +21,6 @@ chemical_elements = { path = "../chemical-elements/", features=['mzpeaks']}
 
 [dev-dependencies]
 flate2 = "1.0.28"
+
+[patch.crates-io]
+mzpeaks = { path = "../mzpeaks/" }

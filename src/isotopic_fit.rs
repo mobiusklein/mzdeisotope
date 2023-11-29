@@ -2,7 +2,7 @@ use std::hash::{Hash, Hasher};
 
 use chemical_elements::isotopic_pattern::TheoreticalIsotopicPattern;
 
-use crate::peaks::PeakKey;
+use crate::{peaks::PeakKey, scorer::ScoreType};
 
 #[derive(Debug, Clone)]
 pub struct IsotopicFit {
@@ -10,7 +10,7 @@ pub struct IsotopicFit {
     pub theoretical: TheoreticalIsotopicPattern,
     pub seed_peak: PeakKey,
     pub charge: i32,
-    pub score: f64,
+    pub score: ScoreType,
     pub missed_peaks: u16,
 }
 
@@ -65,7 +65,7 @@ impl IsotopicFit {
         seed_peak: PeakKey,
         theoretical: TheoreticalIsotopicPattern,
         charge: i32,
-        score: f64,
+        score: ScoreType,
         missed_peaks: u16,
     ) -> Self {
         Self {
@@ -80,6 +80,14 @@ impl IsotopicFit {
 
     pub fn len(&self) -> usize {
         self.experimental.len()
+    }
+
+    pub fn num_missed_peaks(&self) -> usize {
+        self.experimental.iter().map(|p| p.is_placeholder() as usize).sum()
+    }
+
+    pub fn num_matched_peaks(&self) -> usize {
+        self.experimental.iter().map(|p| p.is_matched() as usize).sum()
     }
 
     pub fn is_empty(&self) -> bool {

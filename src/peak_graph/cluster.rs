@@ -2,7 +2,7 @@ use crate::scorer::ScoreInterpretation;
 
 use super::fit::{FitNode, FitNodeGraphInner, FitRef};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct DependenceCluster {
     pub dependencies: Vec<FitRef>,
     pub score_ordering: ScoreInterpretation,

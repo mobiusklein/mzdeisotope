@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::mem;
 
 use crate::isotopic_fit::IsotopicFit;
 use crate::peaks::PeakKey;
@@ -216,24 +217,26 @@ impl PeakDependenceGraph {
             .sort_by(|a, b| a.start.partial_cmp(&b.start).unwrap());
     }
 
-    pub fn solutions(&mut self, method: SubgraphSolverMethod) -> Vec<IsotopicFit> {
+    pub fn solutions(&mut self, method: SubgraphSolverMethod) -> Vec<(DependenceCluster, Vec<(FitRef, IsotopicFit)>)> {
         self.find_non_overlapping_intervals();
-        let solutions = self.fit_nodes.solve_subgraphs(&self.clusters, method);
-        let total_size: usize = solutions.iter().map(|f| f.len()).sum();
-        let mut accepted_fits = Vec::with_capacity(total_size);
-        for sols in solutions {
-            for fit_ref in sols {
+        let clusters = mem::take(&mut self.clusters);
+        let solutions = self.fit_nodes.solve_subgraphs(clusters, method);
+        // let total_size: usize = solutions.iter().map(|(_, f)| f.len()).sum();
+        // let mut accepted_fits = Vec::with_capacity(total_size);
+        let accepted_fits: Vec<_> = solutions.into_iter().map(|(c, sols)| {
+
+            let fits_of: Vec<_> = sols.into_iter().map(|fit_ref| {
                 match self.fit_nodes.dependencies.remove(&fit_ref.key) {
                     Some(fit) => {
-                        accepted_fits.push(fit);
+                        return (fit_ref, fit)
                     },
                     None => {
                         panic!("Failed to locate fit for {:?}", fit_ref);
                     }
                 }
-
-            }
-        }
+            }).collect();
+            (c, fits_of)
+        }).collect();
         accepted_fits
     }
 }

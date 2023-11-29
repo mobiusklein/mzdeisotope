@@ -2,13 +2,14 @@ use std::collections::hash_map::{Iter, IterMut, Keys};
 use std::collections::HashMap;
 
 use crate::peaks::PeakKey;
+use crate::scorer::ScoreType;
 
 use super::fit::FitKey;
 
 #[derive(Debug)]
 pub struct PeakNode {
     pub key: PeakKey,
-    pub links: HashMap<FitKey, f64>,
+    pub links: HashMap<FitKey, ScoreType>,
 }
 
 impl PeakNode {

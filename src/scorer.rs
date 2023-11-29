@@ -5,6 +5,9 @@ use mzpeaks::prelude::*;
 
 use crate::isotopic_fit::IsotopicFit;
 
+pub type ScoreType = f32;
+
+
 #[derive(Debug, Clone, Copy)]
 pub enum ScoreInterpretation {
     HigherIsBetter,
@@ -16,7 +19,7 @@ pub trait IsotopicPatternScorer {
         &self,
         experimental: &Vec<C>,
         theoretical: &TheoreticalIsotopicPattern,
-    ) -> f64;
+    ) -> ScoreType;
     fn interpretation(&self) -> ScoreInterpretation {
         ScoreInterpretation::HigherIsBetter
     }
@@ -33,12 +36,12 @@ impl MSDeconvScorer {
         &self,
         experimental: &C,
         theoretical: &TheoreticalPeak,
-    ) -> f64 {
+    ) -> ScoreType {
         let mass_error = (experimental.mz() - theoretical.mz()).abs();
         if mass_error > self.error_tolerance {
             return 0.0;
         }
-        let mass_accuracy = 1.0 - (mass_error / self.error_tolerance);
+        let mass_accuracy = 1.0 - (mass_error / self.error_tolerance) as ScoreType;
 
         let ratio = (theoretical.intensity() - experimental.intensity()) / experimental.intensity();
 
@@ -53,7 +56,7 @@ impl MSDeconvScorer {
             return 0.0;
         };
 
-        let score = theoretical.intensity().sqrt() as f64 * mass_accuracy * abundance_diff as f64;
+        let score = theoretical.intensity().sqrt() as ScoreType * mass_accuracy * abundance_diff as ScoreType;
         score
     }
 
@@ -62,7 +65,7 @@ impl MSDeconvScorer {
         &self,
         experimental: &Vec<C>,
         theoretical: &TheoreticalIsotopicPattern,
-    ) -> f64 {
+    ) -> ScoreType {
         experimental
             .iter()
             .zip(theoretical.iter())
@@ -88,7 +91,7 @@ impl IsotopicPatternScorer for MSDeconvScorer {
         &self,
         experimental: &Vec<C>,
         theoretical: &TheoreticalIsotopicPattern,
-    ) -> f64 {
+    ) -> ScoreType {
         MSDeconvScorer::score(self, experimental, theoretical)
     }
 }
@@ -103,12 +106,12 @@ impl GTestScorer {
         &self,
         experimental: &Vec<C>,
         theoretical: &TheoreticalIsotopicPattern,
-    ) -> f64 {
+    ) -> ScoreType {
         2.0 * experimental.iter().zip(theoretical.iter()).map(|(o, e)| {
             let oi = o.intensity();
             let ei = e.intensity();
-            (oi * (oi.ln() - ei.ln())) as f64
-        }).sum::<f64>()
+            (oi * (oi.ln() - ei.ln())) as ScoreType
+        }).sum::<ScoreType>()
     }
 }
 
@@ -118,7 +121,7 @@ impl IsotopicPatternScorer for GTestScorer {
         &self,
         experimental: &Vec<C>,
         theoretical: &TheoreticalIsotopicPattern,
-    ) -> f64 {
+    ) -> ScoreType {
         GTestScorer::score(self, experimental, theoretical)
     }
 
@@ -137,14 +140,14 @@ impl ScaledGTestScorer {
         &self,
         experimental: &Vec<C>,
         theoretical: &TheoreticalIsotopicPattern,
-    ) -> f64 {
+    ) -> ScoreType {
         let total_o: f32 = experimental.iter().map(|p| p.intensity()).sum();
         let total_e: f32 = theoretical.iter().map(|p| p.intensity()).sum();
         2.0 * experimental.iter().zip(theoretical.iter()).map(|(o, e)| {
             let oi = o.intensity() / total_o;
             let ei = e.intensity() / total_e;
-            (oi * (oi.ln() - ei.ln())) as f64
-        }).sum::<f64>()
+            (oi * (oi.ln() - ei.ln())) as ScoreType
+        }).sum::<ScoreType>()
     }
 }
 
@@ -154,7 +157,7 @@ impl IsotopicPatternScorer for ScaledGTestScorer {
         &self,
         experimental: &Vec<C>,
         theoretical: &TheoreticalIsotopicPattern,
-    ) -> f64 {
+    ) -> ScoreType {
         ScaledGTestScorer::score(&self, experimental, theoretical)
     }
 
@@ -168,7 +171,7 @@ impl IsotopicPatternScorer for ScaledGTestScorer {
 pub struct PenalizedMSDeconvScorer {
     msdeconv: MSDeconvScorer,
     penalizer: ScaledGTestScorer,
-    penalty_factor: f64
+    penalty_factor: ScoreType
 }
 
 impl IsotopicPatternScorer for PenalizedMSDeconvScorer {
@@ -176,7 +179,7 @@ impl IsotopicPatternScorer for PenalizedMSDeconvScorer {
         &self,
         experimental: &Vec<C>,
         theoretical: &TheoreticalIsotopicPattern,
-    ) -> f64 {
+    ) -> ScoreType {
         PenalizedMSDeconvScorer::score(&self, experimental, theoretical)
     }
 }
@@ -188,7 +191,7 @@ impl Default for PenalizedMSDeconvScorer {
 }
 
 impl PenalizedMSDeconvScorer {
-    pub fn new(error_tolerance: f64, penalty_factor: f64) -> Self {
+    pub fn new(error_tolerance: f64, penalty_factor: ScoreType) -> Self {
         Self {
             msdeconv: MSDeconvScorer::new(error_tolerance),
             penalizer: ScaledGTestScorer::default(),
@@ -200,7 +203,7 @@ impl PenalizedMSDeconvScorer {
         &self,
         experimental: &Vec<C>,
         theoretical: &TheoreticalIsotopicPattern,
-    ) -> f64 {
+    ) -> ScoreType {
         let base_score = self.msdeconv.score(experimental, theoretical);
         let penalty = self.penalizer.score(experimental, theoretical);
         base_score - (self.penalty_factor * penalty)
@@ -217,11 +220,11 @@ pub trait IsotopicFitFilter {
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct MaximizingFitFilter {
-    pub threshold: f64,
+    pub threshold: ScoreType,
 }
 
 impl MaximizingFitFilter {
-    pub fn new(threshold: f64) -> Self {
+    pub fn new(threshold: ScoreType) -> Self {
         Self { threshold }
     }
 }
@@ -234,11 +237,11 @@ impl IsotopicFitFilter for MaximizingFitFilter {
 
 #[derive(Debug, Clone, Copy)]
 pub struct MinimizingFitFilter {
-    pub threshold: f64,
+    pub threshold: ScoreType,
 }
 
 impl MinimizingFitFilter {
-    pub fn new(threshold: f64) -> Self {
+    pub fn new(threshold: ScoreType) -> Self {
         Self { threshold }
     }
 }

@@ -1,20 +1,22 @@
 use std::collections::hash_map::{HashMap, Values};
-use std::collections::hash_set::{Iter, HashSet};
+use std::collections::hash_set::{HashSet, Iter};
+use std::hash::Hash;
 
 use crate::isotopic_fit::IsotopicFit;
 use crate::peaks::PeakKey;
+use crate::scorer::ScoreType;
 
 use super::cluster::{DependenceCluster, SubgraphSelection, SubgraphSolverMethod};
 
 pub type FitKey = usize;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FitNode {
     pub key: FitKey,
     pub edges: HashSet<FitKey>,
     pub overlap_edges: HashSet<FitKey>,
     pub peak_indices: HashSet<PeakKey>,
-    pub score: f64,
+    pub score: ScoreType,
     pub start: f64,
     pub end: f64,
 }
@@ -67,7 +69,7 @@ impl PartialEq for FitNode {
     }
 }
 impl Eq for FitNode {}
-impl std::hash::Hash for FitNode {
+impl Hash for FitNode {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.key.hash(state);
     }
@@ -88,13 +90,13 @@ impl Ord for FitNode {
 #[derive(Debug, Clone, Copy)]
 pub struct FitRef {
     pub key: FitKey,
-    pub score: f64,
+    pub score: ScoreType,
     pub start: f64,
     pub end: f64,
 }
 
 impl FitRef {
-    pub fn new(key: FitKey, score: f64, start: f64, end: f64) -> Self {
+    pub fn new(key: FitKey, score: ScoreType, start: f64, end: f64) -> Self {
         Self {
             key,
             score,
@@ -110,7 +112,7 @@ impl PartialEq for FitRef {
     }
 }
 impl Eq for FitRef {}
-impl std::hash::Hash for FitRef {
+impl Hash for FitRef {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.key.hash(state);
     }
@@ -178,26 +180,47 @@ impl FitGraph {
     }
 
     /// Put [`DependenceCluster`] next to the [`FitNode`]s that references it
-    fn split_nodes<'a>(
+    fn split_nodes(
         &mut self,
-        clusters: &'a [DependenceCluster],
-    ) -> Vec<(&'a DependenceCluster, Vec<FitNode>)> {
+        clusters: Vec<DependenceCluster>,
+    ) -> Vec<(DependenceCluster, Vec<FitNode>)> {
         let mut result = Vec::with_capacity(clusters.len());
         for cluster in clusters {
             let nodes = cluster
                 .dependencies
                 .iter()
                 .map(|f| self.fit_nodes.remove(&f.key))
-                .flatten();
-            result.push((cluster, nodes.collect()));
+                .flatten().collect();
+            result.push((cluster, nodes));
         }
         result
     }
 
-    pub fn solve_subgraphs<'a>(&mut self, clusters: &'a [DependenceCluster], method: SubgraphSolverMethod) -> Vec<Vec<FitRef>> {
+    pub fn unpack_subgraphs<'a>(&mut self, clusters: Vec<DependenceCluster>) -> Vec<FitSubgraph> {
+        // self.split_nodes(clusters)
+        clusters
+            .into_iter()
+            .map(|cluster| {
+                let nodes: Vec<_> = cluster
+                    .dependencies
+                    .iter()
+                    .map(|f| self.fit_nodes.remove(&f.key))
+                    .flatten()
+                    .collect();
+                FitSubgraph::new(cluster, nodes)
+            })
+            .collect()
+    }
+
+    pub fn solve_subgraphs<'a>(
+        &mut self,
+        clusters: Vec<DependenceCluster>,
+        method: SubgraphSolverMethod,
+    ) -> Vec<(DependenceCluster, Vec<FitRef>)> {
+        let n = clusters.len();
         let clusters_and_nodes = self.split_nodes(clusters);
 
-        let mut solutions = Vec::with_capacity(clusters.len());
+        let mut solutions = Vec::with_capacity(n);
 
         for (cluster, nodes) in clusters_and_nodes {
             let subgraph = SubgraphSelection::from_nodes(nodes, cluster.score_ordering);
@@ -205,7 +228,7 @@ impl FitGraph {
             let (solution, mut nodes) = subgraph.solve(method);
             // Re-absorb solved sub-graph
             self.fit_nodes.extend(nodes.drain());
-            solutions.push(solution);
+            solutions.push((cluster, solution));
         }
         solutions
     }
@@ -216,5 +239,47 @@ impl std::ops::Index<&FitKey> for FitGraph {
 
     fn index(&self, index: &FitKey) -> &Self::Output {
         &self.fit_nodes[index]
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct FitSubgraph {
+    pub cluster: DependenceCluster,
+    pub fit_nodes: Vec<FitNode>,
+}
+
+impl FitSubgraph {
+    pub fn new(cluster: DependenceCluster, fit_nodes: Vec<FitNode>) -> Self {
+        Self {
+            cluster,
+            fit_nodes: fit_nodes,
+        }
+    }
+
+    pub fn solve(self, method: SubgraphSolverMethod) -> SolvedSubgraph {
+        let subgraph = SubgraphSelection::from_nodes(self.fit_nodes, self.cluster.score_ordering);
+        let (solution, fit_nodes) = subgraph.solve(method);
+        SolvedSubgraph::new(self.cluster, fit_nodes, solution)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct SolvedSubgraph {
+    pub cluster: DependenceCluster,
+    pub fit_nodes: HashMap<usize, FitNode>,
+    pub solution: Vec<FitRef>,
+}
+
+impl SolvedSubgraph {
+    pub fn new(
+        cluster: DependenceCluster,
+        fit_nodes: HashMap<usize, FitNode>,
+        solution: Vec<FitRef>,
+    ) -> Self {
+        Self {
+            cluster,
+            fit_nodes,
+            solution,
+        }
     }
 }

@@ -453,7 +453,7 @@ impl<'members, V: Real + Copy + Sum, T: Span1D<DimType = V>> IntervalTree<V, T> 
     }
 }
 
-impl<'members, V: Real + Copy + Sum + Default, T: Span1D<DimType = V>> Default
+impl<V: Real + Copy + Sum + Default, T: Span1D<DimType = V>> Default
     for IntervalTree<V, T>
 {
     fn default() -> Self {
@@ -462,7 +462,7 @@ impl<'members, V: Real + Copy + Sum + Default, T: Span1D<DimType = V>> Default
     }
 }
 
-impl<'members, V: Real + Copy + Sum, T: Span1D<DimType = V>> Span1D for IntervalTree<V, T> {
+impl<V: Real + Copy + Sum, T: Span1D<DimType = V>> Span1D for IntervalTree<V, T> {
     type DimType = V;
 
     fn start(&self) -> Self::DimType {
@@ -498,7 +498,7 @@ impl<V: Real + Copy + Sum, T: Span1D<DimType = V>> Span1D for IntervalTreeNode<V
     }
 }
 
-impl<'members, V: Real + Sum, T: Span1D<DimType = V>> IntervalTreeNode<V, T> {
+impl<V: Real + Sum, T: Span1D<DimType = V>> IntervalTreeNode<V, T> {
     pub fn new(
         center: V,
         members: Vec<T>,

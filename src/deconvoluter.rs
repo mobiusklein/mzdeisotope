@@ -2,14 +2,18 @@ use std::ops::Range;
 
 use crate::isotopic_fit::IsotopicFit;
 use crate::isotopic_model::{
-    CachingIsotopicModel, IsotopicPatternGenerator, TIDScalingMethod, PROTON,
+    CachingIsotopicModel, IsotopicPatternGenerator, TIDScalingMethod, IsotopicPatternParams,
 };
+use crate::peak_graph::PeakDependenceGraph;
+use crate::peak_graph::SubgraphSolverMethod;
+use crate::peak_graph::cluster::DependenceCluster;
+use crate::peak_graph::fit::FitRef;
 use crate::peaks::{PeakKey, WorkingPeakSet};
 use crate::scorer::{
     IsotopicFitFilter, IsotopicPatternScorer, MSDeconvScorer, MaximizingFitFilter,
 };
 
-use crate::deconv_traits::{ExhaustivePeakSearch, IsotopicPatternFitter, RelativePeakSearch};
+use crate::deconv_traits::{ExhaustivePeakSearch, IsotopicPatternFitter, RelativePeakSearch, GraphDeconvolution};
 
 use mzpeaks::prelude::*;
 use mzpeaks::{CentroidPeak, MZPeakSetType, Tolerance};
@@ -86,11 +90,11 @@ impl<
         F: IsotopicFitFilter,
     > IsotopicPatternFitter<C> for DeconvoluterType<C, I, S, F>
 {
-    fn fit_theoretical_isotopic_pattern(&mut self, peak: PeakKey, charge: i32) -> IsotopicFit {
+    fn fit_theoretical_isotopic_pattern_with_params(&mut self, peak: PeakKey, charge: i32, params: IsotopicPatternParams) -> IsotopicFit {
         let mz = self.peaks.get(&peak).mz();
         let mut tid = self
             .isotopic_model
-            .isotopic_cluster(mz, charge, PROTON, 0.95, 0.001);
+            .isotopic_cluster(mz, charge, params.charge_carrier, params.truncate_after, params.ignore_below);
         let (keys, missed_peaks) = self.peaks.match_theoretical(&tid, Tolerance::PPM(10.0));
         let exp = self.peaks.collect_for(&keys);
         self.scaling_method.scale(&exp, &mut tid);
@@ -119,6 +123,10 @@ impl<
     fn peak_count(&self) -> usize {
         self.peaks.len()
     }
+
+    fn subtract_theoretical_intensity(&mut self, fit: &IsotopicFit) {
+        self.peaks.subtract_theoretical_intensity(fit)
+    }
 }
 
 pub type AveragineDeconvoluter<'lifespan> = DeconvoluterType<
@@ -127,6 +135,119 @@ pub type AveragineDeconvoluter<'lifespan> = DeconvoluterType<
     MSDeconvScorer,
     MaximizingFitFilter,
 >;
+
+#[derive(Debug)]
+pub struct GraphDeconvoluterType<
+    C: CentroidLike + Clone + From<CentroidPeak>,
+    I: IsotopicPatternGenerator,
+    S: IsotopicPatternScorer,
+    F: IsotopicFitFilter,
+    > {
+    pub inner: DeconvoluterType<C, I, S, F>,
+    pub peak_graph: PeakDependenceGraph
+}
+
+impl<C: CentroidLike + Clone + From<CentroidPeak>, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: IsotopicFitFilter> GraphDeconvoluterType<C, I, S, F> {
+    fn solve_subgraph_top(&mut self, cluster: DependenceCluster, fits: Vec<(FitRef, IsotopicFit)>) {
+        if let Some(best_fit_key) = cluster.best_fit() {
+            let (_, _fit) = fits.iter().find(|(k, _)| {
+                *k == *best_fit_key
+            }).unwrap_or_else(|| {
+                panic!("Failed to locate a solution {:?}", best_fit_key);
+            });
+            todo!("Create peak")
+        }
+    }
+}
+
+impl<
+        C: CentroidLike + Clone + From<CentroidPeak>,
+        I: IsotopicPatternGenerator,
+        S: IsotopicPatternScorer,
+        F: IsotopicFitFilter,
+    > IsotopicPatternFitter<C> for GraphDeconvoluterType<C, I, S, F> {
+
+    fn fit_theoretical_isotopic_pattern_with_params(&mut self, peak: PeakKey, charge: i32, params: IsotopicPatternParams) -> IsotopicFit {
+        self.inner.fit_theoretical_isotopic_pattern_with_params(peak, charge, params)
+    }
+
+    fn has_peak(&mut self, mz: f64, error_tolerance: Tolerance) -> PeakKey {
+        self.inner.has_peak(mz, error_tolerance)
+    }
+
+    fn between(&mut self, m1: f64, m2: f64) -> Range<usize> {
+        self.inner.between(m1, m2)
+    }
+
+    fn get_peak(&self, key: PeakKey) -> &C {
+        self.inner.get_peak(key)
+    }
+
+    fn create_key(&mut self, mz: f64) -> PeakKey {
+        self.inner.create_key(mz)
+    }
+
+    fn peak_count(&self) -> usize {
+        self.inner.peak_count()
+    }
+
+    fn subtract_theoretical_intensity(&mut self, fit: &IsotopicFit) {
+        self.inner.subtract_theoretical_intensity(fit)
+    }
+}
+
+impl<
+        C: CentroidLike + Clone + From<CentroidPeak>,
+        I: IsotopicPatternGenerator,
+        S: IsotopicPatternScorer,
+        F: IsotopicFitFilter,
+    > RelativePeakSearch<C> for GraphDeconvoluterType<C, I, S, F> {}
+
+impl<
+        C: CentroidLike + Clone + From<CentroidPeak>,
+        I: IsotopicPatternGenerator,
+        S: IsotopicPatternScorer,
+        F: IsotopicFitFilter,
+    > ExhaustivePeakSearch<C> for GraphDeconvoluterType<C, I, S, F> {}
+
+impl<
+        C: CentroidLike + Clone + From<CentroidPeak>,
+        I: IsotopicPatternGenerator,
+        S: IsotopicPatternScorer,
+        F: IsotopicFitFilter,
+    > GraphDeconvolution<C> for GraphDeconvoluterType<C, I, S, F> {
+
+    fn add_fit_dependence(&mut self, fit: IsotopicFit) {
+        if fit.experimental.is_empty() {
+            return
+        }
+        let start = self.get_peak(*fit.experimental.first().unwrap()).mz();
+        let end = self.get_peak(*fit.experimental.last().unwrap()).mz();
+        self.peak_graph.add_fit(fit, start, end)
+    }
+
+    fn select_best_disjoint_subgraphs(&mut self) {
+        self.peak_graph.find_non_overlapping_intervals();
+
+        let solutions = self.peak_graph.solutions(SubgraphSolverMethod::Greedy);
+        let _acc: Vec<_> = solutions.into_iter().map(|(cluster, fits)| {
+            self.solve_subgraph_top(cluster, fits)
+        }).collect();
+        todo!()
+    }
+}
+
+
+
+pub type GraphAveragineDeconvoluter<'lifespan> = GraphDeconvoluterType<
+    CentroidPeak,
+    CachingIsotopicModel<'lifespan>,
+    MSDeconvScorer,
+    MaximizingFitFilter,
+>;
+
+
+
 
 #[cfg(test)]
 mod test {
@@ -205,8 +326,8 @@ mod test {
         let mut deconvoluter = AveragineDeconvoluter::new(
             centroided.peaks,
             IsotopicModels::Glycopeptide.into(),
-            MSDeconvScorer::new(0.02),
-            MaximizingFitFilter { threshold: 10.0 },
+            MSDeconvScorer::default(),
+            MaximizingFitFilter::new(10.0),
             3,
         );
 
@@ -214,7 +335,8 @@ mod test {
             Tolerance::PPM(10.0),
             (1, 8),
             1,
-            1
+            1,
+            IsotopicPatternParams::default()
         );
 
         let best_fit = fits.iter().max().unwrap();

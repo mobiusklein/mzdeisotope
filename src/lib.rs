@@ -5,6 +5,7 @@ pub mod isotopic_model;
 pub mod peak_graph;
 pub mod peaks;
 pub mod scorer;
+pub mod solution;
 
 pub mod deconvoluter;
 pub mod interval;

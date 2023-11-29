@@ -5,6 +5,10 @@ use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::ops::Range;
 
+use crate::isotopic_fit::IsotopicFit;
+
+
+const PEAK_ELIMINATION_FACTOR: f32 = 0.7;
 
 type Placeholder = i64;
 
@@ -175,7 +179,7 @@ impl<C: CentroidLike + Clone + From<CentroidPeak>> WorkingPeakSet<C> {
         }
     }
 
-    pub fn collect_for(&self, keys: &Vec<PeakKey>) -> Vec<&C> {
+    pub fn collect_for(&self, keys: &[PeakKey]) -> Vec<&C> {
         let mut result = Vec::with_capacity(keys.len());
         for key in keys.iter() {
             result.push(self.get(key))
@@ -190,6 +194,13 @@ impl<C: CentroidLike + Clone + From<CentroidPeak>> WorkingPeakSet<C> {
         }
     }
 
+    pub fn get_mut(&mut self, key: &PeakKey) -> Option<&mut C> {
+        match key {
+            PeakKey::Matched(i) => Some(&mut self.peaks[*i as usize]),
+            PeakKey::Placeholder(_) => None,
+        }
+    }
+
     pub fn len(&self) -> usize {
         self.peaks.len()
     }
@@ -200,6 +211,19 @@ impl<C: CentroidLike + Clone + From<CentroidPeak>> WorkingPeakSet<C> {
 
     pub fn key_iter(&self) -> PeakKeyIter {
         PeakKeyIter::descending(self.peaks.len())
+    }
+
+    #[allow(unused)]
+    pub fn subtract_theoretical_intensity(&mut self, fit: &IsotopicFit) {
+        fit.experimental.iter().zip(fit.theoretical.iter()).for_each(|(e, t)| {
+            match self.get_mut(e) {
+                Some(peak) => {
+                    let threshold = peak.intensity() * PEAK_ELIMINATION_FACTOR;
+                    let new = (peak.intensity() - t.intensity()).max(1.0);
+                },
+                None => {},
+            }
+        });
     }
 }
 
