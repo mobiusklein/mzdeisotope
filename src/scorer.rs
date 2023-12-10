@@ -17,7 +17,7 @@ pub enum ScoreInterpretation {
 pub trait IsotopicPatternScorer {
     fn score<C: CentroidLike>(
         &self,
-        experimental: &Vec<C>,
+        experimental: &[C],
         theoretical: &TheoreticalIsotopicPattern,
     ) -> ScoreType;
     fn interpretation(&self) -> ScoreInterpretation {
@@ -56,14 +56,14 @@ impl MSDeconvScorer {
             return 0.0;
         };
 
-        
+
         theoretical.intensity().sqrt() as ScoreType * mass_accuracy * abundance_diff as ScoreType
     }
 
     #[inline]
     pub fn score<C: CentroidLike>(
         &self,
-        experimental: &Vec<C>,
+        experimental: &[C],
         theoretical: &TheoreticalIsotopicPattern,
     ) -> ScoreType {
         experimental
@@ -89,7 +89,7 @@ impl Default for MSDeconvScorer {
 impl IsotopicPatternScorer for MSDeconvScorer {
     fn score<C: CentroidLike>(
         &self,
-        experimental: &Vec<C>,
+        experimental: &[C],
         theoretical: &TheoreticalIsotopicPattern,
     ) -> ScoreType {
         MSDeconvScorer::score(self, experimental, theoretical)
@@ -104,7 +104,7 @@ pub struct GTestScorer {}
 impl GTestScorer {
     pub fn score<C: CentroidLike>(
         &self,
-        experimental: &Vec<C>,
+        experimental: &[C],
         theoretical: &TheoreticalIsotopicPattern,
     ) -> ScoreType {
         2.0 * experimental.iter().zip(theoretical.iter()).map(|(o, e)| {
@@ -119,7 +119,7 @@ impl GTestScorer {
 impl IsotopicPatternScorer for GTestScorer {
     fn score<C: CentroidLike>(
         &self,
-        experimental: &Vec<C>,
+        experimental: &[C],
         theoretical: &TheoreticalIsotopicPattern,
     ) -> ScoreType {
         GTestScorer::score(self, experimental, theoretical)
@@ -138,7 +138,7 @@ pub struct ScaledGTestScorer {}
 impl ScaledGTestScorer {
     pub fn score<C: CentroidLike>(
         &self,
-        experimental: &Vec<C>,
+        experimental: &[C],
         theoretical: &TheoreticalIsotopicPattern,
     ) -> ScoreType {
         let total_o: f32 = experimental.iter().map(|p| p.intensity()).sum();
@@ -155,7 +155,7 @@ impl ScaledGTestScorer {
 impl IsotopicPatternScorer for ScaledGTestScorer {
     fn score<C: CentroidLike>(
         &self,
-        experimental: &Vec<C>,
+        experimental: &[C],
         theoretical: &TheoreticalIsotopicPattern,
     ) -> ScoreType {
         ScaledGTestScorer::score(self, experimental, theoretical)
@@ -177,7 +177,7 @@ pub struct PenalizedMSDeconvScorer {
 impl IsotopicPatternScorer for PenalizedMSDeconvScorer {
     fn score<C: CentroidLike>(
         &self,
-        experimental: &Vec<C>,
+        experimental: &[C],
         theoretical: &TheoreticalIsotopicPattern,
     ) -> ScoreType {
         PenalizedMSDeconvScorer::score(self, experimental, theoretical)
@@ -201,7 +201,7 @@ impl PenalizedMSDeconvScorer {
 
     pub fn score<C: CentroidLike>(
         &self,
-        experimental: &Vec<C>,
+        experimental: &[C],
         theoretical: &TheoreticalIsotopicPattern,
     ) -> ScoreType {
         let base_score = self.msdeconv.score(experimental, theoretical);
@@ -215,6 +215,9 @@ pub trait IsotopicFitFilter {
         fits.retain(|f| self.test(f));
         fits
     }
+
+    fn select<I: Iterator<Item=IsotopicFit>>(&self, fits: I) -> Option<IsotopicFit>;
+
     fn test(&self, fit: &IsotopicFit) -> bool;
 }
 
@@ -232,6 +235,18 @@ impl MaximizingFitFilter {
 impl IsotopicFitFilter for MaximizingFitFilter {
     fn test(&self, fit: &IsotopicFit) -> bool {
         fit.score >= self.threshold
+    }
+
+    fn select<I: Iterator<Item=IsotopicFit>>(&self, fits: I) -> Option<IsotopicFit> {
+        fits.max_by(|a, b| {
+            a.score.partial_cmp(&b.score).unwrap()
+        }).and_then(|f| {
+            if self.test(&f) {
+                Some(f)
+            } else {
+                None
+            }
+        })
     }
 }
 
@@ -255,6 +270,18 @@ impl Default for MinimizingFitFilter {
 impl IsotopicFitFilter for MinimizingFitFilter {
     fn test(&self, fit: &IsotopicFit) -> bool {
         self.threshold >= fit.score
+    }
+
+    fn select<I: Iterator<Item=IsotopicFit>>(&self, fits: I) -> Option<IsotopicFit> {
+        fits.min_by(|a, b| {
+            a.score.partial_cmp(&b.score).unwrap()
+        }).and_then(|f| {
+            if self.test(&f) {
+                Some(f)
+            } else {
+                None
+            }
+        })
     }
 }
 

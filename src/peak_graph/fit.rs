@@ -1,5 +1,7 @@
+use std::cmp;
 use std::collections::hash_map::{HashMap, Values};
 use std::collections::hash_set::{HashSet, Iter};
+use std::fmt::Display;
 use std::hash::Hash;
 
 use crate::isotopic_fit::IsotopicFit;
@@ -7,8 +9,16 @@ use crate::peaks::PeakKey;
 use crate::scorer::ScoreType;
 
 use super::cluster::{DependenceCluster, SubgraphSelection, SubgraphSolverMethod};
+use super::graph::FitEvictionReason;
 
-pub type FitKey = usize;
+#[derive(Debug, Default, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
+pub struct FitKey(usize);
+
+impl Display for FitKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct FitNode {
@@ -76,13 +86,22 @@ impl Hash for FitNode {
 }
 
 impl PartialOrd for FitNode {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.score.partial_cmp(&other.score)
+    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
+        match self.score.partial_cmp(&other.score) {
+            Some(ord) => match ord {
+                cmp::Ordering::Less => Some(ord),
+                cmp::Ordering::Equal => {
+                    Some(self.peak_indices.len().cmp(&other.peak_indices.len()))
+                }
+                cmp::Ordering::Greater => Some(ord),
+            },
+            None => None,
+        }
     }
 }
 
 impl Ord for FitNode {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+    fn cmp(&self, other: &Self) -> cmp::Ordering {
         self.partial_cmp(other).unwrap()
     }
 }
@@ -119,13 +138,13 @@ impl Hash for FitRef {
 }
 
 impl PartialOrd for FitRef {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
         self.score.partial_cmp(&other.score)
     }
 }
 
 impl Ord for FitRef {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+    fn cmp(&self, other: &Self) -> cmp::Ordering {
         self.partial_cmp(other).unwrap()
     }
 }
@@ -143,6 +162,11 @@ impl FitGraph {
         Self::default()
     }
 
+    pub fn reset(&mut self) {
+        self.fit_nodes.clear();
+        self.dependencies.clear();
+    }
+
     pub fn get(&self, key: &FitKey) -> Option<&FitNode> {
         self.fit_nodes.get(key)
     }
@@ -152,23 +176,27 @@ impl FitGraph {
     }
 
     pub fn add_fit(&mut self, fit: IsotopicFit, start: f64, end: f64) -> &FitNode {
-        let key = self.fit_nodes.len();
+        let key = FitKey(self.fit_nodes.len() + 1);
         let node = FitNode::from_fit(&fit, key, start, end);
         self.fit_nodes.insert(key, node);
         self.dependencies.insert(key, fit);
         self.fit_nodes.get(&key).unwrap()
     }
 
-    pub fn remove(&mut self, key: &FitKey) -> Option<FitNode> {
-        self.fit_nodes.remove(key)
+    pub fn remove(&mut self, key: FitEvictionReason) -> Option<FitNode> {
+        let key = match &key {
+            FitEvictionReason::Superceded(k) => k,
+            FitEvictionReason::NotBestFit(k) => k,
+        };
+        let found = self.fit_nodes.remove(key);
+        if found.is_some() {
+            self.dependencies.remove(key);
+        }
+        found
     }
 
     pub fn values(&self) -> Values<FitKey, FitNode> {
         self.fit_nodes.values()
-    }
-
-    pub fn replace_nodes(&mut self, nodes: HashMap<FitKey, FitNode>) {
-        self.fit_nodes = nodes;
     }
 
     pub fn len(&self) -> usize {
@@ -186,31 +214,17 @@ impl FitGraph {
     ) -> Vec<(DependenceCluster, Vec<FitNode>)> {
         let mut result = Vec::with_capacity(clusters.len());
         for cluster in clusters {
-            let nodes = cluster
+            let nodes: Vec<FitNode> = cluster
                 .dependencies
                 .iter()
-                .filter_map(|f| self.fit_nodes.remove(&f.key)).collect();
+                .filter_map(|f| self.fit_nodes.remove(&f.key))
+                .collect();
             result.push((cluster, nodes));
         }
         result
     }
 
-    pub fn unpack_subgraphs<'a>(&mut self, clusters: Vec<DependenceCluster>) -> Vec<FitSubgraph> {
-        // self.split_nodes(clusters)
-        clusters
-            .into_iter()
-            .map(|cluster| {
-                let nodes: Vec<_> = cluster
-                    .dependencies
-                    .iter()
-                    .filter_map(|f| self.fit_nodes.remove(&f.key))
-                    .collect();
-                FitSubgraph::new(cluster, nodes)
-            })
-            .collect()
-    }
-
-    pub fn solve_subgraphs<'a>(
+    pub fn solve_subgraphs(
         &mut self,
         clusters: Vec<DependenceCluster>,
         method: SubgraphSolverMethod,
@@ -246,12 +260,10 @@ pub struct FitSubgraph {
     pub fit_nodes: Vec<FitNode>,
 }
 
+#[allow(unused)]
 impl FitSubgraph {
     pub fn new(cluster: DependenceCluster, fit_nodes: Vec<FitNode>) -> Self {
-        Self {
-            cluster,
-            fit_nodes,
-        }
+        Self { cluster, fit_nodes }
     }
 
     pub fn solve(self, method: SubgraphSolverMethod) -> SolvedSubgraph {
@@ -264,14 +276,14 @@ impl FitSubgraph {
 #[derive(Debug, Clone)]
 pub struct SolvedSubgraph {
     pub cluster: DependenceCluster,
-    pub fit_nodes: HashMap<usize, FitNode>,
+    pub fit_nodes: HashMap<FitKey, FitNode>,
     pub solution: Vec<FitRef>,
 }
 
 impl SolvedSubgraph {
     pub fn new(
         cluster: DependenceCluster,
-        fit_nodes: HashMap<usize, FitNode>,
+        fit_nodes: HashMap<FitKey, FitNode>,
         solution: Vec<FitRef>,
     ) -> Self {
         Self {

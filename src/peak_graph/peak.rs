@@ -1,4 +1,4 @@
-use std::collections::hash_map::{Iter, IterMut, Keys};
+use std::collections::hash_map::{Iter, IterMut, Keys, Entry};
 use std::collections::HashMap;
 
 use crate::peaks::PeakKey;
@@ -21,6 +21,10 @@ impl PeakNode {
     }
     pub fn contains(&self, fit: &FitKey) -> bool {
         self.links.contains_key(fit)
+    }
+
+    pub fn remove(&mut self, fit: &FitKey) -> Option<f32> {
+        self.links.remove(fit)
     }
 }
 
@@ -46,6 +50,10 @@ impl PeakGraph {
         Self::default()
     }
 
+    pub fn reset(&mut self) {
+        self.peak_nodes.clear();
+    }
+
     pub fn add_peak(&mut self, key: PeakKey) {
         self.peak_nodes
             .entry(key)
@@ -58,6 +66,17 @@ impl PeakGraph {
 
     pub fn get_mut(&mut self, key: &PeakKey) -> Option<&mut PeakNode> {
         self.peak_nodes.get_mut(key)
+    }
+
+    pub fn get_or_create_mute(&mut self, key: PeakKey) -> &mut PeakNode {
+        match self.peak_nodes.entry(key) {
+            Entry::Occupied(o) => {
+                o.into_mut()
+            },
+            Entry::Vacant(v) => {
+                v.insert(PeakNode::new(key))
+            },
+        }
     }
 
     pub fn len(&self) -> usize {
@@ -86,11 +105,8 @@ impl PeakGraph {
         fit_key: &FitKey,
     ) {
         for p in peak_iter {
-            match self.peak_nodes.get_mut(p) {
-                Some(p) => {
-                    p.links.remove(fit_key);
-                }
-                None => {}
+            if let Some(p) = self.peak_nodes.get_mut(p) {
+                p.remove(fit_key);
             }
         }
     }

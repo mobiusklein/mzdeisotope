@@ -3,7 +3,8 @@ use mzpeaks::prelude::*;
 use mzpeaks::{CentroidPeak, IndexType, MZPeakSetType};
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
-use std::ops::Range;
+use std::hash;
+use std::ops::{Range, Index};
 
 use crate::isotopic_fit::IsotopicFit;
 
@@ -21,22 +22,23 @@ pub enum PeakKey {
 
 impl PeakKey {
     pub fn is_matched(&self) -> bool {
-        match self {
-            PeakKey::Matched(_) => true,
-            _ => false,
-        }
+        matches!(self, Self::Matched(_))
     }
 
     pub fn is_placeholder(&self) -> bool {
+        matches!(self, Self::Placeholder(_))
+    }
+
+    pub(crate) fn to_index_unchecked(&self) -> u32 {
         match self {
-            PeakKey::Placeholder(_) => true,
-            _ => false,
+            PeakKey::Matched(i) => *i,
+            PeakKey::Placeholder(_) => panic!("PeakKey index requested, but found a placeholder"),
         }
     }
 }
 
-impl std::hash::Hash for PeakKey {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+impl hash::Hash for PeakKey {
+    fn hash<H: hash::Hasher>(&self, state: &mut H) {
         match self {
             PeakKey::Matched(i) => i.hash(state),
             PeakKey::Placeholder(i) => i.hash(state),
@@ -59,7 +61,7 @@ impl<C: CentroidLike + Clone + From<CentroidPeak>> Default for PlaceholderCache<
 
 pub trait MZCaching {
     fn key_for(&self, mz: f64) -> Placeholder {
-        
+
         (mz * 1000.0).round() as Placeholder
     }
 }
@@ -120,19 +122,23 @@ impl SliceCache {
 }
 
 #[derive(Debug)]
-pub struct WorkingPeakSet<C: CentroidLike + Clone + From<CentroidPeak>> {
+pub struct WorkingPeakSet<C: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut> {
     pub peaks: MZPeakSetType<C>,
     pub placeholders: PlaceholderCache<C>,
     pub slice_cache: SliceCache,
 }
 
-impl<C: CentroidLike + Clone + From<CentroidPeak>> WorkingPeakSet<C> {
+impl<C: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut> WorkingPeakSet<C> {
     pub fn new(peaks: MZPeakSetType<C>) -> Self {
         Self {
             peaks,
             placeholders: PlaceholderCache::default(),
             slice_cache: SliceCache::default(),
         }
+    }
+
+    pub fn tic(&self) -> f32 {
+        self.peaks.iter().map(|p| p.intensity()).sum()
     }
 
     pub fn between(&mut self, m1: f64, m2: f64) -> Range<usize> {
@@ -179,6 +185,10 @@ impl<C: CentroidLike + Clone + From<CentroidPeak>> WorkingPeakSet<C> {
         }
     }
 
+    pub fn has_peak_direct(&self, mz: f64, error_tolerance: Tolerance) -> Option<&C> {
+        self.peaks.has_peak(mz, error_tolerance)
+    }
+
     pub fn collect_for(&self, keys: &[PeakKey]) -> Vec<&C> {
         let mut result = Vec::with_capacity(keys.len());
         for key in keys.iter() {
@@ -213,13 +223,17 @@ impl<C: CentroidLike + Clone + From<CentroidPeak>> WorkingPeakSet<C> {
         PeakKeyIter::descending(self.peaks.len())
     }
 
-    #[allow(unused)]
     pub fn subtract_theoretical_intensity(&mut self, fit: &IsotopicFit) {
         fit.experimental.iter().zip(fit.theoretical.iter()).for_each(|(e, t)| {
             match self.get_mut(e) {
                 Some(peak) => {
                     let threshold = peak.intensity() * PEAK_ELIMINATION_FACTOR;
-                    let new = (peak.intensity() - t.intensity()).max(1.0);
+                    let new = peak.intensity() - t.intensity();
+                    if new < threshold {
+                        *peak.intensity_mut() = 1.0;
+                    } else {
+                        *peak.intensity_mut() = new;
+                    }
                 },
                 None => {},
             }
@@ -227,7 +241,7 @@ impl<C: CentroidLike + Clone + From<CentroidPeak>> WorkingPeakSet<C> {
     }
 }
 
-impl<C: CentroidLike + Clone + From<CentroidPeak>> std::ops::Index<usize> for WorkingPeakSet<C> {
+impl<C: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut> Index<usize> for WorkingPeakSet<C> {
     type Output = C;
 
     fn index(&self, index: usize) -> &Self::Output {
@@ -235,7 +249,7 @@ impl<C: CentroidLike + Clone + From<CentroidPeak>> std::ops::Index<usize> for Wo
     }
 }
 
-impl<C: CentroidLike + Clone + From<CentroidPeak>> std::ops::Index<PeakKey> for WorkingPeakSet<C> {
+impl<C: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut> Index<PeakKey> for WorkingPeakSet<C> {
     type Output = C;
 
     fn index(&self, index: PeakKey) -> &Self::Output {

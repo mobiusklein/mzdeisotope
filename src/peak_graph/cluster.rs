@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use crate::scorer::ScoreInterpretation;
 
 use super::fit::{FitNode, FitNodeGraphInner, FitRef};
@@ -127,11 +128,14 @@ impl SubgraphSelection {
     }
 
     pub fn build_edges(&mut self) {
-        let nodes: Vec<_> = self.nodes.values_mut().collect();
-        let iterator = NodeCombinationIterMut::new(nodes);
-        for (node1, node2) in iterator {
-            node1.visit(node2);
-        }
+        let mut nodes: Vec<&mut FitNode> = self.nodes.values_mut().collect();
+
+        (0..nodes.len()).into_iter().tuple_combinations().for_each(|(i, j)| {
+            let mut it = nodes.iter_mut().skip(i);
+            let node_i = it.next().unwrap();
+            let node_j = it.skip(j - (i + 1)).next().unwrap();
+            node_i.visit(node_j);
+        });
     }
 
     pub fn greedy(&self) -> Vec<FitRef> {
@@ -175,59 +179,10 @@ impl SubgraphSelection {
             .collect()
     }
 
-    pub fn solve(self, method: SubgraphSolverMethod) -> (Vec<FitRef>, FitNodeGraphInner) {
+    pub fn solve(mut self, method: SubgraphSolverMethod) -> (Vec<FitRef>, FitNodeGraphInner) {
+        self.build_edges();
         match method {
             SubgraphSolverMethod::Greedy => (self.greedy(), self.nodes),
         }
-    }
-}
-
-#[derive(Debug)]
-struct NodeCombinationIterMut<'a> {
-    pub nodes: Vec<&'a mut FitNode>,
-    i: usize,
-    j: usize,
-    pub n: usize,
-}
-
-impl<'a> NodeCombinationIterMut<'a> {
-    pub fn new(nodes: Vec<&'a mut FitNode>) -> Self {
-        let n = nodes.len();
-        Self {
-            nodes,
-            i: 0,
-            j: 0,
-            n,
-        }
-    }
-
-    pub fn advance(&mut self) -> Option<(&'a mut FitNode, &'a mut FitNode)> {
-        let n = self.n;
-        if self.i >= n {
-            return None;
-        }
-        if self.j >= n {
-            self.i = self.j;
-            self.j = self.i + 1;
-        }
-        if self.i >= n {
-            None
-        } else {
-            assert_ne!(self.i, self.j);
-            unsafe {
-                let n1 = *self.nodes.get_mut(self.i).unwrap() as *mut FitNode;
-                let n2 = *self.nodes.get_mut(self.i).unwrap() as *mut FitNode;
-                self.j += 1;
-                Some((&mut *n1, &mut *n2))
-            }
-        }
-    }
-}
-
-impl<'a> Iterator for NodeCombinationIterMut<'a> {
-    type Item = (&'a mut FitNode, &'a mut FitNode);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.advance()
     }
 }

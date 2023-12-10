@@ -2,26 +2,38 @@ use std::ops::Range;
 
 use crate::isotopic_fit::IsotopicFit;
 use crate::isotopic_model::{
-    CachingIsotopicModel, IsotopicPatternGenerator, TIDScalingMethod, IsotopicPatternParams,
+    CachingIsotopicModel, IsotopicPatternGenerator, IsotopicPatternParams, TIDScalingMethod,
 };
-use crate::peak_graph::PeakDependenceGraph;
-use crate::peak_graph::SubgraphSolverMethod;
-use crate::peak_graph::cluster::DependenceCluster;
-use crate::peak_graph::fit::FitRef;
+use crate::peak_graph::{DependenceCluster, FitRef, PeakDependenceGraph, SubgraphSolverMethod};
 use crate::peaks::{PeakKey, WorkingPeakSet};
 use crate::scorer::{
     IsotopicFitFilter, IsotopicPatternScorer, MSDeconvScorer, MaximizingFitFilter,
 };
 
-use crate::deconv_traits::{ExhaustivePeakSearch, IsotopicPatternFitter, RelativePeakSearch, GraphDeconvolution};
+use crate::deconv_traits::{
+    ExhaustivePeakSearch, GraphDependentSearch, IsotopicDeconvolutionAlgorithm,
+    IsotopicPatternFitter, RelativePeakSearch, TargetedDeconvolution,
+};
+use crate::solution::DeconvolvedSolutionPeak;
 
-use mzpeaks::prelude::*;
+use mzpeaks::{prelude::*, IntensityMeasurementMut, MassPeakSetType};
 use mzpeaks::{CentroidPeak, MZPeakSetType, Tolerance};
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct TrivialTargetLink {
+    pub query: PeakKey,
+    pub link: Option<DeconvolvedSolutionPeak>,
+}
+
+impl TrivialTargetLink {
+    pub fn new(query: PeakKey, link: Option<DeconvolvedSolutionPeak>) -> Self {
+        Self { query, link }
+    }
+}
 
 #[derive(Debug)]
 pub struct DeconvoluterType<
-    C: CentroidLike + Clone + From<CentroidPeak>,
+    C: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut,
     I: IsotopicPatternGenerator,
     S: IsotopicPatternScorer,
     F: IsotopicFitFilter,
@@ -32,10 +44,11 @@ pub struct DeconvoluterType<
     pub fit_filter: F,
     pub scaling_method: TIDScalingMethod,
     pub max_missed_peaks: u16,
+    targets: Vec<TrivialTargetLink>,
 }
 
 impl<
-        C: CentroidLike + Clone + From<CentroidPeak>,
+        C: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut,
         I: IsotopicPatternGenerator,
         S: IsotopicPatternScorer,
         F: IsotopicFitFilter,
@@ -44,7 +57,7 @@ impl<
 }
 
 impl<
-        C: CentroidLike + Clone + From<CentroidPeak>,
+        C: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut,
         I: IsotopicPatternGenerator,
         S: IsotopicPatternScorer,
         F: IsotopicFitFilter,
@@ -59,7 +72,7 @@ impl<
 }
 
 impl<
-        C: CentroidLike + Clone + From<CentroidPeak>,
+        C: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut,
         I: IsotopicPatternGenerator,
         S: IsotopicPatternScorer,
         F: IsotopicFitFilter,
@@ -79,22 +92,53 @@ impl<
             fit_filter,
             scaling_method: TIDScalingMethod::default(),
             max_missed_peaks,
+            targets: Vec::new(),
         }
+    }
+
+    pub fn populate_isotopic_model_cache(
+        &mut self,
+        min_mz: f64,
+        max_mz: f64,
+        min_charge: i32,
+        max_charge: i32,
+        charge_carrier: f64,
+        truncate_after: f64,
+        ignore_below: f64,
+    ) {
+        self.isotopic_model.populate_cache(
+            min_mz,
+            max_mz,
+            min_charge,
+            max_charge,
+            charge_carrier,
+            truncate_after,
+            ignore_below,
+        )
     }
 }
 
 impl<
-        C: CentroidLike + Clone + From<CentroidPeak>,
+        C: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut,
         I: IsotopicPatternGenerator,
         S: IsotopicPatternScorer,
         F: IsotopicFitFilter,
     > IsotopicPatternFitter<C> for DeconvoluterType<C, I, S, F>
 {
-    fn fit_theoretical_isotopic_pattern_with_params(&mut self, peak: PeakKey, charge: i32, params: IsotopicPatternParams) -> IsotopicFit {
+    fn fit_theoretical_isotopic_pattern_with_params(
+        &mut self,
+        peak: PeakKey,
+        charge: i32,
+        params: IsotopicPatternParams,
+    ) -> IsotopicFit {
         let mz = self.peaks.get(&peak).mz();
-        let mut tid = self
-            .isotopic_model
-            .isotopic_cluster(mz, charge, params.charge_carrier, params.truncate_after, params.ignore_below);
+        let mut tid = self.isotopic_model.isotopic_cluster(
+            mz,
+            charge,
+            params.charge_carrier,
+            params.truncate_after,
+            params.ignore_below,
+        );
         let (keys, missed_peaks) = self.peaks.match_theoretical(&tid, Tolerance::PPM(10.0));
         let exp = self.peaks.collect_for(&keys);
         self.scaling_method.scale(&exp, &mut tid);
@@ -127,6 +171,10 @@ impl<
     fn subtract_theoretical_intensity(&mut self, fit: &IsotopicFit) {
         self.peaks.subtract_theoretical_intensity(fit)
     }
+
+    fn has_peak_direct(&self, mz: f64, error_tolerance: Tolerance) -> Option<&C> {
+        self.peaks.has_peak_direct(mz, error_tolerance)
+    }
 }
 
 pub type AveragineDeconvoluter<'lifespan> = DeconvoluterType<
@@ -136,39 +184,232 @@ pub type AveragineDeconvoluter<'lifespan> = DeconvoluterType<
     MaximizingFitFilter,
 >;
 
-#[derive(Debug)]
-pub struct GraphDeconvoluterType<
-    C: CentroidLike + Clone + From<CentroidPeak>,
-    I: IsotopicPatternGenerator,
-    S: IsotopicPatternScorer,
-    F: IsotopicFitFilter,
-    > {
-    pub inner: DeconvoluterType<C, I, S, F>,
-    pub peak_graph: PeakDependenceGraph
-}
+impl<
+        C: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut,
+        I: IsotopicPatternGenerator,
+        S: IsotopicPatternScorer,
+        F: IsotopicFitFilter,
+    > TargetedDeconvolution<C> for DeconvoluterType<C, I, S, F>
+{
+    type TargetSolution = TrivialTargetLink;
 
-impl<C: CentroidLike + Clone + From<CentroidPeak>, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: IsotopicFitFilter> GraphDeconvoluterType<C, I, S, F> {
-    fn solve_subgraph_top(&mut self, cluster: DependenceCluster, fits: Vec<(FitRef, IsotopicFit)>) {
-        if let Some(best_fit_key) = cluster.best_fit() {
-            let (_, _fit) = fits.iter().find(|(k, _)| {
-                *k == *best_fit_key
-            }).unwrap_or_else(|| {
-                panic!("Failed to locate a solution {:?}", best_fit_key);
-            });
-            todo!("Create peak")
+    fn targeted_deconvolution(
+        &mut self,
+        peak: PeakKey,
+        error_tolerance: Tolerance,
+        charge_range: crate::charge::ChargeRange,
+        left_search_limit: i8,
+        right_search_limit: i8,
+        params: IsotopicPatternParams,
+    ) -> Self::TargetSolution {
+        let mz = self.peaks.get(&peak).mz();
+
+        let peak_charge_set = self.find_all_peak_charge_pairs(
+            mz,
+            error_tolerance,
+            charge_range,
+            left_search_limit,
+            right_search_limit,
+            true,
+        );
+
+        let fits = self.fit_peaks_at_charge(peak_charge_set, params);
+        let solution = if let Some(best_fit) = self.fit_filter.select(fits.into_iter()) {
+            let mut dpeak = self.make_solution_from_fit(&best_fit, error_tolerance);
+            dpeak.index = peak.to_index_unchecked();
+            Some(dpeak)
+        } else {
+            None
+        };
+        let link = TrivialTargetLink::new(peak, solution);
+        self.targets.push(link.clone());
+        link
+    }
+
+    fn resolve_target<'a, 'b: 'a>(
+        &self,
+        solution: &'b MassPeakSetType<DeconvolvedSolutionPeak>,
+        target: &'a Self::TargetSolution,
+    ) -> Option<&'b DeconvolvedSolutionPeak> {
+        if let Some(target) = target.link.as_ref() {
+            solution
+                .all_peaks_for(target.neutral_mass, Tolerance::PPM(1.0))
+                .into_iter()
+                .filter(|p| *p == target)
+                .next()
+        } else {
+            None
         }
     }
 }
 
 impl<
-        C: CentroidLike + Clone + From<CentroidPeak>,
+        C: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut,
         I: IsotopicPatternGenerator,
         S: IsotopicPatternScorer,
         F: IsotopicFitFilter,
-    > IsotopicPatternFitter<C> for GraphDeconvoluterType<C, I, S, F> {
+    > IsotopicDeconvolutionAlgorithm<C> for DeconvoluterType<C, I, S, F>
+{
+    fn deconvolve(
+        &mut self,
+        error_tolerance: Tolerance,
+        charge_range: (i32, i32),
+        left_search_limit: i8,
+        right_search_limit: i8,
+        isotopic_params: IsotopicPatternParams,
+        convergence: f32,
+        max_iterations: u32,
+    ) -> MassPeakSetType<DeconvolvedSolutionPeak> {
+        let mut before_tic = self.peaks.tic();
+        let mut deconvoluted_peaks = Vec::with_capacity(32);
+        deconvoluted_peaks.extend(self.targets.iter().flat_map(|t| t.link.as_ref()).cloned());
+        for _ in 0..max_iterations {
+            let fits = self.step_deconvolve(
+                error_tolerance,
+                charge_range,
+                left_search_limit,
+                right_search_limit,
+                isotopic_params,
+            );
+            deconvoluted_peaks.extend(fits.into_iter().map(|fit| {
+                let peak = self.make_solution_from_fit(&fit, error_tolerance);
+                self.peaks.subtract_theoretical_intensity(&fit);
+                peak
+            }));
+            let after_tic = self.peaks.tic();
+            if (before_tic - after_tic) / after_tic <= convergence {
+                break;
+            } else {
+                before_tic = after_tic;
+            }
+        }
+        deconvoluted_peaks = self.merge_isobaric_peaks(deconvoluted_peaks);
+        deconvoluted_peaks
+            .iter()
+            .filter(|p| p.index > 0)
+            .for_each(|p| {
+                self.targets
+                    .iter_mut()
+                    .filter(|t| {
+                        let k = t.query.to_index_unchecked();
+                        k == 0 && p.index == u32::MAX || p.index == k
+                    })
+                    .next()
+                    .and_then(|t| -> Option<i8> {
+                        t.link = Some(p.clone());
+                        None
+                    });
+            });
+        MassPeakSetType::new(deconvoluted_peaks)
+    }
+}
 
-    fn fit_theoretical_isotopic_pattern_with_params(&mut self, peak: PeakKey, charge: i32, params: IsotopicPatternParams) -> IsotopicFit {
-        self.inner.fit_theoretical_isotopic_pattern_with_params(peak, charge, params)
+#[derive(Debug, Clone)]
+pub struct PeakDepenceGraphTargetLink {
+    pub query: PeakKey,
+    pub link: Option<DeconvolvedSolutionPeak>,
+}
+
+/// Graph deconvolution tracks fit dependencies so that whole peak list deconvolution doesn't re-use peaks
+#[derive(Debug)]
+pub struct GraphDeconvoluterType<
+    C: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut,
+    I: IsotopicPatternGenerator,
+    S: IsotopicPatternScorer,
+    F: IsotopicFitFilter,
+> {
+    pub inner: DeconvoluterType<C, I, S, F>,
+    pub peak_graph: PeakDependenceGraph,
+    solutions: Vec<PeakDepenceGraphTargetLink>,
+}
+
+impl<
+        C: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut,
+        I: IsotopicPatternGenerator,
+        S: IsotopicPatternScorer,
+        F: IsotopicFitFilter,
+    > GraphDeconvoluterType<C, I, S, F>
+{
+    pub fn new(
+        peaks: MZPeakSetType<C>,
+        isotopic_model: I,
+        scorer: S,
+        fit_filter: F,
+        max_missed_peaks: u16,
+    ) -> Self {
+        let inner =
+            DeconvoluterType::new(peaks, isotopic_model, scorer, fit_filter, max_missed_peaks);
+        let peak_graph = PeakDependenceGraph::new(inner.scorer.interpretation());
+
+        Self {
+            inner,
+            peak_graph,
+            solutions: Vec::new(),
+        }
+    }
+
+    pub fn populate_isotopic_model_cache(
+        &mut self,
+        min_mz: f64,
+        max_mz: f64,
+        min_charge: i32,
+        max_charge: i32,
+        charge_carrier: f64,
+        truncate_after: f64,
+        ignore_below: f64,
+    ) {
+        self.inner.populate_isotopic_model_cache(
+            min_mz,
+            max_mz,
+            min_charge,
+            max_charge,
+            charge_carrier,
+            truncate_after,
+            ignore_below,
+        )
+    }
+}
+
+impl<
+        C: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut,
+        I: IsotopicPatternGenerator,
+        S: IsotopicPatternScorer,
+        F: IsotopicFitFilter,
+    > GraphDeconvoluterType<C, I, S, F>
+{
+    fn solve_subgraph_top(
+        &mut self,
+        cluster: DependenceCluster,
+        fits: Vec<(FitRef, IsotopicFit)>,
+        peak_accumulator: &mut Vec<IsotopicFit>,
+    ) {
+        if let Some(best_fit_key) = cluster.best_fit() {
+            let (_, fit) = fits
+                .into_iter()
+                .find(|(k, _)| k.key == best_fit_key.key)
+                .unwrap_or_else(|| {
+                    panic!("Failed to locate a solution {:?}", best_fit_key);
+                });
+            peak_accumulator.push(fit)
+        }
+    }
+}
+
+impl<
+        C: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut,
+        I: IsotopicPatternGenerator,
+        S: IsotopicPatternScorer,
+        F: IsotopicFitFilter,
+    > IsotopicPatternFitter<C> for GraphDeconvoluterType<C, I, S, F>
+{
+    fn fit_theoretical_isotopic_pattern_with_params(
+        &mut self,
+        peak: PeakKey,
+        charge: i32,
+        params: IsotopicPatternParams,
+    ) -> IsotopicFit {
+        self.inner
+            .fit_theoretical_isotopic_pattern_with_params(peak, charge, params)
     }
 
     fn has_peak(&mut self, mz: f64, error_tolerance: Tolerance) -> PeakKey {
@@ -194,50 +435,210 @@ impl<
     fn subtract_theoretical_intensity(&mut self, fit: &IsotopicFit) {
         self.inner.subtract_theoretical_intensity(fit)
     }
+
+    fn has_peak_direct(&self, mz: f64, error_tolerance: Tolerance) -> Option<&C> {
+        self.inner.has_peak_direct(mz, error_tolerance)
+    }
 }
 
 impl<
-        C: CentroidLike + Clone + From<CentroidPeak>,
+        C: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut,
         I: IsotopicPatternGenerator,
         S: IsotopicPatternScorer,
         F: IsotopicFitFilter,
-    > RelativePeakSearch<C> for GraphDeconvoluterType<C, I, S, F> {}
+    > RelativePeakSearch<C> for GraphDeconvoluterType<C, I, S, F>
+{
+}
 
 impl<
-        C: CentroidLike + Clone + From<CentroidPeak>,
+        C: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut,
         I: IsotopicPatternGenerator,
         S: IsotopicPatternScorer,
         F: IsotopicFitFilter,
-    > ExhaustivePeakSearch<C> for GraphDeconvoluterType<C, I, S, F> {}
+    > ExhaustivePeakSearch<C> for GraphDeconvoluterType<C, I, S, F>
+{
+}
 
 impl<
-        C: CentroidLike + Clone + From<CentroidPeak>,
+        C: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut,
         I: IsotopicPatternGenerator,
         S: IsotopicPatternScorer,
         F: IsotopicFitFilter,
-    > GraphDeconvolution<C> for GraphDeconvoluterType<C, I, S, F> {
-
+    > GraphDependentSearch<C> for GraphDeconvoluterType<C, I, S, F>
+{
     fn add_fit_dependence(&mut self, fit: IsotopicFit) {
         if fit.experimental.is_empty() {
-            return
+            return;
         }
         let start = self.get_peak(*fit.experimental.first().unwrap()).mz();
         let end = self.get_peak(*fit.experimental.last().unwrap()).mz();
         self.peak_graph.add_fit(fit, start, end)
     }
 
-    fn select_best_disjoint_subgraphs(&mut self) {
-        self.peak_graph.find_non_overlapping_intervals();
-
+    fn select_best_disjoint_subgraphs(&mut self, fit_accumulator: &mut Vec<IsotopicFit>) {
         let solutions = self.peak_graph.solutions(SubgraphSolverMethod::Greedy);
-        let _acc: Vec<_> = solutions.into_iter().map(|(cluster, fits)| {
-            self.solve_subgraph_top(cluster, fits)
-        }).collect();
-        todo!()
+        solutions.into_iter().for_each(|(cluster, fits)| {
+            self.solve_subgraph_top(cluster, fits, fit_accumulator);
+        });
     }
 }
 
+impl<
+        C: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut,
+        I: IsotopicPatternGenerator,
+        S: IsotopicPatternScorer,
+        F: IsotopicFitFilter,
+    > TargetedDeconvolution<C> for GraphDeconvoluterType<C, I, S, F>
+{
+    type TargetSolution = PeakDepenceGraphTargetLink;
 
+    fn targeted_deconvolution(
+        &mut self,
+        peak: PeakKey,
+        error_tolerance: Tolerance,
+        charge_range: crate::charge::ChargeRange,
+        left_search_limit: i8,
+        right_search_limit: i8,
+        params: IsotopicPatternParams,
+    ) -> Self::TargetSolution {
+        self._explore_local(
+            peak,
+            error_tolerance,
+            charge_range,
+            left_search_limit,
+            right_search_limit,
+            params,
+        );
+        let link = PeakDepenceGraphTargetLink {
+            query: peak,
+            link: None,
+        };
+        self.solutions.push(link.clone());
+        link
+    }
+
+    fn resolve_target<'a, 'b: 'a>(
+        &self,
+        solution: &'b MassPeakSetType<DeconvolvedSolutionPeak>,
+        target: &'a Self::TargetSolution,
+    ) -> Option<&'b DeconvolvedSolutionPeak> {
+        let populated = self.solutions.iter().find(|t| t.query == target.query);
+
+        if let Some(target) = populated {
+            if let Some(target) = target.link.as_ref() {
+                solution
+                    .all_peaks_for(target.neutral_mass, Tolerance::PPM(1.0))
+                    .into_iter()
+                    .filter(|p| *p == target)
+                    .next()
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+}
+
+impl<
+        C: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut,
+        I: IsotopicPatternGenerator,
+        S: IsotopicPatternScorer,
+        F: IsotopicFitFilter,
+    > IsotopicDeconvolutionAlgorithm<C> for GraphDeconvoluterType<C, I, S, F>
+{
+    fn deconvolve(
+        &mut self,
+        error_tolerance: Tolerance,
+        charge_range: crate::charge::ChargeRange,
+        left_search_limit: i8,
+        right_search_limit: i8,
+        isotopic_params: IsotopicPatternParams,
+        convergence: f32,
+        max_iterations: u32,
+    ) -> MassPeakSetType<DeconvolvedSolutionPeak> {
+        let mut before_tic = self.inner.peaks.tic();
+        let mut deconvoluted_peaks = Vec::new();
+        let mut converged = false;
+        let mut convergence_check = f32::MAX;
+        for i in 0..max_iterations {
+            log::info!(
+                "Starting iteration {i} with remaining TIC {before_tic}, {} peaks fit",
+                deconvoluted_peaks.len()
+            );
+            let fits = self.graph_step_deconvolve(
+                error_tolerance,
+                charge_range,
+                left_search_limit,
+                right_search_limit,
+                isotopic_params,
+            );
+            deconvoluted_peaks.extend(fits.into_iter().map(|fit| {
+                let mut peak = self.make_solution_from_fit(&fit, error_tolerance);
+                self.inner.peaks.subtract_theoretical_intensity(&fit);
+                if i == 0 {
+                    self.solutions
+                        .iter_mut()
+                        .filter(|t| t.link.is_none())
+                        .for_each(|t| {
+                            if fit.experimental.contains(&t.query) {
+                                // t.link = Some(peak.clone());
+                                peak.index = match t.query {
+                                    PeakKey::Matched(k) => {
+                                        if k == 0 {
+                                            u32::MAX
+                                        } else {
+                                            k
+                                        }
+                                    }
+                                    _ => 0,
+                                }
+                            }
+                        });
+                }
+                peak
+            }));
+            let after_tic = self.inner.peaks.tic();
+            convergence_check = (before_tic - after_tic) / after_tic;
+            if convergence_check <= convergence {
+                log::info!(
+                    "Converged at on iteration {i} with remaining TIC {before_tic} - {after_tic} = {} ({convergence_check}), {} peaks fit",
+                    before_tic - after_tic,
+                    deconvoluted_peaks.len()
+                );
+                converged = true;
+                break;
+            } else {
+                before_tic = after_tic;
+            }
+            self.peak_graph.reset();
+        }
+        if !converged {
+            log::info!(
+                "Failed to converge after {max_iterations} iterations with remaining TIC {before_tic} ({convergence_check}), {} peaks fit",
+                deconvoluted_peaks.len()
+            );
+        }
+        deconvoluted_peaks = self.merge_isobaric_peaks(deconvoluted_peaks);
+        deconvoluted_peaks
+            .iter()
+            .filter(|p| p.index > 0)
+            .for_each(|p| {
+                self.solutions
+                    .iter_mut()
+                    .filter(|t| {
+                        let k = t.query.to_index_unchecked();
+                        k == 0 && p.index == u32::MAX || p.index == k
+                    })
+                    .next()
+                    .and_then(|t| -> Option<i8> {
+                        t.link = Some(p.clone());
+                        None
+                    });
+            });
+        MassPeakSetType::new(deconvoluted_peaks)
+    }
+}
 
 pub type GraphAveragineDeconvoluter<'lifespan> = GraphDeconvoluterType<
     CentroidPeak,
@@ -245,9 +646,6 @@ pub type GraphAveragineDeconvoluter<'lifespan> = GraphDeconvoluterType<
     MSDeconvScorer,
     MaximizingFitFilter,
 >;
-
-
-
 
 #[cfg(test)]
 mod test {
@@ -314,8 +712,8 @@ mod test {
         assert_eq!(n_placeholders, 1);
     }
 
-    #[test]
-    fn test_file() -> io::Result<()> {
+    #[test_log::test]
+    fn test_file_graph_step() -> io::Result<()> {
         let decoder = GzDecoder::new(io::BufReader::new(fs::File::open(
             "./tests/data/20150710_3um_AGP_001_29_30.mzML.gz",
         )?));
@@ -323,7 +721,7 @@ mod test {
         let scan = reader.next().unwrap();
         let centroided = scan.into_centroid().unwrap();
 
-        let mut deconvoluter = AveragineDeconvoluter::new(
+        let mut deconvoluter = GraphAveragineDeconvoluter::new(
             centroided.peaks,
             IsotopicModels::Glycopeptide.into(),
             MSDeconvScorer::default(),
@@ -331,19 +729,160 @@ mod test {
             3,
         );
 
-        let fits = deconvoluter.step_deconvolve(
+        let fits = deconvoluter.graph_step_deconvolve(
             Tolerance::PPM(10.0),
             (1, 8),
             1,
             1,
-            IsotopicPatternParams::default()
+            IsotopicPatternParams::default(),
         );
 
         let best_fit = fits.iter().max().unwrap();
         assert_eq!(best_fit.charge, 4);
         assert_eq!(best_fit.missed_peaks, 0);
         assert!((best_fit.score - 2_897.065).abs() < 1e-3);
-        assert_eq!(fits.len(), 3686);
+        assert_eq!(fits.len(), 861);
+
+        Ok(())
+    }
+
+    #[test_log::test]
+    fn test_full_process() -> io::Result<()> {
+        let decoder = GzDecoder::new(io::BufReader::new(fs::File::open(
+            "./tests/data/20150710_3um_AGP_001_29_30.mzML.gz",
+        )?));
+        let mut reader = MzMLReader::new(decoder);
+        let scan = reader.next().unwrap();
+        let centroided = scan.into_centroid().unwrap();
+
+        let mut deconvoluter = GraphAveragineDeconvoluter::new(
+            centroided.peaks,
+            IsotopicModels::Glycopeptide.into(),
+            MSDeconvScorer::default(),
+            MaximizingFitFilter::new(10.0),
+            3,
+        );
+
+        let isotopic_params = IsotopicPatternParams::default();
+        let dpeaks = deconvoluter.deconvolve(
+            Tolerance::PPM(10.0),
+            (1, 8),
+            1,
+            1,
+            isotopic_params,
+            1e-3,
+            10,
+        );
+
+        assert_eq!(dpeaks.len(), 1429);
+
+        Ok(())
+    }
+
+    #[test_log::test]
+    fn test_file_step() -> io::Result<()> {
+        let decoder = GzDecoder::new(io::BufReader::new(fs::File::open(
+            "./tests/data/20150710_3um_AGP_001_29_30.mzML.gz",
+        )?));
+        let mut reader = MzMLReader::new(decoder);
+        let scan = reader.next().unwrap();
+        let centroided = scan.into_centroid().unwrap();
+        let mzs: Vec<_> = centroided.peaks.iter().map(|p| p.mz).collect();
+
+        let mut deconvoluter = AveragineDeconvoluter::new(
+            centroided.peaks,
+            IsotopicModels::Glycopeptide.into(),
+            MSDeconvScorer::default(),
+            MaximizingFitFilter::new(0.0),
+            3,
+        );
+        let isotopic_params = IsotopicPatternParams::default();
+        deconvoluter.isotopic_model.populate_cache(
+            *mzs.first().unwrap(),
+            *mzs.last().unwrap(),
+            1,
+            8,
+            isotopic_params.charge_carrier,
+            isotopic_params.truncate_after,
+            isotopic_params.ignore_below,
+        );
+
+        let (total_combos, total_fits, total_missed) = mzs
+            .iter()
+            .map(|mz| {
+                let combos = deconvoluter.find_all_peak_charge_pairs(
+                    *mz,
+                    Tolerance::PPM(10.0),
+                    (1, 8),
+                    1,
+                    1,
+                    true,
+                );
+                let n_combos = combos.len();
+                let fits = deconvoluter.fit_peaks_at_charge(combos, isotopic_params);
+                let n_missed_peaks: usize = fits.iter().map(|fit| fit.num_missed_peaks()).sum();
+                let n_fits = fits.len();
+                (n_combos, n_fits, n_missed_peaks)
+            })
+            .reduce(
+                |(combo_acc, fit_acc, missed_acc), (n_combos, n_fits, n_missed)| {
+                    (
+                        combo_acc + n_combos,
+                        fit_acc + n_fits,
+                        missed_acc + n_missed,
+                    )
+                },
+            )
+            .unwrap();
+
+        let isotopic_patterns = deconvoluter.isotopic_model.len();
+
+        let (total_combos2, total_fits2, total_missed2) = mzs
+            .iter()
+            .map(|mz| {
+                let combos = deconvoluter.find_all_peak_charge_pairs(
+                    *mz,
+                    Tolerance::PPM(10.0),
+                    (1, 8),
+                    1,
+                    1,
+                    true,
+                );
+                let n_combos = combos.len();
+                let fits = deconvoluter.fit_peaks_at_charge(combos, isotopic_params);
+                let n_missed_peaks: usize = fits.iter().map(|fit| fit.num_missed_peaks()).sum();
+                let n_fits = fits.len();
+                (n_combos, n_fits, n_missed_peaks)
+            })
+            .reduce(
+                |(combo_acc, fit_acc, missed_acc), (n_combos, n_fits, n_missed)| {
+                    (
+                        combo_acc + n_combos,
+                        fit_acc + n_fits,
+                        missed_acc + n_missed,
+                    )
+                },
+            )
+            .unwrap();
+
+        assert_eq!(deconvoluter.isotopic_model.len(), isotopic_patterns);
+        assert_eq!(deconvoluter.isotopic_model.len(), 109788);
+
+        assert_eq!(total_combos, total_combos2);
+        assert_eq!(total_missed, total_missed2);
+        assert_eq!(total_fits, total_fits2);
+        assert_eq!(total_combos, 19142);
+        assert_eq!(total_missed, 20350);
+        assert_eq!(total_fits, 13627);
+
+        let fits =
+            deconvoluter.step_deconvolve(Tolerance::PPM(10.0), (1, 8), 1, 1, isotopic_params);
+
+        let best_fit = fits.iter().max().unwrap();
+        assert_eq!(best_fit.charge, 4);
+        assert_eq!(best_fit.missed_peaks, 0);
+        assert!((best_fit.score - 2_897.065).abs() < 1e-3);
+        assert_eq!(fits.len(), 13627);
         Ok(())
     }
 }

@@ -1,4 +1,5 @@
-use std::collections::hash_map::{Entry, HashMap};
+use std::collections::hash_map::{Entry, HashMap, self};
+use std::hash;
 
 use chemical_elements::isotopic_pattern::{
     BafflingRecursiveIsotopicPatternGenerator, TheoreticalIsotopicPattern,
@@ -8,6 +9,11 @@ use chemical_elements::{
 };
 
 use mzpeaks::CentroidLike;
+use num_traits::Float;
+
+pub fn isclose<T: Float>(a: T, b: T, delta: T) -> bool {
+    (a - b).abs() < delta
+}
 
 pub const PROTON: f64 = _PROTON;
 
@@ -28,6 +34,20 @@ pub trait IsotopicPatternGenerator {
         truncate_after: f64,
         ignore_below: f64,
     ) -> TheoreticalIsotopicPattern;
+
+    #[allow(unused)]
+    fn populate_cache(
+        &mut self,
+        min_mz: f64,
+        max_mz: f64,
+        min_charge: i32,
+        max_charge: i32,
+        charge_carrier: f64,
+        truncate_after: f64,
+        ignore_below: f64,
+    ) {
+        log::warn!("No cache to populate");
+    }
 }
 
 pub const NEUTRON_SHIFT: f64 = 1.0033548378;
@@ -50,7 +70,7 @@ impl Default for IsotopicPatternParams {
             truncate_after: 0.95,
             ignore_below: 0.001,
             incremental_truncation: None,
-            charge_carrier: PROTON
+            charge_carrier: PROTON,
         }
     }
 }
@@ -60,13 +80,13 @@ impl IsotopicPatternParams {
         truncate_after: f64,
         ignore_below: f64,
         incremental_truncation: Option<f64>,
-        charge_carrier: f64
+        charge_carrier: f64,
     ) -> Self {
         Self {
             truncate_after,
             ignore_below,
             incremental_truncation,
-            charge_carrier
+            charge_carrier,
         }
     }
 }
@@ -164,30 +184,56 @@ pub struct IsotopicPatternSpec {
 impl PartialEq for IsotopicPatternSpec {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
-        if (self.mz - other.mz).abs() > 1e-6 {
-            false
-        } else if self.charge != other.charge {
-            false
-        } else if (self.charge_carrier - other.charge_carrier).abs() > 1e-6 {
-            false
-        } else if (self.truncate_after - other.truncate_after).abs() > 1e-6 {
-            false
-        } else { (self.ignore_below - other.ignore_below).abs() <= 1e-6 }
+        isclose(self.mz, other.mz, 1e-6)
+            && self.charge == other.charge
+            && isclose(self.charge_carrier, other.charge_carrier, 1e-6)
+            && isclose(self.truncate_after, other.truncate_after, 1e-6)
+            && isclose(self.ignore_below, other.ignore_below, 1e-6)
     }
 }
 
 impl Eq for IsotopicPatternSpec {}
 
-impl std::hash::Hash for IsotopicPatternSpec {
+impl hash::Hash for IsotopicPatternSpec {
     #[inline]
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+    fn hash<H: hash::Hasher>(&self, state: &mut H) {
         let i = (self.mz * 100.0).round() as i64;
         i.hash(state);
         self.charge.hash(state);
         let i = (self.truncate_after * 10.0).round() as i64;
         i.hash(state);
+        let i = (self.ignore_below * 10.0).round() as i64;
+        i.hash(state);
     }
 }
+
+
+#[derive(Debug, Clone, Copy)]
+struct FloatRange {
+    start: f64,
+    end: f64,
+    step: f64,
+    index: usize
+}
+
+impl FloatRange {
+    fn new(start: f64, end: f64, step: f64) -> Self { Self { start, end, step, index: 0 } }
+}
+
+impl Iterator for FloatRange {
+    type Item = f64;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let val = self.start + self.step * (self.index as f64);
+        if val < self.end {
+            self.index += 1;
+            Some(val)
+        } else {
+            None
+        }
+    }
+}
+
 
 #[derive(Debug, Clone)]
 pub struct CachingIsotopicModel<'lifespan> {
@@ -205,11 +251,35 @@ impl<'lifespan: 'transient, 'transient> CachingIsotopicModel<'lifespan> {
         }
     }
 
+    pub fn len(&self) -> usize {
+        self.cache.len()
+    }
+
+    pub fn iter(&self) -> hash_map::Iter<IsotopicPatternSpec, TheoreticalIsotopicPattern> {
+        self.cache.iter()
+    }
+
     pub fn clear(&mut self) {
         self.cache.clear();
     }
 
-    pub fn populate(
+    pub fn make_cache_key(&self,
+        mz: f64,
+        charge: i32,
+        charge_carrier: f64,
+        truncate_after: f64,
+        ignore_below: f64
+    ) -> IsotopicPatternSpec {
+        IsotopicPatternSpec {
+            mz: (mz * self.cache_truncation).round() / self.cache_truncation,
+            charge,
+            charge_carrier,
+            truncate_after,
+            ignore_below
+        }
+    }
+
+    pub fn populate_cache(
         &mut self,
         min_mz: f64,
         max_mz: f64,
@@ -220,17 +290,19 @@ impl<'lifespan: 'transient, 'transient> CachingIsotopicModel<'lifespan> {
         ignore_below: f64,
     ) {
         let sign = min_charge / min_charge.abs();
-        for mz in (min_mz as i64)..(max_mz as i64) {
-            for charge in min_charge.abs()..max_charge.abs() {
+        log::trace!("Starting isotopic cache population");
+        FloatRange::new(min_mz, max_mz, 0.1).into_iter().for_each(|mz| {
+            (min_charge.abs()..max_charge.abs()).for_each(|charge| {
                 self.isotopic_cluster(
-                    mz as f64,
+                    mz,
                     charge * sign,
                     charge_carrier,
                     truncate_after,
                     ignore_below,
                 );
-            }
-        }
+            });
+        });
+        log::trace!("Finished isotopic cache population, {} entries created", self.len());
     }
 }
 
@@ -243,13 +315,7 @@ impl<'lifespan> IsotopicPatternGenerator for CachingIsotopicModel<'lifespan> {
         truncate_after: f64,
         ignore_below: f64,
     ) -> TheoreticalIsotopicPattern {
-        let key = IsotopicPatternSpec {
-            mz: (mz * self.cache_truncation).round() / self.cache_truncation,
-            charge,
-            charge_carrier,
-            truncate_after,
-            ignore_below,
-        };
+        let key = self.make_cache_key(mz, charge, charge_carrier, truncate_after, ignore_below);
         match self.cache.entry(key) {
             Entry::Occupied(ent) => {
                 let res = ent.get();
@@ -269,6 +335,19 @@ impl<'lifespan> IsotopicPatternGenerator for CachingIsotopicModel<'lifespan> {
                 out
             }
         }
+    }
+
+    fn populate_cache(
+        &mut self,
+        min_mz: f64,
+        max_mz: f64,
+        min_charge: i32,
+        max_charge: i32,
+        charge_carrier: f64,
+        truncate_after: f64,
+        ignore_below: f64,
+    ) {
+        self.populate_cache(min_mz, max_mz, min_charge, max_charge, charge_carrier, truncate_after, ignore_below)
     }
 }
 
@@ -322,8 +401,6 @@ pub enum TIDScalingMethod {
     Max,
     Top3,
 }
-
-
 
 impl TIDScalingMethod {
     pub fn scale<C: CentroidLike>(
@@ -393,6 +470,7 @@ impl TIDScalingMethod {
 
 #[cfg(test)]
 mod test {
+    use std::hash::{Hash, Hasher};
     use super::*;
 
     #[test]
@@ -426,6 +504,24 @@ mod test {
     }
 
     #[test]
+    fn test_cache_key() {
+        let model: CachingIsotopicModel = IsotopicModels::Peptide.into();
+        let key1 = model.make_cache_key(1000.0, 2, PROTON, 0.95, 0.001);
+        let key2 = model.make_cache_key(1000.0, 2, PROTON, 0.95, 0.001);
+        assert_eq!(key1, key2);
+
+        let mut hasher1 = hash_map::DefaultHasher::default();
+        key1.hash(&mut hasher1);
+
+        let mut hasher2 = hash_map::DefaultHasher::default();
+        key2.hash(&mut hasher2);
+
+        let v1 = hasher1.finish();
+        let v2 = hasher2.finish();
+        assert_eq!(v1, v2);
+    }
+
+    #[test]
     fn test_tid_cached() {
         let mut model: CachingIsotopicModel = IsotopicModels::Peptide.into();
         let tid = model
@@ -453,5 +549,10 @@ mod test {
 
         assert!((diff - neutron2).abs() < 1e-6);
         assert!((tid[0].intensity() - 32.476418).abs() < 1e-6);
+        assert_eq!(model.len(), 1);
+
+        let _ = model
+            .isotopic_cluster(1000.0 - 0.001, 2, PROTON, 0.95, 0.001);
+        assert_eq!(model.len(), 1);
     }
 }
