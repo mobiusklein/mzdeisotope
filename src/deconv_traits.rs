@@ -2,6 +2,7 @@ use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::ops::Range;
 
+use chemical_elements::isotopic_pattern::TheoreticalIsotopicPattern;
 use chemical_elements::neutral_mass;
 use mzpeaks::peak::MZPoint;
 use mzpeaks::{CentroidLike, MZLocated, MassPeakSetType, Tolerance};
@@ -10,23 +11,54 @@ use crate::charge::{ChargeIterator, ChargeRange, ChargeRangeIter};
 use crate::isotopic_fit::IsotopicFit;
 use crate::isotopic_model::{isotopic_shift, IsotopicPatternParams, PROTON};
 use crate::peaks::PeakKey;
+use crate::scorer::ScoreType;
 use crate::solution::DeconvolvedSolutionPeak;
 
 pub trait IsotopicPatternFitter<C: CentroidLike> {
-    fn fit_theoretical_isotopic_pattern(&mut self, peak: PeakKey, charge: i32) -> IsotopicFit {
+    fn collect_for(&self, keys: &[PeakKey]) -> Vec<&C>;
+
+    fn fit_theoretical_isotopic_pattern(
+        &mut self,
+        peak: PeakKey,
+        charge: i32,
+        error_tolerance: Tolerance,
+    ) -> IsotopicFit {
         self.fit_theoretical_isotopic_pattern_with_params(
             peak,
             charge,
+            error_tolerance,
             IsotopicPatternParams::default(),
         )
     }
+
+    fn create_isotopic_pattern(
+        &mut self,
+        mz: f64,
+        charge: i32,
+        params: IsotopicPatternParams,
+    ) -> TheoreticalIsotopicPattern;
+
+    fn score_isotopic_fit(
+        &self,
+        experimental: &[&C],
+        theoretical: &TheoreticalIsotopicPattern,
+    ) -> ScoreType;
 
     fn fit_theoretical_isotopic_pattern_with_params(
         &mut self,
         peak: PeakKey,
         charge: i32,
+        error_tolerance: Tolerance,
         params: IsotopicPatternParams,
     ) -> IsotopicFit;
+
+    fn fit_theoretical_isotopic_pattern_incremental_from_seed(
+        &self,
+        seed_fit: &IsotopicFit,
+        experimental: &[&C],
+        params: IsotopicPatternParams,
+        lower_bound: f64,
+    ) -> Vec<IsotopicFit>;
 
     fn make_solution_from_fit(
         &self,
@@ -72,29 +104,45 @@ pub trait IsotopicPatternFitter<C: CentroidLike> {
     fn create_key(&mut self, mz: f64) -> PeakKey;
     fn peak_count(&self) -> usize;
 
-    fn merge_isobaric_peaks(&self, mut peaks: Vec<DeconvolvedSolutionPeak>) -> Vec<DeconvolvedSolutionPeak> {
+    fn merge_isobaric_peaks(
+        &self,
+        mut peaks: Vec<DeconvolvedSolutionPeak>,
+    ) -> Vec<DeconvolvedSolutionPeak> {
         let mut acc = Vec::with_capacity(peaks.len());
         if peaks.len() == 0 {
-            return acc
+            return acc;
         }
-        peaks.sort_unstable_by(|a, b| {
-            match a.charge.cmp(&b.charge) {
-                Ordering::Equal => a.neutral_mass.total_cmp(&b.neutral_mass),
-                x => x,
-            }
+        peaks.sort_by(|a, b| match a.charge.cmp(&b.charge) {
+            Ordering::Equal => {
+                if (a.neutral_mass - b.neutral_mass).abs() <= 1e-3 {
+                    if (a.intensity - b.intensity).abs() <= 1e-3 {
+                        Ordering::Equal
+                    } else {
+                        a.intensity.total_cmp(&b.intensity)
+                    }
+                } else {
+                    a.neutral_mass.total_cmp(&b.neutral_mass)
+                }
+            },
+            x => x,
         });
 
         let mut it = peaks.into_iter();
         let first = it.next().unwrap();
         let last = it.fold(first, |mut prev, current| {
-            if prev.charge == current.charge && Tolerance::Da(1e-3).test(current.neutral_mass, prev.neutral_mass) {
+            if prev.charge == current.charge
+                && Tolerance::Da(1e-3).test(current.neutral_mass, prev.neutral_mass)
+            {
                 if current.index != 0 {
                     prev.index = current.index;
                 }
                 prev.intensity += current.intensity;
-                prev.envelope.iter_mut().zip(current.envelope.iter()).for_each(|(p, c)| {
-                    p.intensity += c.intensity;
-                });
+                prev.envelope
+                    .iter_mut()
+                    .zip(current.envelope.iter())
+                    .for_each(|(p, c)| {
+                        p.intensity += c.intensity;
+                    });
                 prev
             } else {
                 acc.push(prev);
@@ -201,12 +249,28 @@ pub trait ExhaustivePeakSearch<C: CentroidLike>:
     fn fit_peaks_at_charge(
         &mut self,
         peak_charge_set: HashSet<(PeakKey, i32)>,
+        error_tolerance: Tolerance,
         isotopic_params: IsotopicPatternParams,
     ) -> HashSet<IsotopicFit> {
         let mut solutions = HashSet::new();
         for (key, charge) in peak_charge_set {
-            let fit =
-                self.fit_theoretical_isotopic_pattern_with_params(key, charge, isotopic_params);
+            let fit = self.fit_theoretical_isotopic_pattern_with_params(
+                key,
+                charge,
+                error_tolerance,
+                isotopic_params,
+            );
+            if let Some(incremental_truncation) = isotopic_params.incremental_truncation {
+                let experimental = self.collect_for(&fit.experimental);
+                solutions.extend(
+                    self.fit_theoretical_isotopic_pattern_incremental_from_seed(
+                        &fit,
+                        &experimental,
+                        isotopic_params,
+                        incremental_truncation
+                    ).into_iter()
+                )
+            }
             if self.check_isotopic_fit(&fit) {
                 solutions.insert(fit);
             }
@@ -214,9 +278,7 @@ pub trait ExhaustivePeakSearch<C: CentroidLike>:
         solutions
     }
 
-    fn check_isotopic_fit(&self, fit: &IsotopicFit) -> bool {
-        fit.score >= 0.0
-    }
+    fn check_isotopic_fit(&self, fit: &IsotopicFit) -> bool;
 
     fn _find_all_peak_charge_pairs_iter<I: ChargeIterator>(
         &mut self,
@@ -298,7 +360,7 @@ pub trait ExhaustivePeakSearch<C: CentroidLike>:
     }
 
     fn skip_peak(&self, peak: &C) -> bool {
-        peak.mz() <= 0.0 || peak.intensity() <= 0.0
+        peak.mz() <= 0.0 || peak.intensity() < 1.0 || (peak.intensity() - 1.0).abs() <= 1e-3
     }
 
     fn step_deconvolve(
@@ -328,7 +390,7 @@ pub trait ExhaustivePeakSearch<C: CentroidLike>:
                 right_search_limit,
                 true,
             );
-            let fits = self.fit_peaks_at_charge(peak_charge_set, isotopic_params);
+            let fits = self.fit_peaks_at_charge(peak_charge_set, error_tolerance, isotopic_params);
             solutions.extend(fits);
         }
         solutions
@@ -362,7 +424,7 @@ pub trait GraphDependentSearch<C: CentroidLike>: ExhaustivePeakSearch<C> {
                 right_search_limit,
                 true,
             );
-            let fits = self.fit_peaks_at_charge(peak_charge_set, isotopic_params);
+            let fits = self.fit_peaks_at_charge(peak_charge_set, error_tolerance, isotopic_params);
             let k = fits.len();
             fits.into_iter().for_each(|f| {
                 if f.charge.abs() > 1 && f.num_matched_peaks() == 1 {
@@ -391,7 +453,14 @@ pub trait GraphDependentSearch<C: CentroidLike>: ExhaustivePeakSearch<C> {
             .rev()
             .map(|i| {
                 // let peak = self.get_peak();
-                self._explore_local(PeakKey::Matched(i as u32), error_tolerance, charge_range, left_search_limit, right_search_limit, isotopic_params)
+                self._explore_local(
+                    PeakKey::Matched(i as u32),
+                    error_tolerance,
+                    charge_range,
+                    left_search_limit,
+                    right_search_limit,
+                    isotopic_params,
+                )
             })
             .sum()
     }
@@ -434,7 +503,7 @@ pub trait TargetedDeconvolution<C: CentroidLike>:
 
     fn resolve_target<'a, 'b: 'a>(
         &self,
-        solution: &'b MassPeakSetType<DeconvolvedSolutionPeak>,
+        deconvoluted_peaks: &'b MassPeakSetType<DeconvolvedSolutionPeak>,
         target: &'a Self::TargetSolution,
     ) -> Option<&'b DeconvolvedSolutionPeak>;
 }

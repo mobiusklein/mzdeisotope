@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::ops::Range;
 
 use crate::isotopic_fit::IsotopicFit;
@@ -7,7 +8,7 @@ use crate::isotopic_model::{
 use crate::peak_graph::{DependenceCluster, FitRef, PeakDependenceGraph, SubgraphSolverMethod};
 use crate::peaks::{PeakKey, WorkingPeakSet};
 use crate::scorer::{
-    IsotopicFitFilter, IsotopicPatternScorer, MSDeconvScorer, MaximizingFitFilter,
+    IsotopicFitFilter, IsotopicPatternScorer, MSDeconvScorer, MaximizingFitFilter, ScoreType,
 };
 
 use crate::deconv_traits::{
@@ -16,6 +17,7 @@ use crate::deconv_traits::{
 };
 use crate::solution::DeconvolvedSolutionPeak;
 
+use chemical_elements::isotopic_pattern::TheoreticalIsotopicPattern;
 use mzpeaks::{prelude::*, IntensityMeasurementMut, MassPeakSetType};
 use mzpeaks::{CentroidPeak, MZPeakSetType, Tolerance};
 
@@ -129,20 +131,15 @@ impl<
         &mut self,
         peak: PeakKey,
         charge: i32,
+        error_tolerance: Tolerance,
         params: IsotopicPatternParams,
     ) -> IsotopicFit {
         let mz = self.peaks.get(&peak).mz();
-        let mut tid = self.isotopic_model.isotopic_cluster(
-            mz,
-            charge,
-            params.charge_carrier,
-            params.truncate_after,
-            params.ignore_below,
-        );
-        let (keys, missed_peaks) = self.peaks.match_theoretical(&tid, Tolerance::PPM(10.0));
+        let mut tid = self.create_isotopic_pattern(mz, charge, params);
+        let (keys, missed_peaks) = self.peaks.match_theoretical(&tid, error_tolerance);
         let exp = self.peaks.collect_for(&keys);
         self.scaling_method.scale(&exp, &mut tid);
-        let score = self.scorer.score(&exp, &tid);
+        let score = self.score_isotopic_fit(exp.as_slice(), &tid);
         IsotopicFit::new(keys, peak, tid, charge, score, missed_peaks as u16)
     }
 
@@ -174,6 +171,66 @@ impl<
 
     fn has_peak_direct(&self, mz: f64, error_tolerance: Tolerance) -> Option<&C> {
         self.peaks.has_peak_direct(mz, error_tolerance)
+    }
+
+    fn create_isotopic_pattern(
+        &mut self,
+        mz: f64,
+        charge: i32,
+        params: IsotopicPatternParams,
+    ) -> TheoreticalIsotopicPattern {
+        let tid = self.isotopic_model.isotopic_cluster(
+            mz,
+            charge,
+            params.charge_carrier,
+            params.truncate_after,
+            params.ignore_below,
+        );
+        tid
+    }
+
+    fn score_isotopic_fit(
+        &self,
+        experimental: &[&C],
+        theoretical: &TheoreticalIsotopicPattern,
+    ) -> ScoreType {
+        self.scorer.score(experimental, theoretical)
+    }
+
+    fn fit_theoretical_isotopic_pattern_incremental_from_seed(
+        &self,
+        seed_fit: &IsotopicFit,
+        experimental: &[&C],
+        _: IsotopicPatternParams,
+        lower_bound: f64,
+    ) -> Vec<IsotopicFit> {
+        seed_fit
+            .theoretical
+            .clone()
+            .incremental_truncation(lower_bound)
+            .skip(1)
+            .map(|mut tid| {
+                let n = tid.len();
+                let subset = &experimental[..n];
+                self.scaling_method.scale(subset, &mut tid);
+                let score = self.score_isotopic_fit(subset, &tid);
+                let subset_keys = seed_fit.experimental[..n].to_vec();
+                let missed_keys = subset_keys.iter().map(|k| k.is_placeholder() as u16).sum();
+                IsotopicFit::new(
+                    subset_keys,
+                    seed_fit.seed_peak,
+                    tid,
+                    seed_fit.charge,
+                    score,
+                    missed_keys,
+                )
+            })
+            .filter(|fit| self.check_isotopic_fit(fit))
+            .collect()
+    }
+
+    fn collect_for(&self, keys: &[PeakKey]) -> Vec<&C> {
+        self.peaks.collect_for(keys)
     }
 }
 
@@ -213,7 +270,7 @@ impl<
             true,
         );
 
-        let fits = self.fit_peaks_at_charge(peak_charge_set, params);
+        let fits = self.fit_peaks_at_charge(peak_charge_set, error_tolerance, params);
         let solution = if let Some(best_fit) = self.fit_filter.select(fits.into_iter()) {
             let mut dpeak = self.make_solution_from_fit(&best_fit, error_tolerance);
             dpeak.index = peak.to_index_unchecked();
@@ -406,10 +463,15 @@ impl<
         &mut self,
         peak: PeakKey,
         charge: i32,
+        error_tolerance: Tolerance,
         params: IsotopicPatternParams,
     ) -> IsotopicFit {
-        self.inner
-            .fit_theoretical_isotopic_pattern_with_params(peak, charge, params)
+        self.inner.fit_theoretical_isotopic_pattern_with_params(
+            peak,
+            charge,
+            error_tolerance,
+            params,
+        )
     }
 
     fn has_peak(&mut self, mz: f64, error_tolerance: Tolerance) -> PeakKey {
@@ -439,6 +501,43 @@ impl<
     fn has_peak_direct(&self, mz: f64, error_tolerance: Tolerance) -> Option<&C> {
         self.inner.has_peak_direct(mz, error_tolerance)
     }
+
+    fn create_isotopic_pattern(
+        &mut self,
+        mz: f64,
+        charge: i32,
+        params: IsotopicPatternParams,
+    ) -> TheoreticalIsotopicPattern {
+        self.inner.create_isotopic_pattern(mz, charge, params)
+    }
+
+    fn score_isotopic_fit(
+        &self,
+        experimental: &[&C],
+        theoretical: &TheoreticalIsotopicPattern,
+    ) -> ScoreType {
+        self.inner.score_isotopic_fit(experimental, theoretical)
+    }
+
+    fn fit_theoretical_isotopic_pattern_incremental_from_seed(
+        &self,
+        seed_fit: &IsotopicFit,
+        experimental: &[&C],
+        params: IsotopicPatternParams,
+        lower_bound: f64,
+    ) -> Vec<IsotopicFit> {
+        self.inner
+            .fit_theoretical_isotopic_pattern_incremental_from_seed(
+                seed_fit,
+                experimental,
+                params,
+                lower_bound,
+            )
+    }
+
+    fn collect_for(&self, keys: &[PeakKey]) -> Vec<&C> {
+        self.inner.collect_for(keys)
+    }
 }
 
 impl<
@@ -457,6 +556,9 @@ impl<
         F: IsotopicFitFilter,
     > ExhaustivePeakSearch<C> for GraphDeconvoluterType<C, I, S, F>
 {
+    fn check_isotopic_fit(&self, fit: &IsotopicFit) -> bool {
+        self.inner.check_isotopic_fit(fit)
+    }
 }
 
 impl<
@@ -467,7 +569,7 @@ impl<
     > GraphDependentSearch<C> for GraphDeconvoluterType<C, I, S, F>
 {
     fn add_fit_dependence(&mut self, fit: IsotopicFit) {
-        if fit.experimental.is_empty() {
+        if fit.experimental.is_empty() || !self.check_isotopic_fit(&fit) {
             return;
         }
         let start = self.get_peak(*fit.experimental.first().unwrap()).mz();
@@ -558,12 +660,14 @@ impl<
         max_iterations: u32,
     ) -> MassPeakSetType<DeconvolvedSolutionPeak> {
         let mut before_tic = self.inner.peaks.tic();
+        let ref_tick = before_tic;
         let mut deconvoluted_peaks = Vec::new();
         let mut converged = false;
         let mut convergence_check = f32::MAX;
         for i in 0..max_iterations {
-            log::info!(
-                "Starting iteration {i} with remaining TIC {before_tic}, {} peaks fit",
+            log::debug!(
+                "Starting iteration {i} with remaining TIC {before_tic:0.4e} ({:0.3}%), {} peaks fit",
+                before_tic / ref_tick * 100.0,
                 deconvoluted_peaks.len()
             );
             let fits = self.graph_step_deconvolve(
@@ -601,8 +705,8 @@ impl<
             let after_tic = self.inner.peaks.tic();
             convergence_check = (before_tic - after_tic) / after_tic;
             if convergence_check <= convergence {
-                log::info!(
-                    "Converged at on iteration {i} with remaining TIC {before_tic} - {after_tic} = {} ({convergence_check}), {} peaks fit",
+                log::debug!(
+                    "Converged at on iteration {i} with remaining TIC {before_tic:0.4e} - {after_tic:0.4e} = {:0.4e} ({convergence_check}), {} peaks fit",
                     before_tic - after_tic,
                     deconvoluted_peaks.len()
                 );
@@ -614,11 +718,21 @@ impl<
             self.peak_graph.reset();
         }
         if !converged {
-            log::info!(
-                "Failed to converge after {max_iterations} iterations with remaining TIC {before_tic} ({convergence_check}), {} peaks fit",
+            log::debug!(
+                "Failed to converge after {max_iterations} iterations with remaining TIC {before_tic:0.4e} ({convergence_check}), {} peaks fit",
                 deconvoluted_peaks.len()
             );
         }
+
+        let link_table: HashMap<PeakKey, C> = self
+            .solutions
+            .iter()
+            .map(|link| {
+                let c = self.get_peak(link.query);
+                (link.query, c.clone())
+            })
+            .collect();
+
         deconvoluted_peaks = self.merge_isobaric_peaks(deconvoluted_peaks);
         deconvoluted_peaks
             .iter()
@@ -626,9 +740,13 @@ impl<
             .for_each(|p| {
                 self.solutions
                     .iter_mut()
-                    .filter(|t| {
-                        let k = t.query.to_index_unchecked();
-                        k == 0 && p.index == u32::MAX || p.index == k
+                    .filter(|t| match t.query {
+                        PeakKey::Matched(k) => k == 0 && p.index == u32::MAX || p.index == k,
+                        PeakKey::Placeholder(_) => {
+                            let c = link_table.get(&t.query).unwrap();
+                            log::warn!("Query peak {} is a placeholder", c.mz());
+                            false
+                        }
                     })
                     .next()
                     .and_then(|t| -> Option<i8> {
@@ -640,12 +758,8 @@ impl<
     }
 }
 
-pub type GraphAveragineDeconvoluter<'lifespan> = GraphDeconvoluterType<
-    CentroidPeak,
-    CachingIsotopicModel<'lifespan>,
-    MSDeconvScorer,
-    MaximizingFitFilter,
->;
+pub type GraphAveragineDeconvoluter<'lifespan, C> =
+    GraphDeconvoluterType<C, CachingIsotopicModel<'lifespan>, MSDeconvScorer, MaximizingFitFilter>;
 
 #[cfg(test)]
 mod test {
@@ -677,8 +791,9 @@ mod test {
             1,
         );
         let p = PeakKey::Matched(0);
-        let fit1 = task.fit_theoretical_isotopic_pattern(p, 1);
-        let fit2 = task.fit_theoretical_isotopic_pattern(p, 2);
+        let tol = Tolerance::PPM(10.0);
+        let fit1 = task.fit_theoretical_isotopic_pattern(p, 1, tol);
+        let fit2 = task.fit_theoretical_isotopic_pattern(p, 2, tol);
         assert!(fit1.score > fit2.score);
     }
 
@@ -740,8 +855,12 @@ mod test {
         let best_fit = fits.iter().max().unwrap();
         assert_eq!(best_fit.charge, 4);
         assert_eq!(best_fit.missed_peaks, 0);
-        assert!((best_fit.score - 2_897.065).abs() < 1e-3);
-        assert_eq!(fits.len(), 861);
+        assert!(
+            (best_fit.score - 3127.7483).abs() < 1e-3,
+            "{}",
+            best_fit.score
+        );
+        assert_eq!(fits.len(), 297);
 
         Ok(())
     }
@@ -774,7 +893,26 @@ mod test {
             10,
         );
 
-        assert_eq!(dpeaks.len(), 1429);
+        assert_eq!(dpeaks.len(), 557);
+        let best_fit = dpeaks
+            .iter()
+            .max_by(|a, b| a.score.partial_cmp(&b.score).unwrap())
+            .unwrap();
+        assert_eq!(best_fit.charge, 4);
+        assert!(
+            (best_fit.score - 3127.7483).abs() < 1e-3,
+            "{}",
+            best_fit.score
+        );
+
+        let expected_intensity = 1770737.8;
+        assert!(
+            (best_fit.intensity - expected_intensity).abs() < 1e-6,
+            "Expected intensity {expected_intensity}, got {} delta {}",
+            best_fit.intensity,
+            best_fit.intensity - expected_intensity
+        );
+        eprintln!("intensity {}", best_fit.intensity);
 
         Ok(())
     }
@@ -806,7 +944,7 @@ mod test {
             isotopic_params.truncate_after,
             isotopic_params.ignore_below,
         );
-
+        let tol = Tolerance::PPM(10.0);
         let (total_combos, total_fits, total_missed) = mzs
             .iter()
             .map(|mz| {
@@ -819,7 +957,7 @@ mod test {
                     true,
                 );
                 let n_combos = combos.len();
-                let fits = deconvoluter.fit_peaks_at_charge(combos, isotopic_params);
+                let fits = deconvoluter.fit_peaks_at_charge(combos, tol, isotopic_params);
                 let n_missed_peaks: usize = fits.iter().map(|fit| fit.num_missed_peaks()).sum();
                 let n_fits = fits.len();
                 (n_combos, n_fits, n_missed_peaks)
@@ -849,7 +987,7 @@ mod test {
                     true,
                 );
                 let n_combos = combos.len();
-                let fits = deconvoluter.fit_peaks_at_charge(combos, isotopic_params);
+                let fits = deconvoluter.fit_peaks_at_charge(combos, tol, isotopic_params);
                 let n_missed_peaks: usize = fits.iter().map(|fit| fit.num_missed_peaks()).sum();
                 let n_fits = fits.len();
                 (n_combos, n_fits, n_missed_peaks)
@@ -865,15 +1003,20 @@ mod test {
             )
             .unwrap();
 
+        eprintln!(
+            "{} {total_combos} {total_missed} {total_fits}",
+            deconvoluter.isotopic_model.len()
+        );
+
         assert_eq!(deconvoluter.isotopic_model.len(), isotopic_patterns);
-        assert_eq!(deconvoluter.isotopic_model.len(), 109788);
+        // assert_eq!(deconvoluter.isotopic_model.len(), 109788);
 
         assert_eq!(total_combos, total_combos2);
         assert_eq!(total_missed, total_missed2);
         assert_eq!(total_fits, total_fits2);
         assert_eq!(total_combos, 19142);
-        assert_eq!(total_missed, 20350);
-        assert_eq!(total_fits, 13627);
+        assert_eq!(total_missed, 21119);
+        assert_eq!(total_fits, 10786);
 
         let fits =
             deconvoluter.step_deconvolve(Tolerance::PPM(10.0), (1, 8), 1, 1, isotopic_params);
@@ -881,8 +1024,12 @@ mod test {
         let best_fit = fits.iter().max().unwrap();
         assert_eq!(best_fit.charge, 4);
         assert_eq!(best_fit.missed_peaks, 0);
-        assert!((best_fit.score - 2_897.065).abs() < 1e-3);
-        assert_eq!(fits.len(), 13627);
+        assert!(
+            (best_fit.score - 3127.7483).abs() < 1e-3,
+            "{}",
+            best_fit.score
+        );
+        assert_eq!(fits.len(), 10786);
         Ok(())
     }
 }

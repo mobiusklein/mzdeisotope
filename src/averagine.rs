@@ -4,9 +4,8 @@ use mzdeisotope::isotopic_model::{
 use std::env;
 
 fn main() {
-    let mut args = env::args();
+    let mut args = env::args().skip(1);
     let mut model: IsotopicModel = IsotopicModels::Peptide.into();
-    args.next();
     let mz = args
         .next()
         .expect("Expected a floating point m/z")

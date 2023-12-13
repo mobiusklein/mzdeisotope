@@ -229,7 +229,7 @@ impl<C: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut> Wor
                 Some(peak) => {
                     let threshold = peak.intensity() * PEAK_ELIMINATION_FACTOR;
                     let new = peak.intensity() - t.intensity();
-                    if new < threshold {
+                    if (new - threshold).abs() < 1e-3 || new < 0.0 {
                         *peak.intensity_mut() = 1.0;
                     } else {
                         *peak.intensity_mut() = new;

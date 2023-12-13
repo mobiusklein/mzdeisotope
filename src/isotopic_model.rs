@@ -1,4 +1,7 @@
-use std::collections::hash_map::{Entry, HashMap, self};
+use std::cmp::Ordering;
+#[allow(unused)]
+use std::collections::hash_map::{self, Entry, HashMap};
+use std::collections::btree_map::{self, Entry as BEntry, BTreeMap};
 use std::hash;
 
 use chemical_elements::isotopic_pattern::{
@@ -172,7 +175,7 @@ impl<'lifespan, T: IntoIterator<Item = (&'static str, f64)>> From<T> for Isotopi
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialOrd)]
+#[derive(Debug, Clone, Copy)]
 pub struct IsotopicPatternSpec {
     pub mz: f64,
     pub charge: i32,
@@ -181,10 +184,44 @@ pub struct IsotopicPatternSpec {
     pub ignore_below: f64,
 }
 
+impl PartialOrd for IsotopicPatternSpec {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for IsotopicPatternSpec {
+    fn cmp(&self, other: &Self) -> Ordering {
+        match self.charge.cmp(&other.charge) {
+            Ordering::Equal => {
+                match self.mz.total_cmp(&other.mz) {
+                // match self.mz.cmp(&other.mz) {
+                    Ordering::Equal => {
+                        match self.truncate_after.total_cmp(&other.truncate_after) {
+                            Ordering::Equal => {
+                                match self.ignore_below.total_cmp(&other.ignore_below) {
+                                    Ordering::Equal => {
+                                        self.charge_carrier.total_cmp(&other.charge_carrier)
+                                    },
+                                    x => x
+                                }
+                            },
+                            x => x,
+                        }
+                    },
+                    x => x,
+                }
+            },
+            x => x,
+        }
+    }
+}
+
 impl PartialEq for IsotopicPatternSpec {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
-        isclose(self.mz, other.mz, 1e-6)
+        // isclose(self.mz, other.mz, 1e-6)
+        self.mz == other.mz
             && self.charge == other.charge
             && isclose(self.charge_carrier, other.charge_carrier, 1e-6)
             && isclose(self.truncate_after, other.truncate_after, 1e-6)
@@ -198,6 +235,7 @@ impl hash::Hash for IsotopicPatternSpec {
     #[inline]
     fn hash<H: hash::Hasher>(&self, state: &mut H) {
         let i = (self.mz * 100.0).round() as i64;
+        // let i = self.mz;
         i.hash(state);
         self.charge.hash(state);
         let i = (self.truncate_after * 10.0).round() as i64;
@@ -213,11 +251,18 @@ struct FloatRange {
     start: f64,
     end: f64,
     step: f64,
-    index: usize
+    index: usize,
 }
 
 impl FloatRange {
-    fn new(start: f64, end: f64, step: f64) -> Self { Self { start, end, step, index: 0 } }
+    fn new(start: f64, end: f64, step: f64) -> Self {
+        Self {
+            start,
+            end,
+            step,
+            index: 0,
+        }
+    }
 }
 
 impl Iterator for FloatRange {
@@ -234,19 +279,18 @@ impl Iterator for FloatRange {
     }
 }
 
-
 #[derive(Debug, Clone)]
 pub struct CachingIsotopicModel<'lifespan> {
     pub cache_truncation: f64,
     inner: IsotopicModel<'lifespan>,
-    cache: HashMap<IsotopicPatternSpec, TheoreticalIsotopicPattern>,
+    cache: BTreeMap<IsotopicPatternSpec, TheoreticalIsotopicPattern>,
 }
 
 impl<'lifespan: 'transient, 'transient> CachingIsotopicModel<'lifespan> {
     pub fn new(base_composition: FractionalComposition<'lifespan>, cache_truncation: f64) -> Self {
         Self {
             inner: IsotopicModel::new(base_composition),
-            cache: HashMap::new(),
+            cache: BTreeMap::new(),
             cache_truncation,
         }
     }
@@ -255,7 +299,7 @@ impl<'lifespan: 'transient, 'transient> CachingIsotopicModel<'lifespan> {
         self.cache.len()
     }
 
-    pub fn iter(&self) -> hash_map::Iter<IsotopicPatternSpec, TheoreticalIsotopicPattern> {
+    pub fn iter(&self) -> btree_map::Iter<IsotopicPatternSpec, TheoreticalIsotopicPattern> {
         self.cache.iter()
     }
 
@@ -263,20 +307,40 @@ impl<'lifespan: 'transient, 'transient> CachingIsotopicModel<'lifespan> {
         self.cache.clear();
     }
 
-    pub fn make_cache_key(&self,
+    pub fn make_cache_key(
+        &self,
         mz: f64,
         charge: i32,
         charge_carrier: f64,
         truncate_after: f64,
-        ignore_below: f64
+        ignore_below: f64,
     ) -> IsotopicPatternSpec {
         IsotopicPatternSpec {
-            mz: (mz * self.cache_truncation).round() / self.cache_truncation,
+            mz: ((mz * self.cache_truncation).round() / self.cache_truncation),
             charge,
             charge_carrier,
             truncate_after,
-            ignore_below
+            ignore_below,
         }
+    }
+
+    pub fn populate_cache_params(
+        &mut self,
+        min_mz: f64,
+        max_mz: f64,
+        min_charge: i32,
+        max_charge: i32,
+        isotopic_params: IsotopicPatternParams,
+    ) {
+        self.populate_cache(
+            min_mz,
+            max_mz,
+            min_charge,
+            max_charge,
+            isotopic_params.charge_carrier,
+            isotopic_params.truncate_after,
+            isotopic_params.ignore_below,
+        )
     }
 
     pub fn populate_cache(
@@ -291,18 +355,23 @@ impl<'lifespan: 'transient, 'transient> CachingIsotopicModel<'lifespan> {
     ) {
         let sign = min_charge / min_charge.abs();
         log::trace!("Starting isotopic cache population");
-        FloatRange::new(min_mz, max_mz, 0.1).into_iter().for_each(|mz| {
-            (min_charge.abs()..max_charge.abs()).for_each(|charge| {
-                self.isotopic_cluster(
-                    mz,
-                    charge * sign,
-                    charge_carrier,
-                    truncate_after,
-                    ignore_below,
-                );
+        FloatRange::new(min_mz, max_mz, 0.1)
+            .into_iter()
+            .for_each(|mz| {
+                (min_charge.abs()..max_charge.abs()).for_each(|charge| {
+                    self.isotopic_cluster(
+                        mz,
+                        charge * sign,
+                        charge_carrier,
+                        truncate_after,
+                        ignore_below,
+                    );
+                });
             });
-        });
-        log::trace!("Finished isotopic cache population, {} entries created", self.len());
+        log::trace!(
+            "Finished isotopic cache population, {} entries created",
+            self.len()
+        );
     }
 }
 
@@ -317,12 +386,12 @@ impl<'lifespan> IsotopicPatternGenerator for CachingIsotopicModel<'lifespan> {
     ) -> TheoreticalIsotopicPattern {
         let key = self.make_cache_key(mz, charge, charge_carrier, truncate_after, ignore_below);
         match self.cache.entry(key) {
-            Entry::Occupied(ent) => {
+            BEntry::Occupied(ent) => {
                 let res = ent.get();
                 let offset = mz - res.origin;
                 res.clone_shifted(offset)
             }
-            Entry::Vacant(ent) => {
+            BEntry::Vacant(ent) => {
                 let res = self.inner.isotopic_cluster(
                     mz,
                     charge,
@@ -347,13 +416,21 @@ impl<'lifespan> IsotopicPatternGenerator for CachingIsotopicModel<'lifespan> {
         truncate_after: f64,
         ignore_below: f64,
     ) {
-        self.populate_cache(min_mz, max_mz, min_charge, max_charge, charge_carrier, truncate_after, ignore_below)
+        self.populate_cache(
+            min_mz,
+            max_mz,
+            min_charge,
+            max_charge,
+            charge_carrier,
+            truncate_after,
+            ignore_below,
+        )
     }
 }
 
 impl<'a> From<IsotopicModel<'a>> for CachingIsotopicModel<'a> {
     fn from(inst: IsotopicModel<'a>) -> CachingIsotopicModel<'a> {
-        CachingIsotopicModel::new(inst.base_composition, 10.0)
+        CachingIsotopicModel::new(inst.base_composition, 100.0)
     }
 }
 
@@ -470,8 +547,8 @@ impl TIDScalingMethod {
 
 #[cfg(test)]
 mod test {
-    use std::hash::{Hash, Hasher};
     use super::*;
+    use std::hash::{Hash, Hasher};
 
     #[test]
     fn test_tid() {
@@ -487,7 +564,8 @@ mod test {
         let neutron2 = 0.5014313;
 
         assert!((diff - neutron2).abs() < 1e-6);
-        assert!((tid[0].intensity() - 32.476418).abs() < 1e-6);
+        let expected = 31.296387;
+        assert!((tid[0].intensity() - expected).abs() < 1e-6, "{} - {expected} = {}", tid[0].intensity(), tid[0].intensity() - expected);
 
         let tid = model
             .isotopic_cluster(1000.5, 2, PROTON, 0.95, 0.001)
@@ -500,7 +578,8 @@ mod test {
         let neutron2 = 0.5014313;
 
         assert!((diff - neutron2).abs() < 1e-6);
-        assert!((tid[0].intensity() - 32.47306).abs() < 1e-6);
+        let expected = 31.29292;
+        assert!((tid[0].intensity() - expected).abs() < 1e-6, "{} - {expected} = {}", tid[0].intensity(), tid[0].intensity() - expected);
     }
 
     #[test]
@@ -535,7 +614,9 @@ mod test {
         let neutron2 = 0.5014313;
 
         assert!((diff - neutron2).abs() < 1e-6);
-        assert!((tid[0].intensity() - 32.476418).abs() < 1e-6);
+        let expected = 31.296387;
+        assert!((tid[0].intensity() - expected).abs() < 1e-6, "{} - {expected} = {}", tid[0].intensity(), tid[0].intensity() - expected);
+
 
         let tid = model
             .isotopic_cluster(1000.001, 2, PROTON, 0.95, 0.001)
@@ -548,11 +629,11 @@ mod test {
         let neutron2 = 0.5014313;
 
         assert!((diff - neutron2).abs() < 1e-6);
-        assert!((tid[0].intensity() - 32.476418).abs() < 1e-6);
+        let expected = 31.296387;
+        assert!((tid[0].intensity() - expected).abs() < 1e-6, "{} - {expected} = {}", tid[0].intensity(), tid[0].intensity() - expected);
         assert_eq!(model.len(), 1);
 
-        let _ = model
-            .isotopic_cluster(1000.0 - 0.001, 2, PROTON, 0.95, 0.001);
+        let _ = model.isotopic_cluster(1000.0 - 0.001, 2, PROTON, 0.95, 0.001);
         assert_eq!(model.len(), 1);
     }
 }
