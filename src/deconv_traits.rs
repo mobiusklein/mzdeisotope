@@ -14,6 +14,10 @@ use crate::peaks::PeakKey;
 use crate::scorer::ScoreType;
 use crate::solution::DeconvolvedSolutionPeak;
 
+
+pub type QuerySet = HashSet<(PeakKey, i32)>;
+
+
 pub trait IsotopicPatternFitter<C: CentroidLike> {
     fn collect_for(&self, keys: &[PeakKey]) -> Vec<&C>;
 
@@ -190,7 +194,7 @@ pub trait RelativePeakSearch<C: CentroidLike>: IsotopicPatternFitter<C> {
         &mut self,
         mz: f64,
         charge: i32,
-        result: &mut HashSet<(PeakKey, i32)>,
+        result: &mut QuerySet,
         step: i8,
         error_tolerance: Tolerance,
     ) -> usize {
@@ -211,7 +215,7 @@ pub trait RelativePeakSearch<C: CentroidLike>: IsotopicPatternFitter<C> {
         &mut self,
         mz: f64,
         charge: i32,
-        result: &mut HashSet<(PeakKey, i32)>,
+        result: &mut QuerySet,
         step: i8,
         error_tolerance: Tolerance,
     ) -> usize {
@@ -246,9 +250,11 @@ pub trait RelativePeakSearch<C: CentroidLike>: IsotopicPatternFitter<C> {
 pub trait ExhaustivePeakSearch<C: CentroidLike>:
     IsotopicPatternFitter<C> + RelativePeakSearch<C>
 {
+    const MINIMUM_INTENSITY: f32 = 5.0;
+
     fn fit_peaks_at_charge(
         &mut self,
-        peak_charge_set: HashSet<(PeakKey, i32)>,
+        peak_charge_set: QuerySet,
         error_tolerance: Tolerance,
         isotopic_params: IsotopicPatternParams,
     ) -> HashSet<IsotopicFit> {
@@ -288,8 +294,8 @@ pub trait ExhaustivePeakSearch<C: CentroidLike>:
         left_search_limit: i8,
         right_search_limit: i8,
         recalculate_starting_peak: bool,
-    ) -> HashSet<(PeakKey, i32)> {
-        let mut solutions = HashSet::new();
+    ) -> QuerySet {
+        let mut solutions = QuerySet::new();
         for charge in charge_iter {
             let key = self.has_peak(mz, error_tolerance);
             solutions.insert((key, charge));
@@ -347,7 +353,7 @@ pub trait ExhaustivePeakSearch<C: CentroidLike>:
         left_search_limit: i8,
         right_search_limit: i8,
         recalculate_starting_peak: bool,
-    ) -> HashSet<(PeakKey, i32)> {
+    ) -> QuerySet {
         let charge_iter = ChargeRangeIter::from(charge_range);
         self._find_all_peak_charge_pairs_iter(
             mz,
@@ -360,7 +366,7 @@ pub trait ExhaustivePeakSearch<C: CentroidLike>:
     }
 
     fn skip_peak(&self, peak: &C) -> bool {
-        peak.mz() <= 0.0 || peak.intensity() < 1.0 || (peak.intensity() - 1.0).abs() <= 1e-3
+        peak.mz() <= 0.0 || peak.intensity() < Self::MINIMUM_INTENSITY || (peak.intensity() - Self::MINIMUM_INTENSITY).abs() <= 1e-3
     }
 
     fn step_deconvolve(

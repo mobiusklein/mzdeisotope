@@ -157,8 +157,8 @@ impl BuildArrayMapFrom for DeconvolvedSolutionPeak {
             &ArrayType::NonStandardDataArray {
                 name: Box::new(DECONVOLUTION_SCORE_ARRAY_NAME.into()),
             },
-            BinaryDataArrayType::Int32,
-            source.len() * BinaryDataArrayType::Int32.size_of(),
+            BinaryDataArrayType::Float32,
+            source.len() * BinaryDataArrayType::Float32.size_of(),
         );
 
         let mut envelope_array = DataArray::from_name_type_size(

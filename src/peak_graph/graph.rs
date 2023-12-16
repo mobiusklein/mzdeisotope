@@ -63,7 +63,7 @@ impl PeakDependenceGraph {
                 .collect();
             by_peaks.entry(key).or_default().push(fit_node.create_ref());
         });
-        // let mut best_fits = HashMap::with_capacity(by_peaks.len());
+
         match ordering {
             ScoreInterpretation::HigherIsBetter => {
                 for (_key, mut bucket) in by_peaks.drain() {

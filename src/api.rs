@@ -1,3 +1,5 @@
+#[cfg(feature = "verbose")]
+use std::fs::File;
 use std::marker::PhantomData;
 use std::mem;
 
@@ -130,7 +132,7 @@ pub fn deconvolute_peaks_with_targets<
     PeaksAndTargets::new(deconvoluted_peaks, targets)
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct DeconvolutionEngine<
     'lifespan,
     C: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut,
@@ -142,6 +144,8 @@ pub struct DeconvolutionEngine<
     scorer: Option<S>,
     fit_filter: Option<F>,
     peak_type: PhantomData<C>,
+    #[cfg(feature = "verbose")]
+    log: Option<File>,
 }
 
 impl<
@@ -163,12 +167,31 @@ impl<
             scorer: Some(scorer),
             fit_filter: Some(fit_filter),
             peak_type: PhantomData,
+            #[cfg(feature = "verbose")]
+            log: None,
         }
     }
 
-    pub fn populate_isotopic_model_cache(&mut self, min_mz: f64, max_mz: f64, min_charge: i32, max_charge: i32) {
+    #[cfg(feature = "verbose")]
+    pub fn set_log_file(&mut self, sink: Option<File>) {
+        self.log = sink;
+    }
+
+    pub fn populate_isotopic_model_cache(
+        &mut self,
+        min_mz: f64,
+        max_mz: f64,
+        min_charge: i32,
+        max_charge: i32,
+    ) {
         if let Some(cache) = self.isotopic_model.as_mut() {
-            cache.populate_cache_params(min_mz, max_mz, min_charge, max_charge, self.isotopic_params);
+            cache.populate_cache_params(
+                min_mz,
+                max_mz,
+                min_charge,
+                max_charge,
+                self.isotopic_params,
+            );
         }
     }
 
@@ -187,7 +210,11 @@ impl<
                 mem::take(&mut self.fit_filter).unwrap(),
                 max_missed_peaks,
             );
-
+        #[cfg(feature = "verbose")]
+        if self.log.is_some() {
+            let sink = mem::take(&mut self.log).unwrap();
+            deconvoluter.set_log_file(sink)
+        }
         let output = deconvoluter.deconvolve(
             error_tolerance,
             charge_range,
@@ -221,21 +248,25 @@ impl<
                 mem::take(&mut self.fit_filter).unwrap(),
                 max_missed_peaks,
             );
-
+        #[cfg(feature = "verbose")]
+        if self.log.is_some() {
+            let sink = mem::take(&mut self.log).unwrap();
+            deconvoluter.set_log_file(sink)
+        }
         let links: Vec<_> = targets
-        .iter()
-        .map(|mz| {
-            let peak = deconvoluter.has_peak(*mz, error_tolerance);
-            deconvoluter.targeted_deconvolution(
-                peak,
-                error_tolerance,
-                charge_range,
-                1,
-                1,
-                self.isotopic_params,
-            )
-        })
-        .collect();
+            .iter()
+            .map(|mz| {
+                let peak = deconvoluter.has_peak(*mz, error_tolerance);
+                deconvoluter.targeted_deconvolution(
+                    peak,
+                    error_tolerance,
+                    charge_range,
+                    1,
+                    1,
+                    self.isotopic_params,
+                )
+            })
+            .collect();
 
         let deconvoluted_peaks = deconvoluter.deconvolve(
             error_tolerance,
@@ -248,13 +279,13 @@ impl<
         );
 
         let targets: Vec<Option<DeconvolvedSolutionPeak>> = links
-        .into_iter()
-        .map(|target| {
-            deconvoluter
-                .resolve_target(&deconvoluted_peaks, &target)
-                .cloned()
-        })
-        .collect();
+            .into_iter()
+            .map(|target| {
+                deconvoluter
+                    .resolve_target(&deconvoluted_peaks, &target)
+                    .cloned()
+            })
+            .collect();
 
         self.isotopic_model = Some(deconvoluter.inner.isotopic_model);
         self.scorer = Some(deconvoluter.inner.scorer);

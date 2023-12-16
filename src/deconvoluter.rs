@@ -1,4 +1,9 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+
+#[cfg(feature="verbose")]
+use std::fs::File;
+#[cfg(feature="verbose")]
+use std::io::{self, BufWriter, Write};
 use std::ops::Range;
 
 use crate::isotopic_fit::IsotopicFit;
@@ -33,6 +38,83 @@ impl TrivialTargetLink {
     }
 }
 
+#[derive(Debug, Default)]
+pub struct DeconvoluterBuilder<
+    C: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut,
+    I: IsotopicPatternGenerator,
+    S: IsotopicPatternScorer,
+    F: IsotopicFitFilter,
+> {
+    max_missed_peaks: Option<u16>,
+    fit_filter: Option<F>,
+    scorer: Option<S>,
+    isotopic_model: Option<I>,
+    peaks: Option<MZPeakSetType<C>>,
+}
+
+impl<
+        C: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut,
+        I: IsotopicPatternGenerator,
+        S: IsotopicPatternScorer,
+        F: IsotopicFitFilter,
+    > DeconvoluterBuilder<C, I, S, F>
+{
+    pub fn new() -> Self {
+        Self {
+            max_missed_peaks: Some(1),
+            scorer: None,
+            isotopic_model: None,
+            fit_filter: None,
+            peaks: None,
+        }
+    }
+
+    pub fn missed_peaks(mut self, value: u16) -> Self {
+        self.max_missed_peaks = Some(value);
+        self
+    }
+
+    pub fn scoring(mut self, value: S) -> Self {
+        self.scorer = Some(value);
+        self
+    }
+
+    pub fn filter(mut self, value: F) -> Self {
+        self.fit_filter = Some(value);
+        self
+    }
+
+    pub fn isotopic_model(mut self, value: I) -> Self {
+        self.isotopic_model = Some(value);
+        self
+    }
+
+    pub fn peaks(mut self, value: MZPeakSetType<C>) -> Self {
+        self.peaks = Some(value);
+        self
+    }
+
+    pub fn create(self) -> DeconvoluterType<C, I, S, F> {
+        DeconvoluterType::new(
+            self.peaks.unwrap(),
+            self.isotopic_model.unwrap(),
+            self.scorer.unwrap(),
+            self.fit_filter.unwrap(),
+            self.max_missed_peaks.unwrap(),
+        )
+    }
+
+    pub fn create_graph(self) -> GraphDeconvoluterType<C, I, S, F> {
+        GraphDeconvoluterType::new(
+            self.peaks.unwrap(),
+            self.isotopic_model.unwrap(),
+            self.scorer.unwrap(),
+            self.fit_filter.unwrap(),
+            self.max_missed_peaks.unwrap(),
+        )
+    }
+}
+
 #[derive(Debug)]
 pub struct DeconvoluterType<
     C: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut,
@@ -47,6 +129,8 @@ pub struct DeconvoluterType<
     pub scaling_method: TIDScalingMethod,
     pub max_missed_peaks: u16,
     targets: Vec<TrivialTargetLink>,
+    #[cfg(feature="verbose")]
+    log: Option<BufWriter<File>>,
 }
 
 impl<
@@ -95,6 +179,21 @@ impl<
             scaling_method: TIDScalingMethod::default(),
             max_missed_peaks,
             targets: Vec::new(),
+            #[cfg(feature="verbose")]
+            log: None,
+        }
+    }
+
+    #[cfg(feature="verbose")]
+    pub(crate) fn set_log_file(&mut self, sink: File) {
+        self.log = Some(BufWriter::new(sink));
+    }
+
+    #[cfg(feature="verbose")]
+    pub(crate) fn write_log(&mut self, message: &str) -> io::Result<()> {
+        match self.log.as_mut() {
+            Some(sink) => sink.write_all(message.as_bytes()),
+            None => Ok(()),
         }
     }
 
@@ -140,7 +239,14 @@ impl<
         let exp = self.peaks.collect_for(&keys);
         self.scaling_method.scale(&exp, &mut tid);
         let score = self.score_isotopic_fit(exp.as_slice(), &tid);
-        IsotopicFit::new(keys, peak, tid, charge, score, missed_peaks as u16)
+        let fit = IsotopicFit::new(keys, peak, tid, charge, score, missed_peaks as u16);
+        #[cfg(feature="verbose")]
+        self.write_log(&format!(
+            "fit\t{:?}\t{}\t{}\t{}\t{}\t{}\n",
+            peak, mz, charge, score, fit.theoretical, fit.theoretical.origin
+        ))
+        .unwrap();
+        fit
     }
 
     fn has_peak(&mut self, mz: f64, error_tolerance: Tolerance) -> PeakKey {
@@ -405,6 +511,16 @@ impl<
         }
     }
 
+    #[cfg(feature="verbose")]
+    pub(crate) fn set_log_file(&mut self, sink: File) {
+        self.inner.set_log_file(sink);
+    }
+
+    #[cfg(feature="verbose")]
+    pub(crate) fn write_log(&mut self, message: &str) -> io::Result<()> {
+        self.inner.write_log(message)
+    }
+
     pub fn populate_isotopic_model_cache(
         &mut self,
         min_mz: f64,
@@ -447,6 +563,16 @@ impl<
                 .unwrap_or_else(|| {
                     panic!("Failed to locate a solution {:?}", best_fit_key);
                 });
+            #[cfg(feature="verbose")]
+            self.write_log(&format!(
+                "selected\t{:?}\t{:?}\t{}\t{}\t{}\n",
+                fit.seed_peak,
+                fit.experimental.first(),
+                fit.charge,
+                fit.score,
+                fit.theoretical
+            ))
+            .unwrap();
             peak_accumulator.push(fit)
         }
     }
@@ -733,6 +859,7 @@ impl<
             })
             .collect();
 
+        let mut mask = HashSet::new();
         deconvoluted_peaks = self.merge_isobaric_peaks(deconvoluted_peaks);
         deconvoluted_peaks
             .iter()
@@ -742,9 +869,12 @@ impl<
                     .iter_mut()
                     .filter(|t| match t.query {
                         PeakKey::Matched(k) => k == 0 && p.index == u32::MAX || p.index == k,
-                        PeakKey::Placeholder(_) => {
-                            let c = link_table.get(&t.query).unwrap();
-                            log::warn!("Query peak {} is a placeholder", c.mz());
+                        PeakKey::Placeholder(j) => {
+                            if !mask.contains(&j) {
+                                let c = link_table.get(&t.query).unwrap();
+                                log::debug!("Query peak {} is a placeholder", c.mz());
+                                mask.insert(j);
+                            }
                             false
                         }
                     })
@@ -856,7 +986,7 @@ mod test {
         assert_eq!(best_fit.charge, 4);
         assert_eq!(best_fit.missed_peaks, 0);
         assert!(
-            (best_fit.score - 3127.7483).abs() < 1e-3,
+            (best_fit.score - 3131.769).abs() < 1e-3,
             "{}",
             best_fit.score
         );
@@ -900,12 +1030,12 @@ mod test {
             .unwrap();
         assert_eq!(best_fit.charge, 4);
         assert!(
-            (best_fit.score - 3127.7483).abs() < 1e-3,
+            (best_fit.score - 3131.769).abs() < 1e-3,
             "{}",
             best_fit.score
         );
 
-        let expected_intensity = 1770737.8;
+        let expected_intensity = 1771624.4;
         assert!(
             (best_fit.intensity - expected_intensity).abs() < 1e-6,
             "Expected intensity {expected_intensity}, got {} delta {}",
@@ -1015,8 +1145,8 @@ mod test {
         assert_eq!(total_missed, total_missed2);
         assert_eq!(total_fits, total_fits2);
         assert_eq!(total_combos, 19142);
-        assert_eq!(total_missed, 21119);
-        assert_eq!(total_fits, 10786);
+        assert_eq!(total_missed, 21124);
+        assert_eq!(total_fits, 10789);
 
         let fits =
             deconvoluter.step_deconvolve(Tolerance::PPM(10.0), (1, 8), 1, 1, isotopic_params);
@@ -1025,11 +1155,11 @@ mod test {
         assert_eq!(best_fit.charge, 4);
         assert_eq!(best_fit.missed_peaks, 0);
         assert!(
-            (best_fit.score - 3127.7483).abs() < 1e-3,
+            (best_fit.score - 3127.5288).abs() < 1e-3,
             "{}",
             best_fit.score
         );
-        assert_eq!(fits.len(), 10786);
+        assert_eq!(fits.len(), 10282);
         Ok(())
     }
 }

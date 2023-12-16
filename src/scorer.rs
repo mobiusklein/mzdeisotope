@@ -55,9 +55,7 @@ impl MSDeconvScorer {
         } else {
             return 0.0;
         };
-
-
-        theoretical.intensity().sqrt() as ScoreType * mass_accuracy * abundance_diff as ScoreType
+        theoretical.intensity().sqrt() * mass_accuracy * abundance_diff
     }
 
     #[inline]

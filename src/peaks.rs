@@ -14,7 +14,7 @@ const PEAK_ELIMINATION_FACTOR: f32 = 0.7;
 type Placeholder = i64;
 
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum PeakKey {
     Matched(u32),
     Placeholder(Placeholder),

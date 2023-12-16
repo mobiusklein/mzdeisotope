@@ -1,7 +1,7 @@
 use std::cmp::Ordering;
+use std::collections::btree_map::{self, BTreeMap, Entry as BEntry};
 #[allow(unused)]
 use std::collections::hash_map::{self, Entry, HashMap};
-use std::collections::btree_map::{self, Entry as BEntry, BTreeMap};
 use std::hash;
 
 use chemical_elements::isotopic_pattern::{
@@ -55,8 +55,26 @@ pub trait IsotopicPatternGenerator {
 
 pub const NEUTRON_SHIFT: f64 = 1.0033548378;
 
+const ISOTOPIC_SHIFT: [f64; 10] = [
+    NEUTRON_SHIFT / 1.0,
+    NEUTRON_SHIFT / 2.0,
+    NEUTRON_SHIFT / 3.0,
+    NEUTRON_SHIFT / 4.0,
+    NEUTRON_SHIFT / 5.0,
+    NEUTRON_SHIFT / 6.0,
+    NEUTRON_SHIFT / 7.0,
+    NEUTRON_SHIFT / 8.0,
+    NEUTRON_SHIFT / 9.0,
+    NEUTRON_SHIFT / 10.0,
+];
+
+#[inline(always)]
 pub fn isotopic_shift(charge: i32) -> f64 {
-    NEUTRON_SHIFT / charge as f64
+    if charge > 0 && charge < 11 {
+        ISOTOPIC_SHIFT[(charge - 1) as usize]
+    } else {
+        NEUTRON_SHIFT / charge as f64
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -193,24 +211,15 @@ impl PartialOrd for IsotopicPatternSpec {
 impl Ord for IsotopicPatternSpec {
     fn cmp(&self, other: &Self) -> Ordering {
         match self.charge.cmp(&other.charge) {
-            Ordering::Equal => {
-                match self.mz.total_cmp(&other.mz) {
-                // match self.mz.cmp(&other.mz) {
-                    Ordering::Equal => {
-                        match self.truncate_after.total_cmp(&other.truncate_after) {
-                            Ordering::Equal => {
-                                match self.ignore_below.total_cmp(&other.ignore_below) {
-                                    Ordering::Equal => {
-                                        self.charge_carrier.total_cmp(&other.charge_carrier)
-                                    },
-                                    x => x
-                                }
-                            },
-                            x => x,
-                        }
+            Ordering::Equal => match self.mz.total_cmp(&other.mz) {
+                Ordering::Equal => match self.truncate_after.total_cmp(&other.truncate_after) {
+                    Ordering::Equal => match self.ignore_below.total_cmp(&other.ignore_below) {
+                        Ordering::Equal => self.charge_carrier.total_cmp(&other.charge_carrier),
+                        x => x,
                     },
                     x => x,
-                }
+                },
+                x => x,
             },
             x => x,
         }
@@ -220,8 +229,7 @@ impl Ord for IsotopicPatternSpec {
 impl PartialEq for IsotopicPatternSpec {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
-        // isclose(self.mz, other.mz, 1e-6)
-        self.mz == other.mz
+        isclose(self.mz, other.mz, 1e-6)
             && self.charge == other.charge
             && isclose(self.charge_carrier, other.charge_carrier, 1e-6)
             && isclose(self.truncate_after, other.truncate_after, 1e-6)
@@ -244,7 +252,6 @@ impl hash::Hash for IsotopicPatternSpec {
         i.hash(state);
     }
 }
-
 
 #[derive(Debug, Clone, Copy)]
 struct FloatRange {
@@ -316,7 +323,7 @@ impl<'lifespan: 'transient, 'transient> CachingIsotopicModel<'lifespan> {
         ignore_below: f64,
     ) -> IsotopicPatternSpec {
         IsotopicPatternSpec {
-            mz: ((mz * self.cache_truncation).round() / self.cache_truncation),
+            mz: ((mz / self.cache_truncation).round() * self.cache_truncation),
             charge,
             charge_carrier,
             truncate_after,
@@ -430,7 +437,7 @@ impl<'lifespan> IsotopicPatternGenerator for CachingIsotopicModel<'lifespan> {
 
 impl<'a> From<IsotopicModel<'a>> for CachingIsotopicModel<'a> {
     fn from(inst: IsotopicModel<'a>) -> CachingIsotopicModel<'a> {
-        CachingIsotopicModel::new(inst.base_composition, 100.0)
+        CachingIsotopicModel::new(inst.base_composition, 1.0)
     }
 }
 
@@ -565,7 +572,12 @@ mod test {
 
         assert!((diff - neutron2).abs() < 1e-6);
         let expected = 31.296387;
-        assert!((tid[0].intensity() - expected).abs() < 1e-6, "{} - {expected} = {}", tid[0].intensity(), tid[0].intensity() - expected);
+        assert!(
+            (tid[0].intensity() - expected).abs() < 1e-6,
+            "{} - {expected} = {}",
+            tid[0].intensity(),
+            tid[0].intensity() - expected
+        );
 
         let tid = model
             .isotopic_cluster(1000.5, 2, PROTON, 0.95, 0.001)
@@ -579,7 +591,12 @@ mod test {
 
         assert!((diff - neutron2).abs() < 1e-6);
         let expected = 31.29292;
-        assert!((tid[0].intensity() - expected).abs() < 1e-6, "{} - {expected} = {}", tid[0].intensity(), tid[0].intensity() - expected);
+        assert!(
+            (tid[0].intensity() - expected).abs() < 1e-6,
+            "{} - {expected} = {}",
+            tid[0].intensity(),
+            tid[0].intensity() - expected
+        );
     }
 
     #[test]
@@ -610,13 +627,20 @@ mod test {
         assert!((tid.total() - 100.0).abs() < 1e-6);
         assert!((tid[0].mz() - 1000.0).abs() < 1e-6);
 
+        let tot: f32 = tid.iter().map(|p| p.intensity()).sum();
+        assert!((tot - 100.0).abs() < 1e-3);
+
         let diff = tid[1].mz() - tid[0].mz();
         let neutron2 = 0.5014313;
 
         assert!((diff - neutron2).abs() < 1e-6);
         let expected = 31.296387;
-        assert!((tid[0].intensity() - expected).abs() < 1e-6, "{} - {expected} = {}", tid[0].intensity(), tid[0].intensity() - expected);
-
+        assert!(
+            (tid[0].intensity() - expected).abs() < 1e-6,
+            "{} - {expected} = {}",
+            tid[0].intensity(),
+            tid[0].intensity() - expected
+        );
 
         let tid = model
             .isotopic_cluster(1000.001, 2, PROTON, 0.95, 0.001)
@@ -625,15 +649,26 @@ mod test {
         assert!((tid.total() - 100.0).abs() < 1e-6);
         assert!((tid[0].mz() - 1000.001).abs() < 1e-6);
 
+        let tot: f32 = tid.iter().map(|p| p.intensity()).sum();
+        assert!((tot - 100.0).abs() < 1e-3);
+
         let diff = tid[1].mz() - tid[0].mz();
         let neutron2 = 0.5014313;
 
         assert!((diff - neutron2).abs() < 1e-6);
         let expected = 31.296387;
-        assert!((tid[0].intensity() - expected).abs() < 1e-6, "{} - {expected} = {}", tid[0].intensity(), tid[0].intensity() - expected);
+        assert!(
+            (tid[0].intensity() - expected).abs() < 1e-6,
+            "{} - {expected} = {}",
+            tid[0].intensity(),
+            tid[0].intensity() - expected
+        );
         assert_eq!(model.len(), 1);
 
-        let _ = model.isotopic_cluster(1000.0 - 0.001, 2, PROTON, 0.95, 0.001);
+        let tid = model.isotopic_cluster(1000.0 - 0.001, 2, PROTON, 0.95, 0.001);
         assert_eq!(model.len(), 1);
+        let tid = tid.scale_by(100.0);
+        let tot: f32 = tid.iter().map(|p| p.intensity()).sum();
+        assert!((tot - 100.0).abs() < 1e-3);
     }
 }
