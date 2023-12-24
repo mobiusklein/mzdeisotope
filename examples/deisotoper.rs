@@ -2,10 +2,8 @@ use std::env;
 use std::fs;
 use std::io;
 use std::path;
-use std::sync::atomic::AtomicU16;
-use std::sync::atomic::Ordering;
-use std::sync::mpsc::TryRecvError;
-use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::atomic::{AtomicU16, Ordering};
+use std::sync::mpsc::{channel, Receiver, Sender, TryRecvError};
 use std::thread;
 use std::time::Instant;
 
@@ -15,21 +13,21 @@ use rayon::prelude::*;
 
 use chemical_elements::PROTON;
 use itertools::Itertools;
-use mzdata::io::mzml::{MzMLReaderType, MzMLWriterType};
+use mzdata::io::{
+    mzml::{MzMLReaderType, MzMLWriterType},
+    traits::ScanWriter,
+};
 #[allow(unused)]
-use mzdata::io::traits::ScanWriter;
 use mzdata::prelude::*;
-use mzdata::spectrum::utils::Collator;
-use mzdata::spectrum::{SignalContinuity, SpectrumGroup};
+use mzdata::spectrum::{utils::Collator, SignalContinuity, SpectrumGroup};
 use mzdata::Param;
-use mzdeisotope::api::{DeconvolutionEngine, PeaksAndTargets};
 
+use mzdeisotope::api::{DeconvolutionEngine, PeaksAndTargets};
 use mzdeisotope::isotopic_model::{IsotopicModel, IsotopicModels, IsotopicPatternParams};
 use mzdeisotope::scorer::{MSDeconvScorer, MaximizingFitFilter, PenalizedMSDeconvScorer};
 use mzdeisotope::solution::DeconvolvedSolutionPeak;
-use mzpeaks::CentroidPeak;
-use mzpeaks::PeakCollection;
-use mzpeaks::Tolerance;
+
+use mzpeaks::{CentroidPeak, PeakCollection, Tolerance};
 
 type SolvedSpectrumGroup = SpectrumGroup<CentroidPeak, DeconvolvedSolutionPeak>;
 
@@ -71,15 +69,15 @@ fn run_deconvolution(
     ms1_engine = populate_ms1_cache.join().unwrap();
     msn_engine = populate_msn_cache.join().unwrap();
 
-    let (grouper, averager) = reader.groups().averaging_deferred(1, 120.0, 2000.1, 0.005);
+    let (grouper, averager, reprofiler) = reader.groups().averaging_deferred(1, 120.0, 2000.1, 0.005);
 
     let (n_ms1_peaks, n_msn_peaks) = grouper
         .enumerate()
         .par_bridge()
         .map_init(
-            || averager.clone(),
-            |averager, (i, g)| {
-                let (mut g, arrays) = g.average_with(averager);
+            || (averager.clone(), reprofiler.clone()),
+            |(averager, reprofiler), (i, g)| {
+                let (mut g, arrays) = g.reprofile_with_average_with(averager, reprofiler);
                 g.precursor_mut().and_then(|p| {
                     p.arrays = Some(arrays.into());
                     p.description_mut().signal_continuity = SignalContinuity::Profile;
