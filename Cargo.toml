@@ -1,34 +1,5 @@
-[package]
-name = "mzdeisotope"
-version = "0.1.0"
-edition = "2018"
+[workspace]
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[[bin]]
-name = "mz-averagine"
-path = "src/averagine.rs"
-
-[[example]]
-name = "deisotoper"
-
-
-[dependencies]
-
-num-traits = "0.2"
-
-mzdata = { path = "../mzdata/", features = ["mzsignal"]}
-mzpeaks = { version = "0.8.0" }
-chemical_elements = { path = "../chemical-elements/", features=['mzpeaks']}
-log = "0.4.20"
-itertools = "0.12.0"
-rayon = "1.8.0"
-
-[dev-dependencies]
-flate2 = "1.0.28"
-env_logger = "*"
-test-log = "0.2.12 "
-rayon = "1.8.0"
-
-[patch.crates-io]
-mzpeaks = { path = "../mzpeaks/" }
+members = [
+    "mzdeisotope",
+]
