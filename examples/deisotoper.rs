@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::env;
 use std::fs;
 use std::io;
@@ -8,7 +7,6 @@ use std::sync::atomic::Ordering;
 use std::sync::mpsc::TryRecvError;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread;
-use std::time::Duration;
 use std::time::Instant;
 
 use env_logger;
@@ -21,7 +19,8 @@ use mzdata::io::mzml::{MzMLReaderType, MzMLWriterType};
 #[allow(unused)]
 use mzdata::io::traits::ScanWriter;
 use mzdata::prelude::*;
-use mzdata::spectrum::SignalContinuity;
+use mzdata::spectrum::utils::Collator;
+use mzdata::spectrum::{SignalContinuity, SpectrumGroup};
 use mzdata::Param;
 use mzdeisotope::api::{DeconvolutionEngine, PeaksAndTargets};
 
@@ -34,45 +33,7 @@ use mzpeaks::Tolerance;
 
 type SolvedSpectrumGroup = SpectrumGroup<CentroidPeak, DeconvolvedSolutionPeak>;
 
-#[derive(Debug, Default)]
-pub struct SpectrumGroupCollator {
-    pub waiting: HashMap<usize, SolvedSpectrumGroup>,
-    pub next_key: usize,
-    pub ticks: usize,
-    pub done: bool,
-}
-
-impl SpectrumGroupCollator {
-    pub fn receive(&mut self, group_idx: usize, group: SolvedSpectrumGroup) {
-        self.waiting.insert(group_idx, group);
-    }
-
-    pub fn receive_from(
-        &mut self,
-        receiver: &Receiver<(usize, SolvedSpectrumGroup)>,
-        batch_size: usize,
-    ) {
-        let mut counter = 0usize;
-        while let Ok((group_idx, group)) = receiver.recv_timeout(Duration::from_micros(1)) {
-            self.receive(group_idx, group);
-            counter += 1;
-            if counter > batch_size {
-                break;
-            }
-        }
-    }
-
-    pub fn has_next(&self) -> bool {
-        self.waiting.contains_key(&self.next_key)
-    }
-
-    pub fn try_next(&mut self) -> Option<(usize, SolvedSpectrumGroup)> {
-        self.waiting.remove_entry(&self.next_key).and_then(|op| {
-            self.next_key += 1;
-            Some(op)
-        })
-    }
-}
+type SpectrumGroupCollator = Collator<SolvedSpectrumGroup>;
 
 fn run_deconvolution(
     mut reader: MzMLReaderType<fs::File, CentroidPeak, DeconvolvedSolutionPeak>,
@@ -110,10 +71,23 @@ fn run_deconvolution(
     ms1_engine = populate_ms1_cache.join().unwrap();
     msn_engine = populate_msn_cache.join().unwrap();
 
-    let (n_ms1_peaks, n_msn_peaks) = reader
-        .groups()
+    let (grouper, averager) = reader.groups().averaging_deferred(1, 120.0, 2000.1, 0.005);
+
+    let (n_ms1_peaks, n_msn_peaks) = grouper
         .enumerate()
         .par_bridge()
+        .map_init(
+            || averager.clone(),
+            |averager, (i, g)| {
+                let (mut g, arrays) = g.average_with(averager);
+                g.precursor_mut().and_then(|p| {
+                    p.arrays = Some(arrays.into());
+                    p.description_mut().signal_continuity = SignalContinuity::Profile;
+                    Some(())
+                });
+                (i, g)
+            },
+        )
         .map_init(
             || {
                 init_counter.fetch_add(1, Ordering::AcqRel);
@@ -144,6 +118,8 @@ fn run_deconvolution(
                             SignalContinuity::Centroid => scan.try_build_centroids().unwrap(),
                             SignalContinuity::Profile => {
                                 scan.pick_peaks(1.0, Default::default()).unwrap();
+                                scan.description_mut().signal_continuity =
+                                    SignalContinuity::Centroid;
                                 scan.peaks.as_ref().unwrap()
                             }
                         };
@@ -189,6 +165,7 @@ fn run_deconvolution(
                         SignalContinuity::Centroid => scan.try_build_centroids().unwrap(),
                         SignalContinuity::Profile => {
                             scan.pick_peaks(1.0, Default::default()).unwrap();
+                            scan.description_mut().signal_continuity = SignalContinuity::Centroid;
                             scan.peaks.as_ref().unwrap()
                         }
                     };
@@ -313,16 +290,20 @@ fn write_output<W: io::Write + io::Seek>(
     let mut time_checkpoint = 0.0;
     let mut scan_counter = 0usize;
     while let Ok((group_idx, group)) = receiver.recv() {
-        let scan = group.precursor().or_else(|| {
-            group.products().into_iter().min_by(|a, b| {
-                a
-                    .start_time()
-                    .total_cmp(&b.start_time())
+        let scan = group
+            .precursor()
+            .or_else(|| {
+                group
+                    .products()
+                    .into_iter()
+                    .min_by(|a, b| a.start_time().total_cmp(&b.start_time()))
             })
-        }).unwrap();
+            .unwrap();
         scan_counter += group.total_spectra();
         let scan_time = scan.start_time();
-        if ((group_idx - checkpoint) % 100 == 0 && group_idx != 0) || (scan_time - time_checkpoint) > 1.0 {
+        if ((group_idx - checkpoint) % 100 == 0 && group_idx != 0)
+            || (scan_time - time_checkpoint) > 1.0
+        {
             log::info!("Completed Group {group_idx} | Scans={scan_counter} Time={scan_time:0.3}");
             checkpoint = group_idx;
             time_checkpoint = scan_time;
