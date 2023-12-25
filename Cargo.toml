@@ -1,5 +1,16 @@
 [workspace]
 
+resolver = "2"
+
 members = [
     "mzdeisotope",
+    "mzdeisotoper"
 ]
+
+
+[profile.release]
+lto = "thin"
+
+
+[patch.crates-io]
+mzpeaks = { path = "../mzpeaks/" }
