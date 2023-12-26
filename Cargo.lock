@@ -131,6 +131,8 @@ checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 [[package]]
 name = "chemical_elements"
 version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "63aaf79a90bb224cfe39460bd069e80a7bed46dfcb25e0c06044f1b750463a7e"
 dependencies = [
  "fnv",
  "lazy_static",
@@ -458,7 +460,9 @@ dependencies = [
 
 [[package]]
 name = "mzdata"
-version = "0.8.0"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "23d405b59055c7c5bda0237cb5879a94723483444515f928b0ff268e65d63b9d"
 dependencies = [
  "base64-simd",
  "bytemuck",
