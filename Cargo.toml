@@ -13,4 +13,3 @@ lto = "thin"
 
 
 [patch.crates-io]
-mzpeaks = { path = "../mzpeaks/" }
