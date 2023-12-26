@@ -1,6 +1,8 @@
 use std::fmt::Display;
 use std::fs;
 use std::io;
+use std::ops::Add;
+use std::ops::AddAssign;
 use std::path;
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::mpsc::{channel, Receiver, Sender, TryRecvError};
@@ -47,16 +49,32 @@ struct SignalParams {
     pub ms1_denoising: f32,
 }
 
-struct DeconvolutionParams<'a, S: IsotopicPatternScorer, F: IsotopicFitFilter> {
+struct DeconvolutionBuilderParams<'a, S: IsotopicPatternScorer, F: IsotopicFitFilter> {
     pub scorer: S,
     pub isotopic_model: IsotopicModel<'a>,
     pub fit_filter: F,
     pub isotopic_params: IsotopicPatternParams,
     pub charge_range: ChargeRange,
     pub mz_range: (f64, f64),
+    pub max_missed_peaks: u16,
 }
 
-impl<'a, S: IsotopicPatternScorer, F: IsotopicFitFilter> DeconvolutionParams<'a, S, F> {
+#[derive(Debug, Clone, Copy)]
+struct DeconvolutionParams {
+    pub charge_range: ChargeRange,
+    pub max_missed_peaks: u16,
+}
+
+impl DeconvolutionParams {
+    fn new(charge_range: ChargeRange, max_missed_peaks: u16) -> Self {
+        Self {
+            charge_range,
+            max_missed_peaks,
+        }
+    }
+}
+
+impl<'a, S: IsotopicPatternScorer, F: IsotopicFitFilter> DeconvolutionBuilderParams<'a, S, F> {
     fn new(
         scorer: S,
         isotopic_model: IsotopicModel<'a>,
@@ -64,6 +82,7 @@ impl<'a, S: IsotopicPatternScorer, F: IsotopicFitFilter> DeconvolutionParams<'a,
         isotopic_params: IsotopicPatternParams,
         charge_range: ChargeRange,
         mz_range: (f64, f64),
+        max_missed_peaks: u16,
     ) -> Self {
         Self {
             scorer,
@@ -72,7 +91,12 @@ impl<'a, S: IsotopicPatternScorer, F: IsotopicFitFilter> DeconvolutionParams<'a,
             isotopic_params,
             charge_range,
             mz_range,
+            max_missed_peaks,
         }
+    }
+
+    fn make_params(&self) -> DeconvolutionParams {
+        DeconvolutionParams::new(self.charge_range, self.max_missed_peaks)
     }
 
     fn build_engine(self) -> DeconvolutionEngine<'a, CentroidPeak, S, F> {
@@ -92,6 +116,37 @@ impl<'a, S: IsotopicPatternScorer, F: IsotopicFitFilter> DeconvolutionParams<'a,
     }
 }
 
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
+struct ProgressRecord {
+    pub ms1_peaks: usize,
+    pub msn_peaks: usize,
+    pub precursors_defaulted: usize,
+    pub precursor_charge_state_mismatch: usize,
+    pub ms1_spectra: usize,
+    pub msn_spectra: usize,
+}
+
+impl Add for ProgressRecord {
+    type Output = ProgressRecord;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        let mut dup = self.clone();
+        dup += rhs;
+        dup
+    }
+}
+
+impl AddAssign for ProgressRecord {
+    fn add_assign(&mut self, rhs: Self) {
+        self.ms1_peaks += rhs.ms1_peaks;
+        self.msn_peaks += rhs.msn_peaks;
+        self.precursors_defaulted += rhs.precursors_defaulted;
+        self.precursor_charge_state_mismatch += rhs.precursor_charge_state_mismatch;
+        self.ms1_spectra += rhs.ms1_spectra;
+        self.msn_spectra += rhs.msn_spectra;
+    }
+}
+
 fn prepare_procesing<
     R: ScanSource<CentroidPeak, DeconvolvedSolutionPeak, SpectrumType> + Send,
     S: IsotopicPatternScorer + Send + Sync + Clone + 'static,
@@ -99,23 +154,32 @@ fn prepare_procesing<
     SN: IsotopicPatternScorer + Send + Sync + Clone + 'static,
     FN: IsotopicFitFilter + Send + Sync + Clone + 'static,
 >(
-    mut reader: R,
-    ms1_deconv_params: DeconvolutionParams<'static, S, F>,
-    msn_deconv_params: DeconvolutionParams<'static, SN, FN>,
+    reader: R,
+    ms1_deconv_params: DeconvolutionBuilderParams<'static, S, F>,
+    msn_deconv_params: DeconvolutionBuilderParams<'static, SN, FN>,
     signal_processing_params: SignalParams,
     sender: Sender<(usize, SpectrumGroup<CentroidPeak, DeconvolvedSolutionPeak>)>,
 ) -> io::Result<()> {
-    reader.reset();
     let init_counter = AtomicU16::new(0);
     let started = Instant::now();
 
-    let build_ms1_engine = thread::spawn(move || ms1_deconv_params.build_engine());
-    let build_msn_engine = thread::spawn(move || msn_deconv_params.build_engine());
+    let build_ms1_engine = thread::spawn(move || {
+        (
+            ms1_deconv_params.make_params(),
+            ms1_deconv_params.build_engine(),
+        )
+    });
+    let build_msn_engine = thread::spawn(move || {
+        (
+            msn_deconv_params.make_params(),
+            msn_deconv_params.build_engine(),
+        )
+    });
 
-    let ms1_engine = build_ms1_engine.join().unwrap();
-    let msn_engine = build_msn_engine.join().unwrap();
+    let (ms1_deconv_params, ms1_engine) = build_ms1_engine.join().unwrap();
+    let (msn_deconv_params, msn_engine) = build_msn_engine.join().unwrap();
 
-    let (n_ms1_peaks, n_msn_peaks) = if signal_processing_params.ms1_averaging > 0 {
+    let prog = if signal_processing_params.ms1_averaging > 0 {
         let (grouper, averager, reprofiler) = reader.into_groups().averaging_deferred(
             signal_processing_params.ms1_averaging,
             signal_processing_params.mz_range.0,
@@ -146,24 +210,29 @@ fn prepare_procesing<
                     deconvolution_transform(
                         ms1_engine,
                         msn_engine,
+                        &ms1_deconv_params,
+                        &msn_deconv_params,
                         &signal_processing_params,
                         group_idx,
                         group,
                     )
                 },
             )
-            .map(|(group_idx, group, n_ms1_peaks_local, n_msn_peaks_local)| {
+            .map(|(group_idx, group, prog)| {
                 match sender.send((group_idx, group)) {
                     Ok(_) => {}
                     Err(e) => {
                         log::warn!("Failed to send group: {}", e);
                     }
                 }
-                (n_ms1_peaks_local, n_msn_peaks_local)
+                prog
             })
             .reduce(
-                || (0usize, 0usize),
-                |state, counts| (state.0 + counts.0, state.1 + counts.1),
+                || ProgressRecord::default(),
+                |mut state, counts| {
+                    state += counts;
+                    state
+                },
             )
     } else {
         let grouper = reader.into_groups().enumerate().par_bridge();
@@ -177,24 +246,29 @@ fn prepare_procesing<
                     deconvolution_transform(
                         ms1_engine,
                         msn_engine,
+                        &ms1_deconv_params,
+                        &msn_deconv_params,
                         &signal_processing_params,
                         group_idx,
                         group,
                     )
                 },
             )
-            .map(|(group_idx, group, n_ms1_peaks_local, n_msn_peaks_local)| {
+            .map(|(group_idx, group, prog)| {
                 match sender.send((group_idx, group)) {
                     Ok(_) => {}
                     Err(e) => {
                         log::warn!("Failed to send group: {}", e);
                     }
                 }
-                (n_ms1_peaks_local, n_msn_peaks_local)
+                prog
             })
             .reduce(
-                || (0usize, 0usize),
-                |state, counts| (state.0 + counts.0, state.1 + counts.1),
+                || ProgressRecord::default(),
+                |mut state, counts| {
+                    state += counts;
+                    state
+                },
             )
     };
 
@@ -204,7 +278,11 @@ fn prepare_procesing<
         "{} threads run for deconvolution",
         init_counter.load(Ordering::SeqCst)
     );
-    log::info!("MS1 Peaks: {n_ms1_peaks}\tMSn Peaks: {n_msn_peaks}");
+    log::info!("MS1 Spectra: {}", prog.ms1_spectra);
+    log::info!("MSn Spectra: {}", prog.msn_spectra);
+    log::info!("Precursors Defaulted: {} | Mismatched Charge State: {}", prog.precursors_defaulted, prog.precursor_charge_state_mismatch);
+    log::info!("MS1 Peaks: {}", prog.ms1_peaks);
+    log::info!("MSn Peaks: {}", prog.msn_peaks);
     log::info!("Elapsed Time: {:0.3?}", elapsed);
     Ok(())
 }
@@ -217,18 +295,18 @@ fn deconvolution_transform<
 >(
     ms1_engine: &mut DeconvolutionEngine<'_, CentroidPeak, S, F>,
     msn_engine: &mut DeconvolutionEngine<'_, CentroidPeak, SN, FN>,
+    ms1_deconv_params: &DeconvolutionParams,
+    msn_deconv_params: &DeconvolutionParams,
     signal_processing_params: &SignalParams,
     group_idx: usize,
     mut group: SpectrumGroupType,
 ) -> (
     usize,
     SpectrumGroup<CentroidPeak, DeconvolvedSolutionPeak>,
-    usize,
-    usize,
+    ProgressRecord,
 ) {
     let had_precursor = group.precursor.is_some();
-    let mut n_ms1_peaks = 0usize;
-    let mut n_msn_peaks = 0usize;
+    let mut prog = ProgressRecord::default();
 
     let precursor_mz: Vec<_> = group
         .products()
@@ -237,7 +315,12 @@ fn deconvolution_transform<
         .collect();
     let targets = match group.precursor_mut() {
         Some(scan) => {
-            // log::info!("Processing {} MS{} ({:0.3})", scan.id(), scan.ms_level(), scan.acquisition().start_time());
+            log::trace!(
+                "Processing {} MS{} ({:0.3})",
+                scan.id(),
+                scan.ms_level(),
+                scan.acquisition().start_time()
+            );
             let peaks = match scan.signal_continuity() {
                 SignalContinuity::Unknown => {
                     panic!("Can't infer peak mode for {}", scan.id())
@@ -255,20 +338,18 @@ fn deconvolution_transform<
                 }
             };
 
-            #[cfg(feature = "verbose")]
-            ms1_engine.set_log_file(Some(logfile));
-
             let PeaksAndTargets {
                 deconvoluted_peaks,
                 targets,
             } = ms1_engine.deconvolute_peaks_with_targets(
                 peaks.clone(),
                 Tolerance::PPM(20.0),
-                (1, 8),
-                1,
+                ms1_deconv_params.charge_range,
+                ms1_deconv_params.max_missed_peaks as u16,
                 &precursor_mz,
             );
-            n_ms1_peaks = deconvoluted_peaks.len();
+            prog.ms1_peaks = deconvoluted_peaks.len();
+            prog.ms1_spectra += 1;
             scan.deconvoluted_peaks = Some(deconvoluted_peaks);
             targets
         }
@@ -277,7 +358,7 @@ fn deconvolution_transform<
 
     group.products_mut().iter_mut().for_each(|scan| {
         if !had_precursor {
-            log::info!(
+            log::trace!(
                 "Processing {} MS{} ({:0.3})",
                 scan.id(),
                 scan.ms_level(),
@@ -285,8 +366,13 @@ fn deconvolution_transform<
             );
         }
 
-        #[cfg(feature = "verbose")]
-        let logfile = fs::File::create(format!("scan-ms2-{}-log.txt", scan.index())).unwrap();
+        let precursor_charge = scan
+            .precursor()
+            .and_then(|prec| prec.charge())
+            .unwrap_or_else(|| msn_deconv_params.charge_range.1);
+
+        let mut msn_charge_range = msn_deconv_params.charge_range;
+        msn_charge_range.1 = msn_charge_range.1.max(precursor_charge);
 
         let peaks = match scan.signal_continuity() {
             SignalContinuity::Unknown => {
@@ -300,12 +386,14 @@ fn deconvolution_transform<
             }
         };
 
-        #[cfg(feature = "verbose")]
-        msn_engine.set_log_file(Some(logfile));
-
-        let deconvoluted_peaks =
-            msn_engine.deconvolute_peaks(peaks.clone(), Tolerance::PPM(20.0), (1, 8), 1);
-        n_msn_peaks += deconvoluted_peaks.len();
+        let deconvoluted_peaks = msn_engine.deconvolute_peaks(
+            peaks.clone(),
+            Tolerance::PPM(20.0),
+            msn_charge_range,
+            msn_deconv_params.max_missed_peaks,
+        );
+        prog.msn_peaks += deconvoluted_peaks.len();
+        prog.msn_spectra += 1;
         scan.deconvoluted_peaks = Some(deconvoluted_peaks);
         scan.precursor_mut().and_then(|prec| {
             let target_mz = prec.mz();
@@ -314,10 +402,14 @@ fn deconvolution_transform<
                 .find_position(|t| ((**t) - target_mz).abs() < 1e-6)
                 .and_then(|(i, _)| {
                     if let Some(peak) = &targets[i] {
-                        // let orig_mz = prec.ion.mz;
                         let orig_charge = prec.ion.charge;
                         let update_ion = if let Some(orig_z) = orig_charge {
-                            orig_z == peak.charge
+
+                            let t = orig_z == peak.charge;
+                            if !t {
+                                prog.precursor_charge_state_mismatch += 1;
+                            }
+                            t
                         } else {
                             true
                         };
@@ -326,13 +418,13 @@ fn deconvolution_transform<
                             prec.ion.charge = Some(peak.charge);
                             prec.ion.intensity = peak.intensity;
                         } else {
-                            // log::warn!("Expected ion of charge state {} @ {orig_mz:0.3}, found {} @ {:0.3}", orig_charge.unwrap(), peak.charge, peak.mz());
                             prec.ion.params_mut().push(Param::new_key_value(
                                 "mzdeisotope:defaulted".to_string(),
                                 true.to_string(),
                             ));
+                            prog.precursors_defaulted += 1;
                         }
-                    };
+                    }
                     Some(())
                 })
                 .or_else(|| {
@@ -344,13 +436,14 @@ fn deconvolution_transform<
                         "mzdeisotope:orphan".to_string(),
                         true.to_string(),
                     ));
+                    prog.precursors_defaulted += 1;
                     None
                 });
 
-            Some(prec)
+            Some(())
         });
     });
-    (group_idx, group, n_ms1_peaks, n_msn_peaks)
+    (group_idx, group, prog)
 }
 
 fn collate_results(
@@ -423,26 +516,28 @@ fn write_output<W: io::Write>(
 }
 
 fn make_default_ms1_deconvolution_params(
-) -> DeconvolutionParams<'static, PenalizedMSDeconvScorer, MaximizingFitFilter> {
-    DeconvolutionParams::new(
+) -> DeconvolutionBuilderParams<'static, PenalizedMSDeconvScorer, MaximizingFitFilter> {
+    DeconvolutionBuilderParams::new(
         PenalizedMSDeconvScorer::new(0.02, 2.0),
         IsotopicModels::Peptide.into(),
         MaximizingFitFilter::new(10.0),
         Default::default(),
         (1, 8),
         (80.0, 2200.0),
+        1,
     )
 }
 
 fn make_default_msn_deconvolution_params(
-) -> DeconvolutionParams<'static, MSDeconvScorer, MaximizingFitFilter> {
-    DeconvolutionParams::new(
+) -> DeconvolutionBuilderParams<'static, MSDeconvScorer, MaximizingFitFilter> {
+    DeconvolutionBuilderParams::new(
         MSDeconvScorer::default(),
         IsotopicModels::Peptide.into(),
         MaximizingFitFilter::new(2.0),
         IsotopicPatternParams::new(0.8, 0.001, None, PROTON),
         (1, 8),
         (80.0, 2200.0),
+        1,
     )
 }
 
@@ -462,7 +557,7 @@ pub enum ArgIsotopicModels {
     Glycopeptide,
     PermethylatedGlycan,
     Heparin,
-    HeparanSulfate
+    HeparanSulfate,
 }
 
 impl Into<IsotopicModels> for ArgIsotopicModels {
@@ -503,6 +598,9 @@ struct MZDeiosotoperArgs {
         help = "The path to write the output file to, or if '-' is passed, write to STDOUT"
     )]
     pub output_file: String,
+
+    #[arg(short='t', long="threads", default_value_t=-1, help="The number of threads to use, passing a value < 1 to use all available threads")]
+    pub threads: i32,
 
     #[arg(
         short = 'g',
@@ -553,8 +651,13 @@ struct MZDeiosotoperArgs {
 
 impl MZDeiosotoperArgs {
     pub fn main(&self) -> io::Result<()> {
+        if self.threads > 0 {
+            log::debug!("Using {} threads", self.threads);
+            rayon::ThreadPoolBuilder::new().num_threads(self.threads as usize).build_global().unwrap();
+        }
+
         if self.input_file == "-" {
-            let buffered = PreBufferedStream::new(io::stdin())?;
+            let buffered = PreBufferedStream::new_with_buffer_size(io::stdin(), 2usize.pow(20))?;
             let reader = MzMLReaderType::<_, CentroidPeak, DeconvolvedSolutionPeak>::new(buffered);
             self.with_reader(reader, None)?;
         } else {
@@ -575,7 +678,7 @@ impl MZDeiosotoperArgs {
     >(
         &self,
         reader: R,
-        spectrum_count: Option<u64>
+        spectrum_count: Option<u64>,
     ) -> io::Result<()> {
         if self.output_file == "-" {
             let outfile = io::stdout();
