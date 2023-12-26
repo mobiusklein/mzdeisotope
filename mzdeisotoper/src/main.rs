@@ -1,3 +1,4 @@
+use std::fmt::Display;
 use std::fs;
 use std::io;
 use std::path;
@@ -6,7 +7,7 @@ use std::sync::mpsc::{channel, Receiver, Sender, TryRecvError};
 use std::thread;
 use std::time::Instant;
 
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use itertools::Itertools;
 use log;
 use pretty_env_logger;
@@ -19,7 +20,7 @@ use mzdeisotope::scorer::{IsotopicFitFilter, IsotopicPatternScorer};
 use mzdata::io::PreBufferedStream;
 use mzdata::io::{
     mzml::{MzMLReaderType, MzMLWriterType},
-    traits::ScanWriter,
+    ScanWriter,
 };
 use mzdata::prelude::*;
 use mzdata::spectrum::{utils::Collator, SignalContinuity, SpectrumGroup};
@@ -27,7 +28,9 @@ use mzdata::Param;
 
 use mzdeisotope::api::{DeconvolutionEngine, PeaksAndTargets};
 use mzdeisotope::isotopic_model::{IsotopicModel, IsotopicModels, IsotopicPatternParams, PROTON};
-use mzdeisotope::scorer::{MSDeconvScorer, MaximizingFitFilter, PenalizedMSDeconvScorer, ScoreType};
+use mzdeisotope::scorer::{
+    MSDeconvScorer, MaximizingFitFilter, PenalizedMSDeconvScorer, ScoreType,
+};
 use mzdeisotope::solution::DeconvolvedSolutionPeak;
 
 use mzpeaks::{CentroidPeak, PeakCollection, Tolerance};
@@ -36,10 +39,12 @@ type SpectrumGroupType = SpectrumGroup<CentroidPeak, DeconvolvedSolutionPeak>;
 type SpectrumGroupCollator = Collator<SpectrumGroupType>;
 type SpectrumType = MultiLayerSpectrum<CentroidPeak, DeconvolvedSolutionPeak>;
 
+#[derive(Debug, Clone, Copy)]
 struct SignalParams {
     pub ms1_averaging: usize,
     pub mz_range: (f64, f64),
     pub interpolation_dx: f64,
+    pub ms1_denoising: f32,
 }
 
 struct DeconvolutionParams<'a, S: IsotopicPatternScorer, F: IsotopicFitFilter> {
@@ -138,7 +143,13 @@ fn prepare_procesing<
                     (ms1_engine.clone(), msn_engine.clone())
                 },
                 |(ms1_engine, msn_engine), (group_idx, group)| {
-                    deconvolution_transform(ms1_engine, msn_engine, group_idx, group)
+                    deconvolution_transform(
+                        ms1_engine,
+                        msn_engine,
+                        &signal_processing_params,
+                        group_idx,
+                        group,
+                    )
                 },
             )
             .map(|(group_idx, group, n_ms1_peaks_local, n_msn_peaks_local)| {
@@ -163,7 +174,13 @@ fn prepare_procesing<
                     (ms1_engine.clone(), msn_engine.clone())
                 },
                 |(ms1_engine, msn_engine), (group_idx, group)| {
-                    deconvolution_transform(ms1_engine, msn_engine, group_idx, group)
+                    deconvolution_transform(
+                        ms1_engine,
+                        msn_engine,
+                        &signal_processing_params,
+                        group_idx,
+                        group,
+                    )
                 },
             )
             .map(|(group_idx, group, n_ms1_peaks_local, n_msn_peaks_local)| {
@@ -200,6 +217,7 @@ fn deconvolution_transform<
 >(
     ms1_engine: &mut DeconvolutionEngine<'_, CentroidPeak, S, F>,
     msn_engine: &mut DeconvolutionEngine<'_, CentroidPeak, SN, FN>,
+    signal_processing_params: &SignalParams,
     group_idx: usize,
     mut group: SpectrumGroupType,
 ) -> (
@@ -226,6 +244,11 @@ fn deconvolution_transform<
                 }
                 SignalContinuity::Centroid => scan.try_build_centroids().unwrap(),
                 SignalContinuity::Profile => {
+                    if signal_processing_params.ms1_denoising > 0.0 {
+                        if let Err(e) = scan.denoise(signal_processing_params.ms1_denoising) {
+                            log::error!("An error occurred while denoising {}: {e}", scan.id());
+                        }
+                    }
                     scan.pick_peaks(1.0, Default::default()).unwrap();
                     scan.description_mut().signal_continuity = SignalContinuity::Centroid;
                     scan.peaks.as_ref().unwrap()
@@ -428,121 +451,217 @@ fn make_default_signal_processing_params() -> SignalParams {
         ms1_averaging: 1,
         mz_range: (80.0, 2200.0),
         interpolation_dx: 0.005,
+        ms1_denoising: 0.0,
+    }
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum ArgIsotopicModels {
+    Peptide,
+    Glycan,
+    Glycopeptide,
+    PermethylatedGlycan,
+    Heparin,
+    HeparanSulfate
+}
+
+impl Into<IsotopicModels> for ArgIsotopicModels {
+    fn into(self) -> IsotopicModels {
+        match self {
+            ArgIsotopicModels::Peptide => IsotopicModels::Peptide,
+            ArgIsotopicModels::Glycan => IsotopicModels::Glycan,
+            ArgIsotopicModels::Glycopeptide => IsotopicModels::Glycopeptide,
+            ArgIsotopicModels::PermethylatedGlycan => IsotopicModels::PermethylatedGlycan,
+            ArgIsotopicModels::Heparin => IsotopicModels::Heparin,
+            ArgIsotopicModels::HeparanSulfate => IsotopicModels::HeparanSulfate,
+        }
+    }
+}
+
+impl Into<IsotopicModel<'static>> for ArgIsotopicModels {
+    fn into(self) -> IsotopicModel<'static> {
+        let m: IsotopicModels = self.into();
+        m.into()
+    }
+}
+
+impl Display for ArgIsotopicModels {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
 #[derive(Parser, Debug)]
 struct MZDeiosotoperArgs {
+    #[arg(help = "The path to read the input spectra from, or if '-' is passed, read from STDIN")]
     pub input_file: String,
 
-    #[arg(short = 'o', long = "output-file", default_value = "-")]
+    #[arg(
+        short = 'o',
+        long = "output-file",
+        default_value = "-",
+        help = "The path to write the output file to, or if '-' is passed, write to STDOUT"
+    )]
     pub output_file: String,
 
-    #[arg(short = 'g', long = "ms1-averaging-range", default_value_t = 0)]
+    #[arg(
+        short = 'g',
+        long = "ms1-averaging-range",
+        default_value_t = 0,
+        help = "The number of MS1 spectra before and after to average with prior to peak picking"
+    )]
     pub ms1_averaging_range: usize,
 
-    #[arg(short = 'a', long = "ms1-isotopic-model", default_value = "peptide")]
-    pub ms1_isotopic_model: String,
+    #[arg(
+        short = 'b',
+        long = "ms1-background-reduction",
+        default_value_t = 0.0,
+        help = "The magnitude of background noise reduction to use on MS1 spectra prior to peak picking"
+    )]
+    pub ms1_denoising: f32,
 
-    #[arg(short = 's', long = "ms1-score-thresold", default_value_t = 10.0)]
+    #[arg(
+        short = 'a',
+        long = "ms1-isotopic-model",
+        default_value = "peptide",
+        help = "The isotopic model to use for MS1 spectra"
+    )]
+    pub ms1_isotopic_model: ArgIsotopicModels,
+
+    #[arg(
+        short = 's',
+        long = "ms1-score-thresold",
+        default_value_t = 10.0,
+        help = "The minimum isotopic pattern fit score for MS1 spectra"
+    )]
     pub ms1_score_threshold: ScoreType,
 
-    #[arg(long = "msn-isotopic-model", default_value = "peptide")]
-    pub msn_isotopic_model: String,
+    #[arg(
+        long = "msn-isotopic-model",
+        default_value = "peptide",
+        help = "The isotopic model to use for MSn spectra"
+    )]
+    pub msn_isotopic_model: ArgIsotopicModels,
 
-    #[arg(long = "msn-score-thresold", default_value_t = 2.0)]
+    #[arg(
+        long = "msn-score-thresold",
+        default_value_t = 2.0,
+        help = "The minimum isotopic pattern fit score for MSn spectra"
+    )]
     pub msn_score_threshold: ScoreType,
 }
 
-fn main_with_reader<
-    R: ScanSource<CentroidPeak, DeconvolvedSolutionPeak, SpectrumType>
-        + MSDataFileMetadata
-        + Send
-        + 'static,
->(
-    args: MZDeiosotoperArgs,
-    reader: R,
-) -> io::Result<()> {
-    if args.output_file == "-" {
-        let outfile = io::stdout();
-        let mut writer = MzMLWriterType::<_, CentroidPeak, DeconvolvedSolutionPeak>::new(outfile);
-        writer.copy_metadata_from(&reader);
-        main_task(args, reader, writer)?;
-    } else {
-        let mut writer = MzMLWriterType::<_, CentroidPeak, DeconvolvedSolutionPeak>::new(
-            io::BufWriter::new(fs::File::create(args.output_file.clone())?),
-        );
-        writer.copy_metadata_from(&reader);
-        main_task(args, reader, writer)?;
-    }
-    Ok(())
-}
-
-fn main_task<
-    R: ScanSource<CentroidPeak, DeconvolvedSolutionPeak, SpectrumType>
-        + MSDataFileMetadata
-        + Send
-        + 'static,
-    W: io::Write + Send + 'static,
->(
-    args: MZDeiosotoperArgs,
-    reader: R,
-    writer: MzMLWriterType<W, CentroidPeak, DeconvolvedSolutionPeak>,
-) -> io::Result<()> {
-    let (send_solved, recv_solved) = channel();
-    let (send_collated, recv_collated) = channel();
-
-    let mut ms1_args = make_default_ms1_deconvolution_params();
-    let mut signal_params = make_default_signal_processing_params();
-    let msn_args = make_default_msn_deconvolution_params();
-
-    ms1_args.fit_filter.threshold = args.ms1_score_threshold;
-    signal_params.ms1_averaging = args.ms1_averaging_range;
-
-    let read_task = thread::spawn(move || {
-        prepare_procesing(reader, ms1_args, msn_args, signal_params, send_solved)
-    });
-
-    let collate_task = thread::spawn(move || collate_results(recv_solved, send_collated));
-
-    let write_task = thread::spawn(move || write_output(writer, recv_collated));
-
-    match read_task.join() {
-        Ok(o) => o?,
-        Err(e) => {
-            log::warn!("Failed to join reader task: {e:?}");
+impl MZDeiosotoperArgs {
+    pub fn main(&self) -> io::Result<()> {
+        if self.input_file == "-" {
+            let buffered = PreBufferedStream::new(io::stdin())?;
+            let reader = MzMLReaderType::<_, CentroidPeak, DeconvolvedSolutionPeak>::new(buffered);
+            self.with_reader(reader, None)?;
+        } else {
+            let reader = MzMLReaderType::<_, CentroidPeak, DeconvolvedSolutionPeak>::open_path(
+                path::PathBuf::from(self.input_file.clone()),
+            )?;
+            let spectrum_count = Some(reader.len() as u64);
+            self.with_reader(reader, spectrum_count)?;
         }
+        Ok(())
     }
 
-    match collate_task.join() {
-        Ok(_) => {}
-        Err(e) => {
-            log::warn!("Failed to join collator task: {e:?}")
+    fn with_reader<
+        R: ScanSource<CentroidPeak, DeconvolvedSolutionPeak, SpectrumType>
+            + MSDataFileMetadata
+            + Send
+            + 'static,
+    >(
+        &self,
+        reader: R,
+        spectrum_count: Option<u64>
+    ) -> io::Result<()> {
+        if self.output_file == "-" {
+            let outfile = io::stdout();
+            let mut writer =
+                MzMLWriterType::<_, CentroidPeak, DeconvolvedSolutionPeak>::new(outfile);
+            writer.copy_metadata_from(&reader);
+            if let Some(spectrum_count) = spectrum_count {
+                writer.set_spectrum_count(spectrum_count);
+            }
+            self.main_task(reader, writer)?;
+        } else {
+            let mut writer = MzMLWriterType::<_, CentroidPeak, DeconvolvedSolutionPeak>::new(
+                io::BufWriter::new(fs::File::create(self.output_file.clone())?),
+            );
+            writer.copy_metadata_from(&reader);
+            if let Some(spectrum_count) = spectrum_count {
+                writer.set_spectrum_count(spectrum_count);
+            }
+            self.main_task(reader, writer)?;
         }
+        Ok(())
     }
 
-    match write_task.join() {
-        Ok(o) => o?,
-        Err(e) => {
-            log::warn!("Failed to join writer task: {e:?}");
+    fn main_task<
+        R: ScanSource<CentroidPeak, DeconvolvedSolutionPeak, SpectrumType>
+            + MSDataFileMetadata
+            + Send
+            + 'static,
+        W: io::Write + Send + 'static,
+    >(
+        &self,
+        reader: R,
+        writer: MzMLWriterType<W, CentroidPeak, DeconvolvedSolutionPeak>,
+    ) -> io::Result<()> {
+        let (send_solved, recv_solved) = channel();
+        let (send_collated, recv_collated) = channel();
+
+        let mut ms1_args = make_default_ms1_deconvolution_params();
+        let mut signal_params = make_default_signal_processing_params();
+        let mut msn_args = make_default_msn_deconvolution_params();
+
+        ms1_args.fit_filter.threshold = self.ms1_score_threshold;
+        ms1_args.isotopic_model = self.ms1_isotopic_model.into();
+
+        msn_args.fit_filter.threshold = self.msn_score_threshold;
+        msn_args.isotopic_model = self.msn_isotopic_model.into();
+
+        signal_params.ms1_averaging = self.ms1_averaging_range;
+        signal_params.ms1_denoising = 0.0;
+
+        let read_task = thread::spawn(move || {
+            prepare_procesing(reader, ms1_args, msn_args, signal_params, send_solved)
+        });
+
+        let collate_task = thread::spawn(move || collate_results(recv_solved, send_collated));
+
+        let write_task = thread::spawn(move || write_output(writer, recv_collated));
+
+        match read_task.join() {
+            Ok(o) => o?,
+            Err(e) => {
+                log::warn!("Failed to join reader task: {e:?}");
+            }
         }
+
+        match collate_task.join() {
+            Ok(_) => {}
+            Err(e) => {
+                log::warn!("Failed to join collator task: {e:?}")
+            }
+        }
+
+        match write_task.join() {
+            Ok(o) => o?,
+            Err(e) => {
+                log::warn!("Failed to join writer task: {e:?}");
+            }
+        }
+        Ok(())
     }
-    Ok(())
 }
 
 fn main() -> io::Result<()> {
     pretty_env_logger::init_timed();
 
     let args = MZDeiosotoperArgs::parse();
-    if args.input_file == "-" {
-        let buffered = PreBufferedStream::new(io::stdin())?;
-        let reader = MzMLReaderType::<_, CentroidPeak, DeconvolvedSolutionPeak>::new(buffered);
-        main_with_reader(args, reader)?;
-    } else {
-        let reader = MzMLReaderType::<_, CentroidPeak, DeconvolvedSolutionPeak>::open_path(
-            path::PathBuf::from(args.input_file.clone()),
-        )?;
-        main_with_reader(args, reader)?;
-    }
+    args.main()?;
     Ok(())
 }

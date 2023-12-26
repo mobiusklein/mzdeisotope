@@ -15,7 +15,7 @@ use chemical_elements::PROTON;
 use itertools::Itertools;
 use mzdata::io::{
     mzml::{MzMLReaderType, MzMLWriterType},
-    traits::ScanWriter,
+    ScanWriter,
 };
 #[allow(unused)]
 use mzdata::prelude::*;

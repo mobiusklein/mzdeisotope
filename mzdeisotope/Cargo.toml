@@ -17,15 +17,14 @@ name = "deisotoper"
 
 num-traits = "0.2"
 
-mzdata = { path = "../../mzdata/", features = ["mzsignal"]}
+mzdata = { path = "../../mzdata/", features = ["mzsignal", "nalgebra"]}
 mzpeaks = { version = "0.8.0" }
 chemical_elements = { path = "../../chemical-elements/", features=['mzpeaks']}
 log = "0.4.20"
 itertools = "0.12.0"
-rayon = "1.8.0"
 
 [dev-dependencies]
 flate2 = "1.0.28"
 env_logger = "*"
 test-log = "0.2.12 "
-rayon = "1.8.0"
+rayon = "1.7.0"

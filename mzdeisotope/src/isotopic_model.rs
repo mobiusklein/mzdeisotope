@@ -446,6 +446,9 @@ pub enum IsotopicModels {
     Peptide,
     Glycan,
     Glycopeptide,
+    PermethylatedGlycan,
+    Heparin,
+    HeparanSulfate
 }
 
 impl From<IsotopicModels> for IsotopicModel<'_> {
@@ -466,6 +469,9 @@ impl From<IsotopicModels> for IsotopicModel<'_> {
                 ("O", 6.4773),
                 ("N", 1.6577),
             ],
+            IsotopicModels::PermethylatedGlycan => vec![("C", 12.0), ("H", 21.8333), ("N", 0.5), ("O", 5.16666)],
+            IsotopicModels::Heparin => vec![("H", 10.5), ("C", 6.0), ("S", 0.5), ("O", 5.5), ("N", 0.5)],
+            IsotopicModels::HeparanSulfate => vec![("H", 10.667), ("C", 6.0), ("S", 1.333), ("O", 9.0), ("N", 0.667)],
         }
         .into()
     }
@@ -478,15 +484,22 @@ impl From<IsotopicModels> for CachingIsotopicModel<'_> {
     }
 }
 
+
+
+/// Strategies for scaling a theoretical isotopic pattern to pair with an experimental
+/// isotopic pattern expected to follow the same distribution.
 #[derive(Debug, Clone, Copy, Default)]
-pub enum TIDScalingMethod {
+pub enum TheoreticalIsotopicDistributionScalingMethod {
     #[default]
+    /// Assume that the sum of all experimental peaks' intensities are contributed by the same isotopic pattern
     Sum,
+    /// Assume the most abundant theoretical peak is the most reliable peak to determine the scaling factor for
+    /// the entire theoretical distribution
     Max,
     Top3,
 }
 
-impl TIDScalingMethod {
+impl TheoreticalIsotopicDistributionScalingMethod {
     pub fn scale<C: CentroidLike>(
         &self,
         experimental: &[C],
@@ -503,12 +516,16 @@ impl TIDScalingMethod {
                     .for_each(|p| p.intensity *= total as f64);
             }
             Self::Max => {
-                let (index, peak) = experimental
-                    .iter()
-                    .enumerate()
-                    .max_by(|a, b| a.1.intensity().partial_cmp(&b.1.intensity()).unwrap())
-                    .unwrap();
-                let scale = peak.intensity() / theoretical[index].intensity();
+                let (index, theo_max) = theoretical.iter().enumerate().max_by(|a, b| {
+                    a.1.intensity().total_cmp(&b.1.intensity())
+                }).and_then(|(i, p)| Some((i, p.intensity()))).unwrap();
+                // let (index, peak) = experimental
+                //     .iter()
+                //     .enumerate()
+                //     .max_by(|a, b| a.1.intensity().partial_cmp(&b.1.intensity()).unwrap())
+                //     .unwrap();
+                // let scale = peak.intensity() / experimental[index].intensity();
+                let scale = experimental[index].intensity() / theo_max;
                 theoretical
                     .iter_mut()
                     .for_each(|p| p.intensity *= scale as f64);

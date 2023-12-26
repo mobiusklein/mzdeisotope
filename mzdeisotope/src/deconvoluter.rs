@@ -8,7 +8,7 @@ use std::ops::Range;
 
 use crate::isotopic_fit::IsotopicFit;
 use crate::isotopic_model::{
-    CachingIsotopicModel, IsotopicPatternGenerator, IsotopicPatternParams, TIDScalingMethod,
+    CachingIsotopicModel, IsotopicPatternGenerator, IsotopicPatternParams, TheoreticalIsotopicDistributionScalingMethod,
 };
 use crate::peak_graph::{DependenceCluster, FitRef, PeakDependenceGraph, SubgraphSolverMethod};
 use crate::peaks::{PeakKey, WorkingPeakSet};
@@ -126,7 +126,7 @@ pub struct DeconvoluterType<
     pub isotopic_model: I,
     pub scorer: S,
     pub fit_filter: F,
-    pub scaling_method: TIDScalingMethod,
+    pub scaling_method: TheoreticalIsotopicDistributionScalingMethod,
     pub max_missed_peaks: u16,
     targets: Vec<TrivialTargetLink>,
     #[cfg(feature="verbose")]
@@ -176,7 +176,7 @@ impl<
             isotopic_model,
             scorer,
             fit_filter,
-            scaling_method: TIDScalingMethod::default(),
+            scaling_method: TheoreticalIsotopicDistributionScalingMethod::default(),
             max_missed_peaks,
             targets: Vec::new(),
             #[cfg(feature="verbose")]
