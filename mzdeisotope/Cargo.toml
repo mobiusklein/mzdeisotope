@@ -17,7 +17,8 @@ name = "deisotoper"
 
 num-traits = "0.2"
 
-mzdata = { version = "0.7.0", features = ["mzsignal", "nalgebra"]}
+# mzdata = { version = "0.7.0", features = ["mzsignal", "nalgebra"]}
+mzdata = { path = "../../mzdata", features = ["mzsignal", "nalgebra"]}
 mzpeaks = { version = "0.8.0" }
 chemical_elements = { version = "0.3.0", features=['mzpeaks']}
 log = "0.4.20"

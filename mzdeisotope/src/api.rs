@@ -1,5 +1,3 @@
-#[cfg(feature = "verbose")]
-use std::fs::File;
 use std::marker::PhantomData;
 use std::mem;
 
@@ -39,6 +37,7 @@ pub fn deconvolute_peaks<
         scorer,
         fit_filter,
         max_missed_peaks,
+        false
     );
 
     let output = deconvoluter.deconvolve(
@@ -94,6 +93,7 @@ pub fn deconvolute_peaks_with_targets<
         scorer,
         fit_filter,
         max_missed_peaks,
+        false,
     );
 
     let links: Vec<_> = targets
@@ -140,12 +140,11 @@ pub struct DeconvolutionEngine<
     F: IsotopicFitFilter,
 > {
     isotopic_params: IsotopicPatternParams,
+    use_quick_charge: bool,
     isotopic_model: Option<CachingIsotopicModel<'lifespan>>,
     scorer: Option<S>,
     fit_filter: Option<F>,
-    peak_type: PhantomData<C>,
-    #[cfg(feature = "verbose")]
-    log: Option<File>,
+    peak_type: PhantomData<C>
 }
 
 impl<
@@ -160,21 +159,16 @@ impl<
         isotopic_model: CachingIsotopicModel<'lifespan>,
         scorer: S,
         fit_filter: F,
+        use_quick_charge: bool
     ) -> Self {
         Self {
             isotopic_params,
             isotopic_model: Some(isotopic_model),
             scorer: Some(scorer),
             fit_filter: Some(fit_filter),
+            use_quick_charge,
             peak_type: PhantomData,
-            #[cfg(feature = "verbose")]
-            log: None,
         }
-    }
-
-    #[cfg(feature = "verbose")]
-    pub fn set_log_file(&mut self, sink: Option<File>) {
-        self.log = sink;
     }
 
     pub fn populate_isotopic_model_cache(
@@ -209,12 +203,8 @@ impl<
                 mem::take(&mut self.scorer).unwrap(),
                 mem::take(&mut self.fit_filter).unwrap(),
                 max_missed_peaks,
+                self.use_quick_charge
             );
-        #[cfg(feature = "verbose")]
-        if self.log.is_some() {
-            let sink = mem::take(&mut self.log).unwrap();
-            deconvoluter.set_log_file(sink)
-        }
         let output = deconvoluter.deconvolve(
             error_tolerance,
             charge_range,
@@ -247,12 +237,8 @@ impl<
                 mem::take(&mut self.scorer).unwrap(),
                 mem::take(&mut self.fit_filter).unwrap(),
                 max_missed_peaks,
+                self.use_quick_charge
             );
-        #[cfg(feature = "verbose")]
-        if self.log.is_some() {
-            let sink = mem::take(&mut self.log).unwrap();
-            deconvoluter.set_log_file(sink)
-        }
         let links: Vec<_> = targets
             .iter()
             .map(|mz| {

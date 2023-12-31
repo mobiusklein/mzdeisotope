@@ -8,7 +8,8 @@ edition = "2021"
 
 [dependencies]
 mzdeisotope = { path = "../mzdeisotope" }
-mzdata = { version = "0.7.0", features = ["mzsignal", "nalgebra"]}
+# mzdata = { version = "0.7.0", features = ["mzsignal", "nalgebra"]}
+mzdata = { path = "../../mzdata", features = ["mzsignal", "nalgebra"]}
 mzpeaks = { version = "0.8.0" }
 log = "0.4.20"
 itertools = "0.12.0"

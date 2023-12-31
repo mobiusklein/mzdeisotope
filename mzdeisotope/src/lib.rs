@@ -8,5 +8,6 @@ pub mod scorer;
 pub mod solution;
 pub mod api;
 
+pub mod multi_model_deconvoluters;
 pub mod deconvoluter;
 pub mod interval;

@@ -47,6 +47,7 @@ fn run_deconvolution(
         model.clone().into(),
         PenalizedMSDeconvScorer::new(0.02, 2.0),
         MaximizingFitFilter::new(10.0),
+        true,
     );
 
     let populate_ms1_cache = thread::spawn(move || {
@@ -59,6 +60,7 @@ fn run_deconvolution(
         model.into(),
         MSDeconvScorer::default(),
         MaximizingFitFilter::new(2.0),
+        true
     );
 
     let populate_msn_cache = thread::spawn(move || {

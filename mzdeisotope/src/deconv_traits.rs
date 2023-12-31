@@ -7,16 +7,14 @@ use chemical_elements::neutral_mass;
 use mzpeaks::peak::MZPoint;
 use mzpeaks::{CentroidLike, MZLocated, MassPeakSetType, Tolerance};
 
-use crate::charge::{ChargeIterator, ChargeRange, ChargeRangeIter};
+use crate::charge::{ChargeIterator, ChargeListIter, ChargeRange, ChargeRangeIter};
 use crate::isotopic_fit::IsotopicFit;
 use crate::isotopic_model::{isotopic_shift, IsotopicPatternParams, PROTON};
 use crate::peaks::PeakKey;
 use crate::scorer::ScoreType;
 use crate::solution::DeconvolvedSolutionPeak;
 
-
 pub type QuerySet = HashSet<(PeakKey, i32)>;
-
 
 pub trait IsotopicPatternFitter<C: CentroidLike> {
     fn collect_for(&self, keys: &[PeakKey]) -> Vec<&C>;
@@ -127,7 +125,7 @@ pub trait IsotopicPatternFitter<C: CentroidLike> {
                 } else {
                     a.neutral_mass.total_cmp(&b.neutral_mass)
                 }
-            },
+            }
             x => x,
         });
 
@@ -273,8 +271,9 @@ pub trait ExhaustivePeakSearch<C: CentroidLike>:
                         &fit,
                         &experimental,
                         isotopic_params,
-                        incremental_truncation
-                    ).into_iter()
+                        incremental_truncation,
+                    )
+                    .into_iter(),
                 )
             }
             if self.check_isotopic_fit(&fit) {
@@ -345,20 +344,19 @@ pub trait ExhaustivePeakSearch<C: CentroidLike>:
         solutions
     }
 
-    fn find_all_peak_charge_pairs(
+    fn find_all_peak_charge_pairs<I: ChargeIterator>(
         &mut self,
         mz: f64,
         error_tolerance: Tolerance,
-        charge_range: ChargeRange,
+        charge_range: I,
         left_search_limit: i8,
         right_search_limit: i8,
         recalculate_starting_peak: bool,
     ) -> QuerySet {
-        let charge_iter = ChargeRangeIter::from(charge_range);
         self._find_all_peak_charge_pairs_iter(
             mz,
             error_tolerance,
-            charge_iter,
+            charge_range,
             left_search_limit,
             right_search_limit,
             recalculate_starting_peak,
@@ -366,8 +364,14 @@ pub trait ExhaustivePeakSearch<C: CentroidLike>:
     }
 
     fn skip_peak(&self, peak: &C) -> bool {
-        peak.mz() <= 0.0 || peak.intensity() < Self::MINIMUM_INTENSITY || (peak.intensity() - Self::MINIMUM_INTENSITY).abs() <= 1e-3
+        peak.mz() <= 0.0
+            || peak.intensity() < Self::MINIMUM_INTENSITY
+            || (peak.intensity() - Self::MINIMUM_INTENSITY).abs() <= 1e-3
     }
+
+    fn use_quick_charge(&self) -> bool;
+
+    fn quick_charge(&self, index: usize, charge_range: ChargeRange) -> ChargeListIter;
 
     fn step_deconvolve(
         &mut self,
@@ -388,14 +392,26 @@ pub trait ExhaustivePeakSearch<C: CentroidLike>:
                 continue;
             }
             let mz = peak.mz();
-            let peak_charge_set = self.find_all_peak_charge_pairs(
-                mz,
-                error_tolerance,
-                charge_range,
-                left_search_limit,
-                right_search_limit,
-                true,
-            );
+            let peak_charge_set = if self.use_quick_charge() {
+                let charge_iter = self.quick_charge(i, charge_range);
+                self.find_all_peak_charge_pairs(
+                    mz,
+                    error_tolerance,
+                    charge_iter,
+                    left_search_limit,
+                    right_search_limit,
+                    true,
+                )
+            } else {
+                self.find_all_peak_charge_pairs(
+                    mz,
+                    error_tolerance,
+                    ChargeRangeIter::from(charge_range),
+                    left_search_limit,
+                    right_search_limit,
+                    true,
+                )
+            };
             let fits = self.fit_peaks_at_charge(peak_charge_set, error_tolerance, isotopic_params);
             solutions.extend(fits);
         }
@@ -408,11 +424,11 @@ pub trait GraphDependentSearch<C: CentroidLike>: ExhaustivePeakSearch<C> {
 
     fn select_best_disjoint_subgraphs(&mut self, fit_accumulator: &mut Vec<IsotopicFit>);
 
-    fn _explore_local(
+    fn _explore_local<I: ChargeIterator>(
         &mut self,
         peak: PeakKey,
         error_tolerance: Tolerance,
-        charge_range: ChargeRange,
+        charge_range: I,
         left_search_limit: i8,
         right_search_limit: i8,
         isotopic_params: IsotopicPatternParams,
@@ -458,15 +474,26 @@ pub trait GraphDependentSearch<C: CentroidLike>: ExhaustivePeakSearch<C> {
         (0..n)
             .rev()
             .map(|i| {
-                // let peak = self.get_peak();
-                self._explore_local(
-                    PeakKey::Matched(i as u32),
-                    error_tolerance,
-                    charge_range,
-                    left_search_limit,
-                    right_search_limit,
-                    isotopic_params,
-                )
+                if self.use_quick_charge() {
+                    let charge_list = self.quick_charge(i, charge_range);
+                    self._explore_local(
+                        PeakKey::Matched(i as u32),
+                        error_tolerance,
+                        charge_list,
+                        left_search_limit,
+                        right_search_limit,
+                        isotopic_params,
+                    )
+                } else {
+                    self._explore_local(
+                        PeakKey::Matched(i as u32),
+                        error_tolerance,
+                        ChargeRangeIter::from(charge_range),
+                        left_search_limit,
+                        right_search_limit,
+                        isotopic_params,
+                    )
+                }
             })
             .sum()
     }

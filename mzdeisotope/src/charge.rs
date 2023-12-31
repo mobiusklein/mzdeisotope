@@ -3,7 +3,6 @@ use std::cmp;
 
 pub type ChargeRange = (i32, i32);
 
-
 pub trait ChargeIterator: Iterator<Item = i32> {}
 
 #[derive(Debug, Clone)]
@@ -60,7 +59,7 @@ impl ChargeIterator for ChargeRangeIter {}
 pub fn quick_charge<C: CentroidLike, const N: usize>(
     peaks: &[C],
     position: usize,
-    charge_range: ChargeRange
+    charge_range: ChargeRange,
 ) -> ChargeListIter {
     let (min_charge, max_charge) = charge_range;
     let mut charges = [false; N];
@@ -84,16 +83,16 @@ pub fn quick_charge<C: CentroidLike, const N: usize>(
         if charge < min_charge || charge > max_charge {
             continue;
         }
-        if !charges[charge as usize] {
+        if !charges[(charge - 1) as usize] {
             result_size += 1;
         }
-        charges[charge as usize] = true;
+        charges[(charge - 1) as usize] = true;
     }
 
     let mut result = Vec::with_capacity(result_size);
     charges.iter().enumerate().for_each(|(j, hit)| {
         if *hit {
-            result.push(j as i32)
+            result.push((j + 1) as i32)
         }
     });
     result.into()
@@ -137,19 +136,95 @@ impl From<Vec<i32>> for ChargeListIter {
     }
 }
 
+pub fn quick_charge_w<C: CentroidLike>(
+    peaks: &[C],
+    position: usize,
+    charge_range: ChargeRange,
+) -> ChargeListIter {
+    match charge_range.1 {
+        4 => quick_charge::<C, 4>(peaks, position, charge_range),
+        5 => quick_charge::<C, 5>(peaks, position, charge_range),
+        6 => quick_charge::<C, 6>(peaks, position, charge_range),
+        7 => quick_charge::<C, 7>(peaks, position, charge_range),
+        8 => quick_charge::<C, 8>(peaks, position, charge_range),
+        9 => quick_charge::<C, 9>(peaks, position, charge_range),
+        10 => quick_charge::<C, 10>(peaks, position, charge_range),
+        11 => quick_charge::<C, 11>(peaks, position, charge_range),
+        12 => quick_charge::<C, 12>(peaks, position, charge_range),
+        13 => quick_charge::<C, 13>(peaks, position, charge_range),
+        14 => quick_charge::<C, 14>(peaks, position, charge_range),
+        15 => quick_charge::<C, 15>(peaks, position, charge_range),
+        16 => quick_charge::<C, 16>(peaks, position, charge_range),
+        _ => quick_charge::<C, 128>(peaks, position, charge_range),
+    }
+}
 
 #[derive(Debug, Clone, Copy, Default)]
 pub enum ChargeStrategy {
     #[default]
     ChargeRange,
-    QuickCharge
+    QuickCharge,
 }
 
 impl ChargeStrategy {
-    pub fn for_peak<C: CentroidLike>(&self, peaks: &[C], position: usize, charge_range: ChargeRange) -> Box<dyn ChargeIterator> {
+    pub fn for_peak<C: CentroidLike>(
+        &self,
+        peaks: &[C],
+        position: usize,
+        charge_range: ChargeRange,
+    ) -> Box<dyn ChargeIterator> {
         match self {
-            ChargeStrategy::ChargeRange => Box::from(ChargeRangeIter::new(charge_range.0, charge_range.1)),
-            ChargeStrategy::QuickCharge => Box::from(quick_charge::<C, 128>(peaks, position, charge_range)),
+            ChargeStrategy::ChargeRange => {
+                Box::from(ChargeRangeIter::new(charge_range.0, charge_range.1))
+            }
+            ChargeStrategy::QuickCharge => Box::new(quick_charge_w(peaks, position, charge_range)),
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use std::fs;
+    use std::io;
+    use std::io::BufRead;
+
+    use flate2::bufread::GzDecoder;
+
+    use mzdata::MzMLReader;
+
+    use super::*;
+
+    #[test]
+    fn test_quick_charge() -> io::Result<()> {
+        let decoder = GzDecoder::new(io::BufReader::new(fs::File::open(
+            "./tests/data/20150710_3um_AGP_001_29_30.mzML.gz",
+        )?));
+
+        let mut fh = io::BufReader::new(fs::File::open("./tests/data/charges.txt")?);
+        let mut line = String::new();
+        let mut reader = MzMLReader::new(decoder);
+        let scan = reader.next().unwrap();
+        let centroided = scan.into_centroid().unwrap();
+
+        let peaks = &centroided.peaks[0..];
+
+        for i in 0..peaks.len() {
+            let charge_list: Vec<_> = quick_charge_w(peaks, i, (1, 8)).collect();
+            line.clear();
+            fh.read_line(&mut line)?;
+            if line == "\n" {
+                assert_eq!(charge_list, Vec::<i32>::new());
+            } else {
+                let expected: Vec<_> = line
+                    .strip_suffix("\n")
+                    .unwrap()
+                    .split(',')
+                    .map(|t| t.parse::<i32>().unwrap())
+                    .collect();
+                assert_eq!(charge_list, expected);
+            }
+        }
+
+        Ok(())
     }
 }

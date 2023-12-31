@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::hash;
 use std::ops::{Range, Index};
 
+use crate::charge::{quick_charge_w, ChargeListIter, ChargeRange};
 use crate::isotopic_fit::IsotopicFit;
 
 
@@ -238,6 +239,10 @@ impl<C: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut> Wor
                 None => {},
             }
         });
+    }
+
+    pub fn quick_charge(&self, position: usize, charge_range: ChargeRange) -> ChargeListIter {
+        quick_charge_w(&self.peaks[0..], position, charge_range)
     }
 }
 

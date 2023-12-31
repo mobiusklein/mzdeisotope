@@ -1,11 +1,7 @@
 use std::collections::{HashMap, HashSet};
-
-#[cfg(feature="verbose")]
-use std::fs::File;
-#[cfg(feature="verbose")]
-use std::io::{self, BufWriter, Write};
 use std::ops::Range;
 
+use crate::charge::ChargeRangeIter;
 use crate::isotopic_fit::IsotopicFit;
 use crate::isotopic_model::{
     CachingIsotopicModel, IsotopicPatternGenerator, IsotopicPatternParams, TheoreticalIsotopicDistributionScalingMethod,
@@ -18,7 +14,7 @@ use crate::scorer::{
 
 use crate::deconv_traits::{
     ExhaustivePeakSearch, GraphDependentSearch, IsotopicDeconvolutionAlgorithm,
-    IsotopicPatternFitter, RelativePeakSearch, TargetedDeconvolution,
+    IsotopicPatternFitter, RelativePeakSearch, TargetedDeconvolution
 };
 use crate::solution::DeconvolvedSolutionPeak;
 
@@ -50,6 +46,7 @@ pub struct DeconvoluterBuilder<
     scorer: Option<S>,
     isotopic_model: Option<I>,
     peaks: Option<MZPeakSetType<C>>,
+    use_quick_charge: bool
 }
 
 impl<
@@ -66,6 +63,7 @@ impl<
             isotopic_model: None,
             fit_filter: None,
             peaks: None,
+            use_quick_charge: false,
         }
     }
 
@@ -94,6 +92,11 @@ impl<
         self
     }
 
+    pub fn use_quick_charge(mut self, value: bool) -> Self {
+        self.use_quick_charge = value;
+        self
+    }
+
     pub fn create(self) -> DeconvoluterType<C, I, S, F> {
         DeconvoluterType::new(
             self.peaks.unwrap(),
@@ -101,6 +104,7 @@ impl<
             self.scorer.unwrap(),
             self.fit_filter.unwrap(),
             self.max_missed_peaks.unwrap(),
+            self.use_quick_charge
         )
     }
 
@@ -111,6 +115,7 @@ impl<
             self.scorer.unwrap(),
             self.fit_filter.unwrap(),
             self.max_missed_peaks.unwrap(),
+            self.use_quick_charge
         )
     }
 }
@@ -128,9 +133,8 @@ pub struct DeconvoluterType<
     pub fit_filter: F,
     pub scaling_method: TheoreticalIsotopicDistributionScalingMethod,
     pub max_missed_peaks: u16,
-    targets: Vec<TrivialTargetLink>,
-    #[cfg(feature="verbose")]
-    log: Option<BufWriter<File>>,
+    pub use_quick_charge: bool,
+    targets: Vec<TrivialTargetLink>
 }
 
 impl<
@@ -155,6 +159,17 @@ impl<
         }
         self.fit_filter.test(fit)
     }
+
+    fn quick_charge(&self, index: usize, charge_range: crate::charge::ChargeRange) -> crate::charge::ChargeListIter {
+        self.peaks.quick_charge(index, charge_range)
+    }
+
+    #[inline(always)]
+    fn use_quick_charge(&self) -> bool {
+        self.use_quick_charge
+    }
+
+
 }
 
 impl<
@@ -170,6 +185,7 @@ impl<
         scorer: S,
         fit_filter: F,
         max_missed_peaks: u16,
+        use_quick_charge: bool
     ) -> Self {
         Self {
             peaks: WorkingPeakSet::new(peaks),
@@ -179,21 +195,7 @@ impl<
             scaling_method: TheoreticalIsotopicDistributionScalingMethod::default(),
             max_missed_peaks,
             targets: Vec::new(),
-            #[cfg(feature="verbose")]
-            log: None,
-        }
-    }
-
-    #[cfg(feature="verbose")]
-    pub(crate) fn set_log_file(&mut self, sink: File) {
-        self.log = Some(BufWriter::new(sink));
-    }
-
-    #[cfg(feature="verbose")]
-    pub(crate) fn write_log(&mut self, message: &str) -> io::Result<()> {
-        match self.log.as_mut() {
-            Some(sink) => sink.write_all(message.as_bytes()),
-            None => Ok(()),
+            use_quick_charge
         }
     }
 
@@ -240,12 +242,6 @@ impl<
         self.scaling_method.scale(&exp, &mut tid);
         let score = self.score_isotopic_fit(exp.as_slice(), &tid);
         let fit = IsotopicFit::new(keys, peak, tid, charge, score, missed_peaks as u16);
-        #[cfg(feature="verbose")]
-        self.write_log(&format!(
-            "fit\t{:?}\t{}\t{}\t{}\t{}\t{}\n",
-            peak, mz, charge, score, fit.theoretical, fit.theoretical.origin
-        ))
-        .unwrap();
         fit
     }
 
@@ -367,10 +363,10 @@ impl<
     ) -> Self::TargetSolution {
         let mz = self.peaks.get(&peak).mz();
 
-        let peak_charge_set = self.find_all_peak_charge_pairs(
+        let peak_charge_set = self.find_all_peak_charge_pairs::<ChargeRangeIter>(
             mz,
             error_tolerance,
-            charge_range,
+            charge_range.into(),
             left_search_limit,
             right_search_limit,
             true,
@@ -499,9 +495,10 @@ impl<
         scorer: S,
         fit_filter: F,
         max_missed_peaks: u16,
+        use_quick_charge: bool
     ) -> Self {
         let inner =
-            DeconvoluterType::new(peaks, isotopic_model, scorer, fit_filter, max_missed_peaks);
+            DeconvoluterType::new(peaks, isotopic_model, scorer, fit_filter, max_missed_peaks, use_quick_charge);
         let peak_graph = PeakDependenceGraph::new(inner.scorer.interpretation());
 
         Self {
@@ -509,16 +506,6 @@ impl<
             peak_graph,
             solutions: Vec::new(),
         }
-    }
-
-    #[cfg(feature="verbose")]
-    pub(crate) fn set_log_file(&mut self, sink: File) {
-        self.inner.set_log_file(sink);
-    }
-
-    #[cfg(feature="verbose")]
-    pub(crate) fn write_log(&mut self, message: &str) -> io::Result<()> {
-        self.inner.write_log(message)
     }
 
     pub fn populate_isotopic_model_cache(
@@ -563,16 +550,6 @@ impl<
                 .unwrap_or_else(|| {
                     panic!("Failed to locate a solution {:?}", best_fit_key);
                 });
-            #[cfg(feature="verbose")]
-            self.write_log(&format!(
-                "selected\t{:?}\t{:?}\t{}\t{}\t{}\n",
-                fit.seed_peak,
-                fit.experimental.first(),
-                fit.charge,
-                fit.score,
-                fit.theoretical
-            ))
-            .unwrap();
             peak_accumulator.push(fit)
         }
     }
@@ -685,6 +662,15 @@ impl<
     fn check_isotopic_fit(&self, fit: &IsotopicFit) -> bool {
         self.inner.check_isotopic_fit(fit)
     }
+
+    fn quick_charge(&self, index: usize, charge_range: crate::charge::ChargeRange) -> crate::charge::ChargeListIter {
+        self.inner.quick_charge(index, charge_range)
+    }
+
+    #[inline(always)]
+    fn use_quick_charge(&self) -> bool {
+        self.inner.use_quick_charge()
+    }
 }
 
 impl<
@@ -729,10 +715,10 @@ impl<
         right_search_limit: i8,
         params: IsotopicPatternParams,
     ) -> Self::TargetSolution {
-        self._explore_local(
+        self._explore_local::<ChargeRangeIter>(
             peak,
             error_tolerance,
-            charge_range,
+            charge_range.into(),
             left_search_limit,
             right_search_limit,
             params,
@@ -902,6 +888,7 @@ mod test {
     use mzpeaks::prelude::*;
 
     use crate::isotopic_model::IsotopicModels;
+    use crate::isotopic_model::PROTON;
     use crate::scorer::MSDeconvScorer;
 
     use super::*;
@@ -919,6 +906,7 @@ mod test {
             MSDeconvScorer::default(),
             MaximizingFitFilter::default(),
             1,
+            false,
         );
         let p = PeakKey::Matched(0);
         let tol = Tolerance::PPM(10.0);
@@ -941,9 +929,10 @@ mod test {
             MSDeconvScorer::default(),
             MaximizingFitFilter::default(),
             1,
+            false
         );
         let solution_space =
-            task.find_all_peak_charge_pairs(300.0, Tolerance::PPM(10.0), (1, 8), 1, 1, true);
+            task.find_all_peak_charge_pairs::<ChargeRangeIter>(300.0, Tolerance::PPM(10.0), (1, 8).into(), 1, 1, true);
         assert_eq!(solution_space.len(), 8);
         let n_matched = solution_space
             .iter()
@@ -972,6 +961,7 @@ mod test {
             MSDeconvScorer::default(),
             MaximizingFitFilter::new(10.0),
             3,
+            false
         );
 
         let fits = deconvoluter.graph_step_deconvolve(
@@ -1010,6 +1000,7 @@ mod test {
             MSDeconvScorer::default(),
             MaximizingFitFilter::new(10.0),
             3,
+            false
         );
 
         let isotopic_params = IsotopicPatternParams::default();
@@ -1048,6 +1039,61 @@ mod test {
     }
 
     #[test_log::test]
+    fn test_full_process_quick_charge() -> io::Result<()> {
+        let decoder = GzDecoder::new(io::BufReader::new(fs::File::open(
+            "./tests/data/20150710_3um_AGP_001_29_30.mzML.gz",
+        )?));
+        let mut reader = MzMLReader::new(decoder);
+        let scan = reader.next().unwrap();
+        let centroided = scan.into_centroid().unwrap();
+
+        let mut deconvoluter = GraphAveragineDeconvoluter::new(
+            centroided.peaks,
+            IsotopicModels::Glycopeptide.into(),
+            MSDeconvScorer::default(),
+            MaximizingFitFilter::new(10.0),
+            3,
+            true
+        );
+
+        // If the cache is not populated, this test is not stable
+        deconvoluter.populate_isotopic_model_cache(80.0, 3000.0, 1, 8, PROTON, 0.95, 0.001);
+
+        let isotopic_params = IsotopicPatternParams::default();
+        let dpeaks = deconvoluter.deconvolve(
+            Tolerance::PPM(10.0),
+            (1, 8),
+            1,
+            1,
+            isotopic_params,
+            1e-3,
+            10,
+        );
+
+        let best_fit = dpeaks
+            .iter()
+            .max_by(|a, b| a.score.partial_cmp(&b.score).unwrap())
+            .unwrap();
+        assert_eq!(best_fit.charge, 4);
+        assert!(
+            (best_fit.score - 3127.3096).abs() < 1e-3,
+            "{}",
+            best_fit.score
+        );
+
+        let expected_intensity = 1770645.3;
+        assert!(
+            (best_fit.intensity - expected_intensity).abs() < 1e-6,
+            "Expected intensity {expected_intensity}, got {} delta {}",
+            best_fit.intensity,
+            best_fit.intensity - expected_intensity
+        );
+        eprintln!("intensity {}", best_fit.intensity);
+        assert_eq!(dpeaks.len(), 332);
+        Ok(())
+    }
+
+    #[test_log::test]
     fn test_file_step() -> io::Result<()> {
         let decoder = GzDecoder::new(io::BufReader::new(fs::File::open(
             "./tests/data/20150710_3um_AGP_001_29_30.mzML.gz",
@@ -1063,6 +1109,7 @@ mod test {
             MSDeconvScorer::default(),
             MaximizingFitFilter::new(0.0),
             3,
+            false
         );
         let isotopic_params = IsotopicPatternParams::default();
         deconvoluter.isotopic_model.populate_cache(
@@ -1078,10 +1125,10 @@ mod test {
         let (total_combos, total_fits, total_missed) = mzs
             .iter()
             .map(|mz| {
-                let combos = deconvoluter.find_all_peak_charge_pairs(
+                let combos = deconvoluter.find_all_peak_charge_pairs::<ChargeRangeIter>(
                     *mz,
                     Tolerance::PPM(10.0),
-                    (1, 8),
+                    (1, 8).into(),
                     1,
                     1,
                     true,
@@ -1108,10 +1155,10 @@ mod test {
         let (total_combos2, total_fits2, total_missed2) = mzs
             .iter()
             .map(|mz| {
-                let combos = deconvoluter.find_all_peak_charge_pairs(
+                let combos = deconvoluter.find_all_peak_charge_pairs::<ChargeRangeIter>(
                     *mz,
                     Tolerance::PPM(10.0),
-                    (1, 8),
+                    (1, 8).into(),
                     1,
                     1,
                     true,
