@@ -40,8 +40,8 @@ use crate::args::{
     make_default_signal_processing_params, ArgIsotopicModels, DeconvolutionBuilderParams,
     DeconvolutionParams, SignalParams,
 };
-use crate::time_range::TimeRange;
 use crate::progress::ProgressRecord;
+use crate::time_range::TimeRange;
 
 type SpectrumGroupType = SpectrumGroup<CentroidPeak, DeconvolvedSolutionPeak>;
 type SpectrumGroupCollator = Collator<SpectrumGroupType>;
@@ -260,13 +260,15 @@ fn deconvolution_transform<
             let PeaksAndTargets {
                 deconvoluted_peaks,
                 targets,
-            } = ms1_engine.deconvolute_peaks_with_targets(
-                peaks.clone(),
-                Tolerance::PPM(20.0),
-                ms1_deconv_params.charge_range,
-                ms1_deconv_params.max_missed_peaks,
-                &precursor_mz,
-            );
+            } = ms1_engine
+                .deconvolute_peaks_with_targets(
+                    peaks.clone(),
+                    Tolerance::PPM(20.0),
+                    ms1_deconv_params.charge_range,
+                    ms1_deconv_params.max_missed_peaks,
+                    &precursor_mz,
+                )
+                .unwrap();
             prog.ms1_peaks = deconvoluted_peaks.len();
             prog.ms1_spectra += 1;
             scan.deconvoluted_peaks = Some(deconvoluted_peaks);
@@ -305,12 +307,14 @@ fn deconvolution_transform<
             }
         };
 
-        let deconvoluted_peaks = msn_engine.deconvolute_peaks(
-            peaks.clone(),
-            Tolerance::PPM(20.0),
-            msn_charge_range,
-            msn_deconv_params.max_missed_peaks,
-        );
+        let deconvoluted_peaks = msn_engine
+            .deconvolute_peaks(
+                peaks.clone(),
+                Tolerance::PPM(20.0),
+                msn_charge_range,
+                msn_deconv_params.max_missed_peaks,
+            )
+            .unwrap();
         prog.msn_peaks += deconvoluted_peaks.len();
         prog.msn_spectra += 1;
         scan.deconvoluted_peaks = Some(deconvoluted_peaks);
@@ -478,13 +482,14 @@ struct MZDeiosotoperArgs {
 
     #[arg(
         short = 's',
-        long = "ms1-score-thresold",
+        long = "ms1-score-threshold",
         default_value_t = 10.0,
         help = "The minimum isotopic pattern fit score for MS1 spectra"
     )]
     pub ms1_score_threshold: ScoreType,
 
     #[arg(
+        short = 'A',
         long = "msn-isotopic-model",
         default_value = "peptide",
         help = "The isotopic model to use for MSn spectra"
@@ -492,7 +497,8 @@ struct MZDeiosotoperArgs {
     pub msn_isotopic_model: ArgIsotopicModels,
 
     #[arg(
-        long = "msn-score-thresold",
+        short = 'S',
+        long = "msn-score-threshold",
         default_value_t = 2.0,
         help = "The minimum isotopic pattern fit score for MSn spectra"
     )]
@@ -509,22 +515,26 @@ impl MZDeiosotoperArgs {
                 .unwrap();
         }
 
+        self.reader_then()
+    }
+
+    fn reader_then(&self) -> io::Result<()> {
         if self.input_file == "-" {
             let buffered = PreBufferedStream::new_with_buffer_size(io::stdin(), 2usize.pow(20))?;
             let reader = MzMLReaderType::<_, CentroidPeak, DeconvolvedSolutionPeak>::new(buffered);
             let spectrum_count_hint = reader.spectrum_count_hint();
-            self.with_reader(reader, spectrum_count_hint)?;
+            self.writer_then(reader, spectrum_count_hint)?;
         } else {
             let reader = MzMLReaderType::<_, CentroidPeak, DeconvolvedSolutionPeak>::open_path(
                 path::PathBuf::from(self.input_file.clone()),
             )?;
             let spectrum_count = Some(reader.len() as u64);
-            self.with_reader(reader, spectrum_count)?;
+            self.writer_then(reader, spectrum_count)?;
         }
         Ok(())
     }
 
-    fn with_reader<
+    fn writer_then<
         R: RandomAccessSpectrumIterator<CentroidPeak, DeconvolvedSolutionPeak, SpectrumType>
             + MSDataFileMetadata
             + Send
@@ -542,7 +552,7 @@ impl MZDeiosotoperArgs {
             if let Some(spectrum_count) = spectrum_count {
                 writer.set_spectrum_count(spectrum_count);
             }
-            self.main_task(reader, writer)?;
+            self.run_workflow(reader, writer)?;
         } else {
             let mut writer = MzMLWriterType::<_, CentroidPeak, DeconvolvedSolutionPeak>::new(
                 io::BufWriter::new(fs::File::create(self.output_file.clone())?),
@@ -551,12 +561,12 @@ impl MZDeiosotoperArgs {
             if let Some(spectrum_count) = spectrum_count {
                 writer.set_spectrum_count(spectrum_count);
             }
-            self.main_task(reader, writer)?;
+            self.run_workflow(reader, writer)?;
         }
         Ok(())
     }
 
-    fn main_task<
+    fn run_workflow<
         R: RandomAccessSpectrumIterator<CentroidPeak, DeconvolvedSolutionPeak, SpectrumType>
             + MSDataFileMetadata
             + Send

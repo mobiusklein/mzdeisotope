@@ -10,11 +10,18 @@ use mzpeaks::{CentroidLike, MZLocated, MassPeakSetType, Tolerance};
 use crate::charge::{ChargeIterator, ChargeListIter, ChargeRange, ChargeRangeIter};
 use crate::isotopic_fit::IsotopicFit;
 use crate::isotopic_model::{isotopic_shift, IsotopicPatternParams, PROTON};
+use crate::peak_graph::FitRef;
 use crate::peaks::PeakKey;
 use crate::scorer::ScoreType;
 use crate::solution::DeconvolvedSolutionPeak;
 
 pub type QuerySet = HashSet<(PeakKey, i32)>;
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum DeconvolutionError {
+    FailedToResolveSolution,
+    FailedToResolveFit(FitRef)
+}
 
 pub trait IsotopicPatternFitter<C: CentroidLike> {
     fn collect_for(&self, keys: &[PeakKey]) -> Vec<&C>;
@@ -422,7 +429,7 @@ pub trait ExhaustivePeakSearch<C: CentroidLike>:
 pub trait GraphDependentSearch<C: CentroidLike>: ExhaustivePeakSearch<C> {
     fn add_fit_dependence(&mut self, fit: IsotopicFit);
 
-    fn select_best_disjoint_subgraphs(&mut self, fit_accumulator: &mut Vec<IsotopicFit>);
+    fn select_best_disjoint_subgraphs(&mut self, fit_accumulator: &mut Vec<IsotopicFit>) -> Result<(), DeconvolutionError>;
 
     fn _explore_local<I: ChargeIterator>(
         &mut self,
@@ -505,7 +512,7 @@ pub trait GraphDependentSearch<C: CentroidLike>: ExhaustivePeakSearch<C> {
         left_search_limit: i8,
         right_search_limit: i8,
         isotopic_params: IsotopicPatternParams,
-    ) -> Vec<IsotopicFit> {
+    ) -> Result<Vec<IsotopicFit>, DeconvolutionError> {
         let mut fit_accumulator = Vec::new();
         self.populate_graph(
             error_tolerance,
@@ -514,8 +521,8 @@ pub trait GraphDependentSearch<C: CentroidLike>: ExhaustivePeakSearch<C> {
             right_search_limit,
             isotopic_params,
         );
-        self.select_best_disjoint_subgraphs(&mut fit_accumulator);
-        fit_accumulator
+        self.select_best_disjoint_subgraphs(&mut fit_accumulator)?;
+        Ok(fit_accumulator)
     }
 }
 
@@ -551,5 +558,5 @@ pub trait IsotopicDeconvolutionAlgorithm<C: CentroidLike> {
         isotopic_params: IsotopicPatternParams,
         convergence: f32,
         max_iterations: u32,
-    ) -> MassPeakSetType<DeconvolvedSolutionPeak>;
+    ) -> Result<MassPeakSetType<DeconvolvedSolutionPeak>, DeconvolutionError>;
 }

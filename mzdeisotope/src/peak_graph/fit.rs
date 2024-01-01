@@ -8,7 +8,7 @@ use crate::isotopic_fit::IsotopicFit;
 use crate::peaks::PeakKey;
 use crate::scorer::ScoreType;
 
-use super::cluster::{DependenceCluster, SubgraphSelection, SubgraphSolverMethod};
+use super::cluster::{DependenceCluster, SubgraphSelection, SubgraphSolverMethod, SubgraphSolution};
 use super::graph::FitEvictionReason;
 
 #[derive(Debug, Default, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
@@ -213,14 +213,23 @@ impl FitGraph {
         clusters: Vec<DependenceCluster>,
     ) -> Vec<(DependenceCluster, Vec<FitNode>)> {
         let mut result = Vec::with_capacity(clusters.len());
-        for cluster in clusters {
-            let nodes: Vec<FitNode> = cluster
-                .dependencies
-                .iter()
-                .filter_map(|f| self.fit_nodes.remove(&f.key))
-                .collect();
-            result.push((cluster, nodes));
-        }
+
+        clusters.into_iter().for_each(|mut cluster| {
+            let mut deps = Vec::new();
+            let mut nodes = Vec::new();
+            cluster.dependencies.into_iter().for_each(|f| {
+                if let Some(node) = self.fit_nodes.remove(&f.key) {
+                    deps.push(f);
+                    nodes.push(node)
+                } else {
+                    log::warn!("Failed to find a node for fit {f:?}");
+                }
+            });
+            cluster.dependencies = deps;
+            if nodes.len() > 0 {
+                result.push((cluster, nodes))
+            }
+        });
         result
     }
 
@@ -228,16 +237,18 @@ impl FitGraph {
         &mut self,
         clusters: Vec<DependenceCluster>,
         method: SubgraphSolverMethod,
-    ) -> Vec<(DependenceCluster, Vec<FitRef>)> {
+    ) -> Vec<(DependenceCluster, SubgraphSolution)> {
         let n = clusters.len();
         let clusters_and_nodes = self.split_nodes(clusters);
 
         let mut solutions = Vec::with_capacity(n);
 
-        for (cluster, nodes) in clusters_and_nodes {
+        for (mut cluster, nodes) in clusters_and_nodes {
             let subgraph = SubgraphSelection::from_nodes(nodes, cluster.score_ordering);
 
             let (solution, mut nodes) = subgraph.solve(method);
+            // Prevent dependencies that are omitted from solution from being considered
+            cluster.dependencies = cluster.dependencies.into_iter().filter(|f| solution.contains(f)).collect();
             // Re-absorb solved sub-graph
             self.fit_nodes.extend(nodes.drain());
             solutions.push((cluster, solution));

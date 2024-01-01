@@ -15,7 +15,7 @@ use crate::scorer::{
 
 use crate::deconv_traits::{
     ExhaustivePeakSearch, GraphDependentSearch, IsotopicDeconvolutionAlgorithm,
-    IsotopicPatternFitter, RelativePeakSearch, TargetedDeconvolution, QuerySet,
+    IsotopicPatternFitter, RelativePeakSearch, TargetedDeconvolution, QuerySet, DeconvolutionError,
 };
 use crate::solution::DeconvolvedSolutionPeak;
 
@@ -307,7 +307,7 @@ impl<
         isotopic_params: IsotopicPatternParams,
         convergence: f32,
         max_iterations: u32,
-    ) -> MassPeakSetType<DeconvolvedSolutionPeak> {
+    ) -> Result<MassPeakSetType<DeconvolvedSolutionPeak>, DeconvolutionError> {
         let mut before_tic = self.peaks.tic();
         let mut deconvoluted_peaks = Vec::with_capacity(32);
         deconvoluted_peaks.extend(self.targets.iter().flat_map(|t| t.link.as_ref()).cloned());
@@ -348,7 +348,7 @@ impl<
                         None
                     });
             });
-        MassPeakSetType::new(deconvoluted_peaks)
+        Ok(MassPeakSetType::new(deconvoluted_peaks))
     }
 }
 
@@ -377,15 +377,19 @@ impl<
         cluster: DependenceCluster,
         fits: Vec<(FitRef, IsotopicFit)>,
         peak_accumulator: &mut Vec<IsotopicFit>,
-    ) {
+    ) -> Result<(), DeconvolutionError> {
         if let Some(best_fit_key) = cluster.best_fit() {
-            let (_, fit) = fits
+            if let Some((_, fit)) = fits
                 .into_iter()
-                .find(|(k, _)| k.key == best_fit_key.key)
-                .unwrap_or_else(|| {
-                    panic!("Failed to locate a solution {:?}", best_fit_key);
-                });
-            peak_accumulator.push(fit)
+                .find(|(k, _)| k.key == best_fit_key.key) {
+                    peak_accumulator.push(fit);
+                Ok(())
+            }
+            else {
+                Err(DeconvolutionError::FailedToResolveFit(best_fit_key.clone()))
+            }
+        } else {
+            Ok(())
         }
     }
 }
@@ -523,11 +527,12 @@ impl<
         self.peak_graph.add_fit(fit, start, end)
     }
 
-    fn select_best_disjoint_subgraphs(&mut self, fit_accumulator: &mut Vec<IsotopicFit>) {
+    fn select_best_disjoint_subgraphs(&mut self, fit_accumulator: &mut Vec<IsotopicFit>) -> Result<(), DeconvolutionError> {
         let solutions = self.peak_graph.solutions(SubgraphSolverMethod::Greedy);
-        solutions.into_iter().for_each(|(cluster, fits)| {
-            self.solve_subgraph_top(cluster, fits, fit_accumulator);
-        });
+        let res: Result<(), DeconvolutionError> = solutions.into_iter().map(|(cluster, fits)| {
+            self.solve_subgraph_top(cluster, fits, fit_accumulator)
+        }).collect();
+        res
     }
 }
 
@@ -604,7 +609,7 @@ impl<
         isotopic_params: IsotopicPatternParams,
         convergence: f32,
         max_iterations: u32,
-    ) -> MassPeakSetType<DeconvolvedSolutionPeak> {
+    ) -> Result<MassPeakSetType<DeconvolvedSolutionPeak>, DeconvolutionError> {
         let mut before_tic = self.inner.peaks.tic();
         let ref_tick = before_tic;
         let mut deconvoluted_peaks = Vec::new();
@@ -622,7 +627,7 @@ impl<
                 left_search_limit,
                 right_search_limit,
                 isotopic_params,
-            );
+            )?;
             deconvoluted_peaks.extend(fits.into_iter().map(|fit| {
                 let mut peak = self.make_solution_from_fit(&fit, error_tolerance);
                 self.inner.peaks.subtract_theoretical_intensity(&fit);
@@ -704,6 +709,6 @@ impl<
                         None
                     });
             });
-        MassPeakSetType::new(deconvoluted_peaks)
+        Ok(MassPeakSetType::new(deconvoluted_peaks))
     }
 }

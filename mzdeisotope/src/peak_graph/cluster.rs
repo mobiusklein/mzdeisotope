@@ -3,6 +3,8 @@ use crate::scorer::ScoreInterpretation;
 
 use super::fit::{FitNode, FitNodeGraphInner, FitRef};
 
+pub type SubgraphSolution = Vec<FitRef>;
+
 #[derive(Debug, Clone)]
 pub struct DependenceCluster {
     pub dependencies: Vec<FitRef>,
@@ -138,7 +140,7 @@ impl SubgraphSelection {
         });
     }
 
-    pub fn greedy(&self) -> Vec<FitRef> {
+    pub fn greedy(&self) -> SubgraphSolution {
         let mut nodes: Vec<_> = self.nodes.values().collect();
         let mut layers: Vec<Vec<&FitNode>> = Vec::new();
 
@@ -179,7 +181,7 @@ impl SubgraphSelection {
             .collect()
     }
 
-    pub fn solve(mut self, method: SubgraphSolverMethod) -> (Vec<FitRef>, FitNodeGraphInner) {
+    pub fn solve(mut self, method: SubgraphSolverMethod) -> (SubgraphSolution, FitNodeGraphInner) {
         self.build_edges();
         match method {
             SubgraphSolverMethod::Greedy => (self.greedy(), self.nodes),

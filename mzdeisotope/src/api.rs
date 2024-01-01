@@ -8,7 +8,7 @@ use mzpeaks::{
 
 use crate::{
     charge::ChargeRange,
-    deconv_traits::{IsotopicDeconvolutionAlgorithm, IsotopicPatternFitter, TargetedDeconvolution},
+    deconv_traits::{IsotopicDeconvolutionAlgorithm, IsotopicPatternFitter, TargetedDeconvolution, DeconvolutionError},
     deconvoluter::GraphDeconvoluterType,
     isotopic_model::{CachingIsotopicModel, IsotopicPatternParams},
     scorer::{IsotopicFitFilter, IsotopicPatternScorer},
@@ -30,26 +30,17 @@ pub fn deconvolute_peaks<
     fit_filter: F,
     max_missed_peaks: u16,
     isotopic_params: IsotopicPatternParams,
-) -> PeakSetVec<DeconvolvedSolutionPeak, mzpeaks::Mass> {
-    let mut deconvoluter = GraphDeconvoluterType::<C, CachingIsotopicModel<'lifespan>, S, F>::new(
-        peaks,
+    use_quick_charge: bool
+) -> Result<PeakSetVec<DeconvolvedSolutionPeak, mzpeaks::Mass>, DeconvolutionError> {
+    let mut engine: DeconvolutionEngine<'_, C, S, F> = DeconvolutionEngine::new(
+        isotopic_params,
         isotopic_model.into(),
         scorer,
         fit_filter,
-        max_missed_peaks,
-        false
+        use_quick_charge
     );
 
-    let output = deconvoluter.deconvolve(
-        error_tolerance,
-        charge_range,
-        1,
-        0,
-        isotopic_params,
-        1e-3,
-        10,
-    );
-    output
+    engine.deconvolute_peaks(peaks, error_tolerance, charge_range, max_missed_peaks)
 }
 
 #[derive(Debug, Default, Clone)]
@@ -85,51 +76,18 @@ pub fn deconvolute_peaks_with_targets<
     fit_filter: F,
     max_missed_peaks: u16,
     isotopic_params: IsotopicPatternParams,
+    use_quick_charge: bool,
     targets: &[f64],
-) -> PeaksAndTargets {
-    let mut deconvoluter = GraphDeconvoluterType::<C, CachingIsotopicModel<'lifespan>, S, F>::new(
-        peaks,
+) -> Result<PeaksAndTargets, DeconvolutionError> {
+    let mut engine: DeconvolutionEngine<'_, C, S, F> = DeconvolutionEngine::new(
+        isotopic_params,
         isotopic_model.into(),
         scorer,
         fit_filter,
-        max_missed_peaks,
-        false,
+        use_quick_charge
     );
 
-    let links: Vec<_> = targets
-        .iter()
-        .map(|mz| {
-            let peak = deconvoluter.has_peak(*mz, error_tolerance);
-            deconvoluter.targeted_deconvolution(
-                peak,
-                error_tolerance,
-                charge_range,
-                1,
-                1,
-                isotopic_params,
-            )
-        })
-        .collect();
-
-    let deconvoluted_peaks = deconvoluter.deconvolve(
-        error_tolerance,
-        charge_range,
-        1,
-        0,
-        isotopic_params,
-        1e-3,
-        10,
-    );
-
-    let targets: Vec<Option<DeconvolvedSolutionPeak>> = links
-        .into_iter()
-        .map(|target| {
-            deconvoluter
-                .resolve_target(&deconvoluted_peaks, &target)
-                .cloned()
-        })
-        .collect();
-    PeaksAndTargets::new(deconvoluted_peaks, targets)
+    engine.deconvolute_peaks_with_targets(peaks, error_tolerance, charge_range, max_missed_peaks, targets)
 }
 
 #[derive(Debug, Clone)]
@@ -195,7 +153,7 @@ impl<
         error_tolerance: Tolerance,
         charge_range: ChargeRange,
         max_missed_peaks: u16,
-    ) -> MassPeakSetType<DeconvolvedSolutionPeak> {
+    ) -> Result<MassPeakSetType<DeconvolvedSolutionPeak>, DeconvolutionError> {
         let mut deconvoluter =
             GraphDeconvoluterType::<C, CachingIsotopicModel<'lifespan>, S, F>::new(
                 peaks,
@@ -229,7 +187,7 @@ impl<
         charge_range: ChargeRange,
         max_missed_peaks: u16,
         targets: &[f64],
-    ) -> PeaksAndTargets {
+    ) -> Result<PeaksAndTargets, DeconvolutionError> {
         let mut deconvoluter =
             GraphDeconvoluterType::<C, CachingIsotopicModel<'lifespan>, S, F>::new(
                 peaks,
@@ -262,7 +220,7 @@ impl<
             self.isotopic_params,
             1e-3,
             10,
-        );
+        )?;
 
         let targets: Vec<Option<DeconvolvedSolutionPeak>> = links
             .into_iter()
@@ -277,6 +235,6 @@ impl<
         self.scorer = Some(deconvoluter.inner.scorer);
         self.fit_filter = Some(deconvoluter.inner.fit_filter);
 
-        PeaksAndTargets::new(deconvoluted_peaks, targets)
+        Ok(PeaksAndTargets::new(deconvoluted_peaks, targets))
     }
 }

@@ -155,7 +155,10 @@ pub fn quick_charge_w<C: CentroidLike>(
         14 => quick_charge::<C, 14>(peaks, position, charge_range),
         15 => quick_charge::<C, 15>(peaks, position, charge_range),
         16 => quick_charge::<C, 16>(peaks, position, charge_range),
-        _ => quick_charge::<C, 128>(peaks, position, charge_range),
+        i if i > 16 && i < 33 => quick_charge::<C, 32>(peaks, position, charge_range),
+        i if i > 32 && i < 65 => quick_charge::<C, 64>(peaks, position, charge_range),
+        i if i > 64 && i < 129 => quick_charge::<C, 128>(peaks, position, charge_range),
+        _ => quick_charge::<C, 256>(peaks, position, charge_range),
     }
 }
 

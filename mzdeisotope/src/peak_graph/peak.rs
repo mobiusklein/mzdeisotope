@@ -107,6 +107,8 @@ impl PeakGraph {
         for p in peak_iter {
             if let Some(p) = self.peak_nodes.get_mut(p) {
                 p.remove(fit_key);
+            } else {
+                log::warn!("Failed to remove {fit_key} for {p:?}");
             }
         }
     }

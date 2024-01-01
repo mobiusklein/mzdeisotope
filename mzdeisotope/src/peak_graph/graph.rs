@@ -89,8 +89,9 @@ impl PeakDependenceGraph {
                     // let best = bucket[0];
                     let rest = &bucket[1..];
                     for f in rest {
+                        let fit = &self.fit_nodes[&f.key];
                         self.peak_nodes
-                            .drop_fit_dependence(self.fit_nodes[&f.key].peak_iter(), &f.key);
+                            .drop_fit_dependence(fit.peak_iter(), &f.key);
                         self.fit_nodes.remove(FitEvictionReason::NotBestFit(f.key));
                     }
                 }

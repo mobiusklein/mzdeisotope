@@ -107,10 +107,6 @@ fn run_deconvolution(
                     Some(scan) => {
                         // log::info!("Processing {} MS{} ({:0.3})", scan.id(), scan.ms_level(), scan.acquisition().start_time());
 
-                        #[cfg(feature = "verbose")]
-                        let logfile =
-                            fs::File::create(format!("scan-{}-log.txt", scan.index())).unwrap();
-
                         let peaks = match scan.signal_continuity() {
                             SignalContinuity::Unknown => {
                                 panic!("Can't infer peak mode for {}", scan.id())
@@ -124,9 +120,6 @@ fn run_deconvolution(
                             }
                         };
 
-                        #[cfg(feature = "verbose")]
-                        ms1_engine.set_log_file(Some(logfile));
-
                         let PeaksAndTargets {
                             deconvoluted_peaks,
                             targets,
@@ -136,7 +129,7 @@ fn run_deconvolution(
                             (1, 8),
                             1,
                             &precursor_mz,
-                        );
+                        ).unwrap();
                         n_ms1_peaks = deconvoluted_peaks.len();
                         scan.deconvoluted_peaks = Some(deconvoluted_peaks);
                         targets
@@ -154,10 +147,6 @@ fn run_deconvolution(
                         );
                     }
 
-                    #[cfg(feature = "verbose")]
-                    let logfile =
-                        fs::File::create(format!("scan-ms2-{}-log.txt", scan.index())).unwrap();
-
                     let peaks = match scan.signal_continuity() {
                         SignalContinuity::Unknown => {
                             panic!("Can't infer peak mode for {}", scan.id())
@@ -170,15 +159,12 @@ fn run_deconvolution(
                         }
                     };
 
-                    #[cfg(feature = "verbose")]
-                    msn_engine.set_log_file(Some(logfile));
-
                     let deconvoluted_peaks = msn_engine.deconvolute_peaks(
                         peaks.clone(),
                         Tolerance::PPM(20.0),
                         (1, 8),
                         1,
-                    );
+                    ).unwrap();
                     n_msn_peaks += deconvoluted_peaks.len();
                     scan.deconvoluted_peaks = Some(deconvoluted_peaks);
                     scan.precursor_mut().and_then(|prec| {
