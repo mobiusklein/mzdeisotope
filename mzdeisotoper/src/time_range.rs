@@ -1,9 +1,13 @@
-use std::{error::Error, str::FromStr, fmt::Display, num::ParseFloatError};
+use std::{error::Error, str::FromStr, fmt::Display, num::ParseFloatError, ops::Range};
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TimeRange {
     pub start: f64,
     pub end: f64,
+}
+
+impl TimeRange {
+    pub fn new(start: f64, end: f64) -> Self { Self { start, end } }
 }
 
 impl Default for TimeRange {
@@ -64,5 +68,11 @@ impl FromStr for TimeRange {
             start: start_t,
             end: end_t,
         })
+    }
+}
+
+impl From<Range<f64>> for TimeRange {
+    fn from(value: Range<f64>) -> Self {
+        Self::new(value.start, value.end)
     }
 }

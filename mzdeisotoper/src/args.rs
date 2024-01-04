@@ -2,7 +2,6 @@ use std::fmt::Display;
 
 use clap::ValueEnum;
 
-use mzpeaks::CentroidPeak;
 use mzdeisotope::{
     api::DeconvolutionEngine,
     charge::ChargeRange,
@@ -12,7 +11,7 @@ use mzdeisotope::{
         PenalizedMSDeconvScorer,
     },
 };
-
+use mzpeaks::CentroidPeak;
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
 pub enum ArgIsotopicModels {
@@ -99,7 +98,7 @@ impl<'a, S: IsotopicPatternScorer, F: IsotopicFitFilter> DeconvolutionBuilderPar
             self.isotopic_model.into(),
             self.scorer,
             self.fit_filter,
-            true
+            true,
         );
         engine.populate_isotopic_model_cache(
             self.mz_range.0,
@@ -131,7 +130,7 @@ pub fn make_default_ms1_deconvolution_params(
     DeconvolutionBuilderParams::new(
         PenalizedMSDeconvScorer::new(0.02, 2.0),
         IsotopicModels::Peptide.into(),
-        MaximizingFitFilter::new(10.0),
+        MaximizingFitFilter::new(20.0),
         Default::default(),
         (1, 8),
         (80.0, 2200.0),
@@ -144,7 +143,7 @@ pub fn make_default_msn_deconvolution_params(
     DeconvolutionBuilderParams::new(
         MSDeconvScorer::default(),
         IsotopicModels::Peptide.into(),
-        MaximizingFitFilter::new(2.0),
+        MaximizingFitFilter::new(5.0),
         IsotopicPatternParams::new(0.8, 0.001, None, PROTON),
         (1, 8),
         (80.0, 2200.0),

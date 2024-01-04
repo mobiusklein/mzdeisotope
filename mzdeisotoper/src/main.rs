@@ -34,6 +34,7 @@ use mzpeaks::{CentroidPeak, PeakCollection, Tolerance};
 mod args;
 mod progress;
 mod time_range;
+mod selection_targets;
 
 use crate::args::{
     make_default_ms1_deconvolution_params, make_default_msn_deconvolution_params,
@@ -483,7 +484,7 @@ struct MZDeiosotoperArgs {
     #[arg(
         short = 's',
         long = "ms1-score-threshold",
-        default_value_t = 10.0,
+        default_value_t = 20.0,
         help = "The minimum isotopic pattern fit score for MS1 spectra"
     )]
     pub ms1_score_threshold: ScoreType,
@@ -499,7 +500,7 @@ struct MZDeiosotoperArgs {
     #[arg(
         short = 'S',
         long = "msn-score-threshold",
-        default_value_t = 2.0,
+        default_value_t = 10.0,
         help = "The minimum isotopic pattern fit score for MSn spectra"
     )]
     pub msn_score_threshold: ScoreType,
