@@ -1,4 +1,4 @@
-use std::ops::{Add, AddAssign};
+use std::{ops::{Add, AddAssign}, iter::Sum};
 
 
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
@@ -29,5 +29,14 @@ impl AddAssign for ProgressRecord {
         self.precursor_charge_state_mismatch += rhs.precursor_charge_state_mismatch;
         self.ms1_spectra += rhs.ms1_spectra;
         self.msn_spectra += rhs.msn_spectra;
+    }
+}
+
+impl Sum for ProgressRecord {
+    fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
+        iter.fold(ProgressRecord::default(), |mut a, b| {
+            a += b;
+            a
+        })
     }
 }

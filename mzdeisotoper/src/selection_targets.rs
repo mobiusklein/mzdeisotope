@@ -1,15 +1,10 @@
-#![allow(unused)]
-use core::time;
 use std::cmp::Ordering;
 use std::collections::VecDeque;
 use std::marker::PhantomData;
 
 use mzdata::prelude::*;
-use mzdata::spectrum::{
-    MultiLayerSpectrum, SpectrumGroup, SpectrumGroupIter, SpectrumGroupingIterator, DeferredSpectrumAveragingIterator
-};
-use mzsignal::average::SignalAverager;
-use mzsignal::reprofile::PeakSetReprofiler;
+use mzdata::spectrum::{MultiLayerSpectrum, SpectrumGroup, SpectrumGroupIter, SpectrumGroupIntoIter};
+use mzdeisotope::interval::{SimpleInterval, Span1D};
 use mzpeaks::{CentroidLike, DeconvolutedCentroidLike, Tolerance};
 
 use crate::time_range::TimeRange;
@@ -83,13 +78,59 @@ impl<
         G: SpectrumGrouping<C, D, MultiLayerSpectrum<C, D>>,
     > TargetTrackingSpectrumGroup<C, D, G>
 {
-    pub fn new(group: G, targets: Vec<SelectedTarget>) -> Self {
+    pub fn new(group: G, mut targets: Vec<SelectedTarget>) -> Self {
+        targets.sort_by(|a, b| {
+            a.mz.partial_cmp(&b.mz).unwrap()
+        });
         Self {
             group,
             targets,
             _c: PhantomData,
             _d: PhantomData,
         }
+    }
+
+    pub fn iter(
+        &self,
+    ) -> SpectrumGroupIter<'_, C, D, MultiLayerSpectrum<C, D>, TargetTrackingSpectrumGroup<C, D, G>>
+    {
+        SpectrumGroupIter::new(self)
+    }
+
+    pub fn selected_intervals(&self, mz_before: f64, mz_after: f64) -> Vec<(f64, f64)> {
+        self.targets.iter().map(|t| {
+            (t.mz - mz_before, t.mz + mz_after)
+        }).fold(Vec::new(), |mut acc, iv| {
+            match acc.last_mut() {
+                Some(tail) => {
+                    if SimpleInterval::from(*tail).overlaps(&SimpleInterval::from(iv)) {
+                        tail.1 = iv.1;
+                    } else {
+                        acc.push(iv);
+                    }
+                }
+                None => {
+                    acc.push(iv);
+                }
+            }
+
+            acc
+        })
+    }
+}
+
+impl<
+        C: CentroidLike + Default,
+        D: DeconvolutedCentroidLike + Default,
+        G: SpectrumGrouping<C, D, MultiLayerSpectrum<C, D>>,
+    > IntoIterator for TargetTrackingSpectrumGroup<C, D, G>
+{
+    type Item = MultiLayerSpectrum<C, D>;
+
+    type IntoIter = SpectrumGroupIntoIter<C, D, MultiLayerSpectrum<C, D>, Self>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        SpectrumGroupIntoIter::new(self)
     }
 }
 
@@ -154,25 +195,6 @@ pub struct MSnTargetTrackingIterator<
     buffer: VecDeque<(SpectrumGroup<C, D, MultiLayerSpectrum<C, D>>, f64)>,
     pushback_buffer: Option<(SpectrumGroup<C, D, MultiLayerSpectrum<C, D>>, f64)>,
     targets: VecDeque<SelectionTargetSpecification>,
-}
-
-impl<'lifespan, C: CentroidLike + Default + BuildArrayMapFrom + BuildFromArrayMap, D: DeconvolutedCentroidLike + Default + BuildArrayMapFrom + BuildFromArrayMap, R: Iterator<Item = SpectrumGroup<C, D, MultiLayerSpectrum<C, D>>>> MSnTargetTrackingIterator<C, D, R> {
-    pub fn averaging_deferred(
-            self,
-            averaging_width_index: usize,
-            mz_start: f64,
-            mz_end: f64,
-            dx: f64,
-        ) -> (
-            DeferredSpectrumAveragingIterator<C, D, Self, TargetTrackingSpectrumGroup<C, D, SpectrumGroup<C, D, MultiLayerSpectrum<C, D>>>>,
-            SignalAverager<'lifespan>,
-            PeakSetReprofiler,
-        ) {
-            let iter = DeferredSpectrumAveragingIterator::new(self, averaging_width_index);
-            let averager = SignalAverager::new(mz_start, mz_end, dx);
-            let reprofiler = PeakSetReprofiler::new(mz_start, mz_end, dx);
-            (iter, averager, reprofiler)
-        }
 }
 
 impl<
@@ -350,5 +372,21 @@ impl<
     }
 }
 
+pub trait MSnTargetTracking<C: CentroidLike + Default, D: DeconvolutedCentroidLike + Default>:
+    Iterator<Item = SpectrumGroup<C, D, MultiLayerSpectrum<C, D>>> + Sized
+{
+    fn track_precursors(
+        self,
+        time_width: f64,
+        error_tolerance: Tolerance,
+    ) -> MSnTargetTrackingIterator<C, D, Self> {
+        MSnTargetTrackingIterator::new(self, time_width, error_tolerance)
+    }
+}
 
-
+impl<C: CentroidLike + Default, D: DeconvolutedCentroidLike + Default, T> MSnTargetTracking<C, D>
+    for T
+where
+    T: Iterator<Item = SpectrumGroup<C, D, MultiLayerSpectrum<C, D>>> + Sized,
+{
+}

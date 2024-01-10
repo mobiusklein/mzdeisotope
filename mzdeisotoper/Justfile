@@ -1,0 +1,27 @@
+test-file:
+    cargo r -r -- -g 1 \
+        -v selected-precursors \
+        ./tests/data/batching_test.mzML \
+        -o tmp/batching_test.processed.mzML
+
+test-file-range:
+    cargo r -r -- -g 1 \
+        -v selected-precursors \
+        ./tests/data/batching_test.mzML \
+        -r 125-128.1 \
+        -o tmp/batching_test.processed.mzML
+
+test-stdin:
+    cargo r -r -- -g 1 \
+        -v selected-precursors \
+        - \
+        -o tmp/batching_test.processed.mzML \
+        < ./tests/data/batching_test.mzML
+
+test-stdin-range:
+    cargo r -r -- -g 1 \
+        -v selected-precursors \
+        - \
+        -r 125-128.1 \
+        -o tmp/batching_test.processed.mzML \
+        < ./tests/data/batching_test.mzML

@@ -285,16 +285,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "filename"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "63e4df03effebdf9cfa31a663f569fd96cc7e206184b0d4dcd388dc490f7ebe8"
-dependencies = [
- "libc",
- "winapi",
-]
-
-[[package]]
 name = "flate2"
 version = "1.0.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -464,7 +454,6 @@ version = "0.8.0"
 dependencies = [
  "base64-simd",
  "bytemuck",
- "filename",
  "flate2",
  "indexmap",
  "lazy_static",
@@ -507,7 +496,6 @@ dependencies = [
  "mzdata",
  "mzdeisotope",
  "mzpeaks",
- "mzsignal",
  "pretty_env_logger 0.5.0",
  "rayon",
 ]
@@ -530,7 +518,6 @@ dependencies = [
  "nalgebra",
  "num-traits",
  "pretty_env_logger 0.4.0",
- "rayon",
  "thiserror",
 ]
 

@@ -1,5 +1,8 @@
 use std::{error::Error, str::FromStr, fmt::Display, num::ParseFloatError, ops::Range};
 
+use mzdeisotope::interval::Span1D;
+
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TimeRange {
     pub start: f64,
@@ -8,6 +11,18 @@ pub struct TimeRange {
 
 impl TimeRange {
     pub fn new(start: f64, end: f64) -> Self { Self { start, end } }
+}
+
+impl Span1D for TimeRange {
+    type DimType = f64;
+
+    fn start(&self) -> Self::DimType {
+        self.start
+    }
+
+    fn end(&self) -> Self::DimType {
+        self.end
+    }
 }
 
 impl Default for TimeRange {
@@ -74,5 +89,11 @@ impl FromStr for TimeRange {
 impl From<Range<f64>> for TimeRange {
     fn from(value: Range<f64>) -> Self {
         Self::new(value.start, value.end)
+    }
+}
+
+impl From<(f64, f64)> for TimeRange {
+    fn from(value: (f64, f64)) -> Self {
+        Self::new(value.0, value.1)
     }
 }

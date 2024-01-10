@@ -13,7 +13,26 @@ use mzdeisotope::{
 };
 use mzpeaks::CentroidPeak;
 
-#[derive(Debug, Clone, Copy, ValueEnum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, Default)]
+pub enum PrecursorProcessing {
+    #[default]
+    /// Process the entire MS1 mass range and all MSn spectra
+    Full,
+    /// Process only the MS1 regions that are selected for MSn and all MSn spectra
+    SelectedPrecursors,
+    /// Process only MSn spectra without examining MS1 spectra
+    TandemOnly,
+    /// Process only the MS1 spectra without examining MSn spectra
+    MS1Only,
+}
+
+impl Display for PrecursorProcessing {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum, PartialEq, Eq)]
 pub enum ArgIsotopicModels {
     Peptide,
     Glycan,
@@ -107,6 +126,17 @@ impl<'a, S: IsotopicPatternScorer, F: IsotopicFitFilter> DeconvolutionBuilderPar
             self.charge_range.1,
         );
         engine
+    }
+
+    pub fn make_params_and_engine(
+        self,
+    ) -> (
+        DeconvolutionParams,
+        DeconvolutionEngine<'a, CentroidPeak, S, F>,
+    ) {
+        let params = self.make_params();
+        let engine = self.build_engine();
+        (params, engine)
     }
 }
 
