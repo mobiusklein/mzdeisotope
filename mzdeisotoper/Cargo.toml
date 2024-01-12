@@ -5,12 +5,16 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+description = "Deisotoping and charge state deconvolution of mass spectrometry files"
+
+[features]
+
+mzmlb = ["mzdata/mzmlb"]
 
 [dependencies]
 mzdeisotope = { path = "../mzdeisotope" }
-# mzdata = { version = "0.7.0", features = ["mzsignal", "nalgebra"]}
-mzdata = { path = "../../mzdata", features = ["mzsignal", "nalgebra"]}
-mzpeaks = { version = "0.8.0" }
+mzdata = { version = "0.8.0", features = ["mzsignal", "nalgebra"]}
+mzpeaks = { version = "0.9.0" }
 log = "0.4.20"
 itertools = "0.12.0"
 rayon = "1.7.0"

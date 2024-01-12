@@ -11,6 +11,13 @@ pub struct ProgressRecord {
     pub msn_spectra: usize,
 }
 
+impl ProgressRecord {
+    pub fn sum(mut self, other: ProgressRecord) -> ProgressRecord {
+        self += other;
+        self
+    }
+}
+
 impl Add for ProgressRecord {
     type Output = ProgressRecord;
 

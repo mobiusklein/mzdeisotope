@@ -8,6 +8,14 @@ use mzdeisotope::interval::{SimpleInterval, Span1D};
 use mzpeaks::{CentroidLike, DeconvolutedCentroidLike, Tolerance};
 
 use crate::time_range::TimeRange;
+use crate::types::{CPeak, DPeak};
+
+
+pub trait SpectrumGroupTiming {
+    fn earliest_time(&self) -> Option<f64>;
+    fn latest_time(&self) -> Option<f64>;
+}
+
 
 #[derive(Default, Debug, Clone, Copy, PartialEq)]
 pub struct SelectionTargetSpecification {
@@ -72,6 +80,16 @@ pub struct TargetTrackingSpectrumGroup<
     _d: PhantomData<D>,
 }
 
+impl<T> SpectrumGroupTiming for T where T: SpectrumGrouping<CPeak, DPeak, MultiLayerSpectrum<CPeak, DPeak>> {
+    fn earliest_time(&self) -> Option<f64> {
+        self.earliest_spectrum().map(|s| s.start_time())
+    }
+
+    fn latest_time(&self) -> Option<f64> {
+        self.latest_spectrum().map(|s| s.start_time())
+    }
+}
+
 impl<
         C: CentroidLike + Default,
         D: DeconvolutedCentroidLike + Default,
@@ -90,6 +108,7 @@ impl<
         }
     }
 
+    #[allow(unused)]
     pub fn iter(
         &self,
     ) -> SpectrumGroupIter<'_, C, D, MultiLayerSpectrum<C, D>, TargetTrackingSpectrumGroup<C, D, G>>

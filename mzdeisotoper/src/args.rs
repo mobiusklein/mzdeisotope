@@ -76,6 +76,12 @@ pub struct SignalParams {
     pub ms1_denoising: f32,
 }
 
+impl Default for SignalParams {
+    fn default() -> Self {
+        make_default_signal_processing_params()
+    }
+}
+
 pub struct DeconvolutionBuilderParams<'a, S: IsotopicPatternScorer, F: IsotopicFitFilter> {
     pub scorer: S,
     pub isotopic_model: IsotopicModel<'a>,

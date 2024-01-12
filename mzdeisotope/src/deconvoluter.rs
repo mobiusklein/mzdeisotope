@@ -1094,7 +1094,7 @@ mod test {
             best_fit.intensity - expected_intensity
         );
         eprintln!("intensity {}", best_fit.intensity);
-        assert_eq!(dpeaks.len(), 332);
+        assert_eq!(dpeaks.len(), 566);
         Ok(())
     }
 

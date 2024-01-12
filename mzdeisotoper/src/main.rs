@@ -1,6 +1,6 @@
 use std::fs;
 use std::io;
-use std::path;
+use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::mpsc::{channel, Sender};
@@ -10,21 +10,25 @@ use std::time::Instant;
 use args::PrecursorProcessing;
 use clap::Parser;
 use log;
-use mzdata::io::StreamingSpectrumIterator;
+
+use mzdata::io::infer_from_stream;
 use pretty_env_logger;
 use rayon::prelude::*;
 
-use mzdeisotope::scorer::{IsotopicFitFilter, IsotopicPatternScorer};
-
+use mzdata::io::{MassSpectrometryFormat, StreamingSpectrumIterator, PreBufferedStream, infer_format};
 use mzdata::io::mzml::{MzMLReaderType, MzMLWriterType};
-use mzdata::io::PreBufferedStream;
+use mzdata::io::mgf::MGFReaderType;
+#[cfg(feature = "mzmlb")]
+use mzdata::io::MzMLbReaderType;
 use mzdata::prelude::*;
 use mzdata::spectrum::SignalContinuity;
 
 use mzdeisotope::scorer::ScoreType;
-use mzdeisotope::solution::DeconvolvedSolutionPeak;
+use mzdeisotope::scorer::{IsotopicFitFilter, IsotopicPatternScorer};
 
-use mzpeaks::{CentroidPeak, Tolerance};
+use mzpeaks::Tolerance;
+use types::CPeak;
+use types::DPeak;
 
 mod args;
 mod progress;
@@ -39,13 +43,13 @@ use crate::args::{
     SignalParams,
 };
 use crate::progress::ProgressRecord;
-use crate::selection_targets::MSnTargetTracking;
+use crate::selection_targets::{MSnTargetTracking, SpectrumGroupTiming};
 use crate::stages::{collate_results, deconvolution_transform, write_output};
 use crate::time_range::TimeRange;
 use crate::types::{SpectrumGroupType, SpectrumType};
 
 fn prepare_procesing<
-    R: RandomAccessSpectrumIterator<CentroidPeak, DeconvolvedSolutionPeak, SpectrumType>
+    R: RandomAccessSpectrumIterator<CPeak, DPeak, SpectrumType>
         + Send
         + MSDataFileMetadata,
     S: IsotopicPatternScorer + Send + Sync + Clone + 'static,
@@ -91,13 +95,7 @@ fn prepare_procesing<
             );
         grouper
             .enumerate()
-            .take_while(|(_, g)| {
-                !(g.iter()
-                    .map(|s| s.start_time())
-                    .min_by(|a, b| a.total_cmp(b))
-                    .unwrap_or_default()
-                    > end_time)
-            })
+            .take_while(|(_, g)| !(g.earliest_time().unwrap_or_default() > end_time))
             .par_bridge()
             .map_init(
                 || (averager.clone(), reprofiler.clone()),
@@ -130,33 +128,18 @@ fn prepare_procesing<
                 },
             )
             .map(|(group_idx, group, prog)| {
-                match sender.send((group_idx, group)) {
-                    Ok(_) => {}
-                    Err(e) => {
-                        log::warn!("Failed to send group: {}", e);
-                    }
+                if let Err(e) = sender.send((group_idx, group)) {
+                    log::warn!("Failed to send group: {}", e);
                 }
                 prog
             })
-            .fold(
-                || ProgressRecord::default(),
-                |mut state, counts| {
-                    state += counts;
-                    state
-                },
-            )
+            .fold(ProgressRecord::default, ProgressRecord::sum)
             .sum()
     } else {
         let grouper = group_iter
             .track_precursors(2.0, Tolerance::PPM(5.0))
             .enumerate()
-            .take_while(|(_, g)| {
-                !(g.iter()
-                    .map(|s| s.start_time())
-                    .min_by(|a, b| a.total_cmp(b))
-                    .unwrap_or_default()
-                    > end_time)
-            })
+            .take_while(|(_, g)| !(g.earliest_time().unwrap_or_default() > end_time))
             .par_bridge();
         grouper
             .map_init(
@@ -178,21 +161,12 @@ fn prepare_procesing<
                 },
             )
             .map(|(group_idx, group, prog)| {
-                match sender.send((group_idx, group)) {
-                    Ok(_) => {}
-                    Err(e) => {
-                        log::warn!("Failed to send group: {}", e);
-                    }
+                if let Err(e) = sender.send((group_idx, group)) {
+                    log::warn!("Failed to send group: {}", e);
                 }
                 prog
             })
-            .fold(
-                || ProgressRecord::default(),
-                |mut state, counts| {
-                    state += counts;
-                    state
-                },
-            )
+            .fold(ProgressRecord::default, ProgressRecord::sum)
             .sum()
     };
 
@@ -224,7 +198,12 @@ fn non_negative_float_f32(s: &str) -> Result<f32, String> {
     }
 }
 
+/// Deisotoping and charge state deconvolution of mass spectrometry files
+///
+/// Read a file or stream, transform the spectra, and write out a processed mzML
+/// file or stream.
 #[derive(Parser, Debug)]
+#[command(author, version)]
 struct MZDeiosotoperArgs {
     #[arg(help = "The path to read the input spectra from, or if '-' is passed, read from STDIN")]
     pub input_file: String,
@@ -235,13 +214,29 @@ struct MZDeiosotoperArgs {
         default_value = "-",
         help = "The path to write the output file to, or if '-' is passed, write to STDOUT"
     )]
-    pub output_file: String,
+    pub output_file: PathBuf,
 
-    #[arg(short='t', long="threads", default_value_t=-1, help="The number of threads to use, passing a value < 1 to use all available threads")]
+    #[arg(
+        short='t',
+        long="threads",
+        default_value_t=-1,
+        help="The number of threads to use, passing a value < 1 to use all available threads"
+    )]
     pub threads: i32,
 
-    #[arg(short='r', long="time-range", value_parser=TimeRange::from_str)]
-    pub rt_range: Option<TimeRange>,
+    #[arg(
+        short='r',
+        long="time-range",
+        value_parser=TimeRange::from_str,
+        value_name="BEGIN-END",
+        help="The time range to process, denoted [start?]-[stop?]",
+        long_help=r#"The time range to process, denoted [start?]-[stop?]
+
+If a start is not specifed, processing begins from the start of the run.
+If a stop is not specified, processing stops at the end of the run.
+"#
+    )]
+    pub time_range: Option<TimeRange>,
 
     #[arg(
         short = 'g',
@@ -303,7 +298,7 @@ struct MZDeiosotoperArgs {
 }
 
 impl MZDeiosotoperArgs {
-    pub fn main(&self) -> io::Result<()> {
+    pub fn set_threadpool(&self) {
         if self.threads > 0 {
             log::debug!("Using {} threads", self.threads);
             rayon::ThreadPoolBuilder::new()
@@ -311,29 +306,73 @@ impl MZDeiosotoperArgs {
                 .build_global()
                 .unwrap();
         }
+    }
 
+    pub fn main(&self) -> io::Result<()> {
+        self.set_threadpool();
         self.reader_then()
     }
 
     fn reader_then(&self) -> io::Result<()> {
         if self.input_file == "-" {
-            let buffered = PreBufferedStream::new_with_buffer_size(io::stdin(), 2usize.pow(20))?;
-            let reader = MzMLReaderType::<_, CentroidPeak, DeconvolvedSolutionPeak>::new(buffered);
-            let reader = StreamingSpectrumIterator::new(reader);
-            let spectrum_count_hint = reader.spectrum_count_hint();
-            self.writer_then(reader, spectrum_count_hint)?;
+            let mut buffered = PreBufferedStream::new_with_buffer_size(io::stdin(), 2usize.pow(20))?;
+            let (ms_format, compressed) = infer_from_stream(&mut buffered)?;
+            log::debug!("Detected {ms_format:?} from STDIN (compressed? {compressed})");
+            if compressed {
+                eprintln!("STDIN is compressed, not currently supported");
+                std::process::exit(1);
+            }
+            match ms_format {
+                MassSpectrometryFormat::MGF => {
+                    let reader = StreamingSpectrumIterator::new(MGFReaderType::new(buffered));
+                    let spectrum_count = reader.spectrum_count_hint();
+                    self.writer_then(reader, spectrum_count)?;
+                },
+                MassSpectrometryFormat::MzML => {
+                    let reader = StreamingSpectrumIterator::new(MzMLReaderType::new(buffered));
+                    let spectrum_count = reader.spectrum_count_hint();
+                    self.writer_then(reader, spectrum_count)?;
+                }
+                _ => {
+                    eprintln!("Cannot open {}, failed to detect format or format not supported ({ms_format:?})", self.input_file);
+                    std::process::exit(1)
+                },
+            }
         } else {
-            let reader = MzMLReaderType::<_, CentroidPeak, DeconvolvedSolutionPeak>::open_path(
-                path::PathBuf::from(self.input_file.clone()),
-            )?;
-            let spectrum_count = Some(reader.len() as u64);
-            self.writer_then(reader, spectrum_count)?;
+            let (ms_format, compressed) = infer_format(&self.input_file)?;
+            if compressed {
+                eprintln!("{} is compressed, not currently supported", self.input_file);
+                std::process::exit(1);
+            }
+            log::debug!("Detected {ms_format:?} from path (compressed? {compressed})");
+            match ms_format {
+                MassSpectrometryFormat::MGF => {
+                    let reader = MGFReaderType::open_path(self.input_file.clone())?;
+                    let spectrum_count = Some(reader.len() as u64);
+                    self.writer_then(reader, spectrum_count)?;
+                },
+                MassSpectrometryFormat::MzML => {
+                    let reader = MzMLReaderType::open_path(self.input_file.clone())?;
+                    let spectrum_count = Some(reader.len() as u64);
+                    self.writer_then(reader, spectrum_count)?;
+                },
+                #[cfg(feature = "mzmlb")]
+                MassSpectrometryFormat::MzMLb => {
+                    let reader = MzMLbReaderType::open_path(self.input_file.clone())?;
+                    let spectrum_count = Some(reader.len() as u64);
+                    self.writer_then(reader, spectrum_count)?;
+                }
+                _ => {
+                    eprintln!("Cannot open {}, failed to detect format or format not supported ({ms_format:?})", self.input_file);
+                    std::process::exit(1)
+                },
+            }
         }
         Ok(())
     }
 
     fn writer_then<
-        R: RandomAccessSpectrumIterator<CentroidPeak, DeconvolvedSolutionPeak, SpectrumType>
+        R: RandomAccessSpectrumIterator<CPeak, DPeak, SpectrumType>
             + MSDataFileMetadata
             + Send
             + 'static,
@@ -342,17 +381,17 @@ impl MZDeiosotoperArgs {
         reader: R,
         spectrum_count: Option<u64>,
     ) -> io::Result<()> {
-        if self.output_file == "-" {
+        if self.output_file == PathBuf::from("-") {
             let outfile = io::stdout();
             let mut writer =
-                MzMLWriterType::<_, CentroidPeak, DeconvolvedSolutionPeak>::new(outfile);
+                MzMLWriterType::<_, CPeak, DPeak>::new(outfile);
             writer.copy_metadata_from(&reader);
             if let Some(spectrum_count) = spectrum_count {
                 writer.set_spectrum_count(spectrum_count);
             }
             self.run_workflow(reader, writer)?;
         } else {
-            let mut writer = MzMLWriterType::<_, CentroidPeak, DeconvolvedSolutionPeak>::new(
+            let mut writer = MzMLWriterType::new(
                 io::BufWriter::new(fs::File::create(self.output_file.clone())?),
             );
             writer.copy_metadata_from(&reader);
@@ -365,7 +404,7 @@ impl MZDeiosotoperArgs {
     }
 
     fn run_workflow<
-        R: RandomAccessSpectrumIterator<CentroidPeak, DeconvolvedSolutionPeak, SpectrumType>
+        R: RandomAccessSpectrumIterator<CPeak, DPeak, SpectrumType>
             + MSDataFileMetadata
             + Send
             + 'static,
@@ -373,7 +412,7 @@ impl MZDeiosotoperArgs {
     >(
         &self,
         reader: R,
-        writer: MzMLWriterType<W, CentroidPeak, DeconvolvedSolutionPeak>,
+        writer: MzMLWriterType<W, CPeak, DPeak>,
     ) -> io::Result<()> {
         let (send_solved, recv_solved) = channel();
         let (send_collated, recv_collated) = channel();
@@ -391,7 +430,7 @@ impl MZDeiosotoperArgs {
         signal_params.ms1_averaging = self.ms1_averaging_range as usize;
         signal_params.ms1_denoising = self.ms1_denoising;
 
-        let rt_range = self.rt_range;
+        let rt_range = self.time_range;
         let precursor_processing = self.precursor_processing;
         let read_task = thread::spawn(move || {
             prepare_procesing(

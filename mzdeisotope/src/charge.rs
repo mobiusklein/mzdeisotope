@@ -63,6 +63,9 @@ pub fn quick_charge<C: CentroidLike, const N: usize>(
 ) -> ChargeListIter {
     let (min_charge, max_charge) = charge_range;
     let mut charges = [false; N];
+    if N > 0 {
+        charges[0] = true;
+    }
     let peak = &peaks[position];
     let mut result_size = 0usize;
     let min_intensity = peak.intensity() / 4.0;
@@ -215,15 +218,25 @@ mod test {
             let charge_list: Vec<_> = quick_charge_w(peaks, i, (1, 8)).collect();
             line.clear();
             fh.read_line(&mut line)?;
+            line = line.replace('\r', "");
             if line == "\n" {
-                assert_eq!(charge_list, Vec::<i32>::new());
+                assert_eq!(charge_list, vec![1]);
             } else {
-                let expected: Vec<_> = line
+                let mut expected: Vec<_> = line
                     .strip_suffix("\n")
                     .unwrap()
                     .split(',')
-                    .map(|t| t.parse::<i32>().unwrap())
+                    .map(|t| {
+                        t.parse::<i32>().unwrap_or_else(|e| {
+                            panic!("Failed to parse line {} ({}): {}", i, line, e)
+                        })
+                    })
                     .collect();
+                if *expected.first().unwrap() != 1 {
+                    let mut tmp = vec![1];
+                    tmp.extend(expected);
+                    expected = tmp;
+                }
                 assert_eq!(charge_list, expected);
             }
         }

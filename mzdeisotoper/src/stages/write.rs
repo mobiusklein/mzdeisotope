@@ -70,12 +70,5 @@ pub fn write_output<S: ScanWriter<'static, CPeak, DPeak>>(
         log::info!("Finished Processing | Scans={scan_counter} Time={scan_time:0.3}");
     }
     writer.close()?;
-    // match writer.close() {
-    //     Ok(_) => {}
-    //     Err(e) => match e {
-    //         mzdata::MzMLWriterError::IOError(o) => return Err(o),
-    //         _ => Err(io::Error::new(io::ErrorKind::InvalidInput, e))?,
-    //     },
-    // };
     Ok(())
 }
