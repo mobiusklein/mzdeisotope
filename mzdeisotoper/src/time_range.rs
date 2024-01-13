@@ -59,8 +59,15 @@ impl FromStr for TimeRange {
     type Err = TimeRangeParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut tokens = s.split('-');
-
+        let mut tokens = if s.contains(' ') {
+            s.split(' ')
+        } else if s.contains(':') {
+            s.split(':')
+        } else if s.contains('-') {
+            s.split('-')
+        } else {
+            s.split(' ')
+        };
         let start_s = tokens.next().unwrap();
         let start_t = if start_s == "" {
             0.0

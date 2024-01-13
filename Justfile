@@ -1,0 +1,2 @@
+test-units:
+    cargo test

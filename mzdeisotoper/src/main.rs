@@ -7,6 +7,7 @@ use std::sync::mpsc::{channel, Sender};
 use std::thread;
 use std::time::Instant;
 
+use args::ArgChargeRange;
 use args::PrecursorProcessing;
 use clap::Parser;
 use log;
@@ -15,11 +16,13 @@ use mzdata::io::infer_from_stream;
 use pretty_env_logger;
 use rayon::prelude::*;
 
-use mzdata::io::{MassSpectrometryFormat, StreamingSpectrumIterator, PreBufferedStream, infer_format};
-use mzdata::io::mzml::{MzMLReaderType, MzMLWriterType};
 use mzdata::io::mgf::MGFReaderType;
+use mzdata::io::mzml::{MzMLReaderType, MzMLWriterType};
 #[cfg(feature = "mzmlb")]
 use mzdata::io::MzMLbReaderType;
+use mzdata::io::{
+    infer_format, MassSpectrometryFormat, PreBufferedStream, StreamingSpectrumIterator,
+};
 use mzdata::prelude::*;
 use mzdata::spectrum::SignalContinuity;
 
@@ -49,9 +52,7 @@ use crate::time_range::TimeRange;
 use crate::types::{SpectrumGroupType, SpectrumType};
 
 fn prepare_procesing<
-    R: RandomAccessSpectrumIterator<CPeak, DPeak, SpectrumType>
-        + Send
-        + MSDataFileMetadata,
+    R: RandomAccessSpectrumIterator<CPeak, DPeak, SpectrumType> + Send + MSDataFileMetadata,
     S: IsotopicPatternScorer + Send + Sync + Clone + 'static,
     F: IsotopicFitFilter + Send + Sync + Clone + 'static,
     SN: IsotopicPatternScorer + Send + Sync + Clone + 'static,
@@ -198,94 +199,75 @@ fn non_negative_float_f32(s: &str) -> Result<f32, String> {
     }
 }
 
-/// Deisotoping and charge state deconvolution of mass spectrometry files
+/// Deisotoping and charge state deconvolution of mass spectrometry files.
 ///
 /// Read a file or stream, transform the spectra, and write out a processed mzML
 /// file or stream.
 #[derive(Parser, Debug)]
 #[command(author, version)]
 struct MZDeiosotoperArgs {
-    #[arg(help = "The path to read the input spectra from, or if '-' is passed, read from STDIN")]
+    /// The path to read the input spectra from, or if '-' is passed, read from STDIN
+    #[arg()]
     pub input_file: String,
 
-    #[arg(
-        short = 'o',
-        long = "output-file",
-        default_value = "-",
-        help = "The path to write the output file to, or if '-' is passed, write to STDOUT"
-    )]
+    /// The path to write the output file to, or if '-' is passed, write to STDOUT
+    #[arg(short = 'o', long = "output-file", default_value = "-")]
     pub output_file: PathBuf,
 
+    /// The number of threads to use, passing a value < 1 to use all available threads
     #[arg(
         short='t',
         long="threads",
         default_value_t=-1,
-        help="The number of threads to use, passing a value < 1 to use all available threads"
     )]
     pub threads: i32,
 
+    /// The time range to process, denoted [start?]-[stop?]
     #[arg(
         short='r',
         long="time-range",
         value_parser=TimeRange::from_str,
         value_name="BEGIN-END",
-        help="The time range to process, denoted [start?]-[stop?]",
         long_help=r#"The time range to process, denoted [start?]-[stop?]
 
-If a start is not specifed, processing begins from the start of the run.
+If a start is not specified, processing begins from the start of the run.
 If a stop is not specified, processing stops at the end of the run.
 "#
     )]
     pub time_range: Option<TimeRange>,
 
+    /// The number of MS1 spectra before and after to average with prior to peak picking
     #[arg(
         short = 'g',
         long = "ms1-averaging-range",
         default_value_t = 0,
         value_parser = clap::value_parser!(u32).range(0..),
-        help = "The number of MS1 spectra before and after to average with prior to peak picking",
     )]
     pub ms1_averaging_range: u32,
 
+    /// The magnitude of background noise reduction to use on MS1 spectra prior to peak picking
     #[arg(
         short = 'b',
         long = "ms1-background-reduction",
         default_value_t = 0.0,
-        help = "The magnitude of background noise reduction to use on MS1 spectra prior to peak picking",
         value_parser = non_negative_float_f32
     )]
     pub ms1_denoising: f32,
 
-    #[arg(
-        short = 'a',
-        long = "ms1-isotopic-model",
-        default_value = "peptide",
-        help = "The isotopic model to use for MS1 spectra"
-    )]
+    /// The isotopic model to use for MS1 spectra
+    #[arg(short = 'a', long = "ms1-isotopic-model", default_value = "peptide")]
     pub ms1_isotopic_model: ArgIsotopicModels,
 
-    #[arg(
-        short = 's',
-        long = "ms1-score-threshold",
-        default_value_t = 20.0,
-        help = "The minimum isotopic pattern fit score for MS1 spectra"
-    )]
+    /// The minimum isotopic pattern fit score for MS1 spectra
+    #[arg(short = 's', long = "ms1-score-threshold", default_value_t = 20.0)]
     pub ms1_score_threshold: ScoreType,
 
-    #[arg(
-        short = 'A',
-        long = "msn-isotopic-model",
-        default_value = "peptide",
-        help = "The isotopic model to use for MSn spectra"
-    )]
+    /// The isotopic model to use for MSn spectra
+    #[arg(short = 'A', long = "msn-isotopic-model", default_value = "peptide")]
     pub msn_isotopic_model: ArgIsotopicModels,
 
-    #[arg(
-        short = 'S',
-        long = "msn-score-threshold",
-        default_value_t = 10.0,
-        help = "The minimum isotopic pattern fit score for MSn spectra"
-    )]
+    /// The minimum isotopic pattern fit score for MSn spectra
+    #[arg(short = 'S', long = "msn-score-threshold", default_value_t = 10.0)]
     pub msn_score_threshold: ScoreType,
 
     #[arg(
@@ -295,6 +277,31 @@ If a stop is not specified, processing stops at the end of the run.
         help = "How to treat precursor ranges"
     )]
     pub precursor_processing: PrecursorProcessing,
+
+    /// The range of charge states to consider for each peak denoted [low]-[high] or [high]
+    #[arg(
+        short = 'z',
+        long = "charge-range",
+        default_value_t=ArgChargeRange(1, 8),
+    )]
+    pub charge_range: ArgChargeRange,
+
+    /// The maximum number of missed peaks for MS1 spectra
+    #[arg(
+        short = 'm',
+        long = "max-missed-peaks",
+        default_value_t = 1
+    )]
+    pub ms1_missed_peaks: u16,
+
+
+    /// The maximum number of missed peaks for MSn spectra
+    #[arg(
+        short = 'M',
+        long = "msn-max-missed-peaks",
+        default_value_t = 1
+    )]
+    pub msn_missed_peaks: u16,
 }
 
 impl MZDeiosotoperArgs {
@@ -315,7 +322,8 @@ impl MZDeiosotoperArgs {
 
     fn reader_then(&self) -> io::Result<()> {
         if self.input_file == "-" {
-            let mut buffered = PreBufferedStream::new_with_buffer_size(io::stdin(), 2usize.pow(20))?;
+            let mut buffered =
+                PreBufferedStream::new_with_buffer_size(io::stdin(), 2usize.pow(20))?;
             let (ms_format, compressed) = infer_from_stream(&mut buffered)?;
             log::debug!("Detected {ms_format:?} from STDIN (compressed? {compressed})");
             if compressed {
@@ -327,16 +335,16 @@ impl MZDeiosotoperArgs {
                     let reader = StreamingSpectrumIterator::new(MGFReaderType::new(buffered));
                     let spectrum_count = reader.spectrum_count_hint();
                     self.writer_then(reader, spectrum_count)?;
-                },
+                }
                 MassSpectrometryFormat::MzML => {
                     let reader = StreamingSpectrumIterator::new(MzMLReaderType::new(buffered));
                     let spectrum_count = reader.spectrum_count_hint();
                     self.writer_then(reader, spectrum_count)?;
                 }
                 _ => {
-                    eprintln!("Cannot open {}, failed to detect format or format not supported ({ms_format:?})", self.input_file);
+                    eprintln!("Cannot open {}, failed to detect format or format not supported via STDIN ({ms_format:?})", self.input_file);
                     std::process::exit(1)
-                },
+                }
             }
         } else {
             let (ms_format, compressed) = infer_format(&self.input_file)?;
@@ -350,12 +358,12 @@ impl MZDeiosotoperArgs {
                     let reader = MGFReaderType::open_path(self.input_file.clone())?;
                     let spectrum_count = Some(reader.len() as u64);
                     self.writer_then(reader, spectrum_count)?;
-                },
+                }
                 MassSpectrometryFormat::MzML => {
                     let reader = MzMLReaderType::open_path(self.input_file.clone())?;
                     let spectrum_count = Some(reader.len() as u64);
                     self.writer_then(reader, spectrum_count)?;
-                },
+                }
                 #[cfg(feature = "mzmlb")]
                 MassSpectrometryFormat::MzMLb => {
                     let reader = MzMLbReaderType::open_path(self.input_file.clone())?;
@@ -365,7 +373,7 @@ impl MZDeiosotoperArgs {
                 _ => {
                     eprintln!("Cannot open {}, failed to detect format or format not supported ({ms_format:?})", self.input_file);
                     std::process::exit(1)
-                },
+                }
             }
         }
         Ok(())
@@ -383,17 +391,16 @@ impl MZDeiosotoperArgs {
     ) -> io::Result<()> {
         if self.output_file == PathBuf::from("-") {
             let outfile = io::stdout();
-            let mut writer =
-                MzMLWriterType::<_, CPeak, DPeak>::new(outfile);
+            let mut writer = MzMLWriterType::<_, CPeak, DPeak>::new(outfile);
             writer.copy_metadata_from(&reader);
             if let Some(spectrum_count) = spectrum_count {
                 writer.set_spectrum_count(spectrum_count);
             }
             self.run_workflow(reader, writer)?;
         } else {
-            let mut writer = MzMLWriterType::new(
-                io::BufWriter::new(fs::File::create(self.output_file.clone())?),
-            );
+            let mut writer = MzMLWriterType::new(io::BufWriter::new(fs::File::create(
+                self.output_file.clone(),
+            )?));
             writer.copy_metadata_from(&reader);
             if let Some(spectrum_count) = spectrum_count {
                 writer.set_spectrum_count(spectrum_count);
@@ -423,9 +430,13 @@ impl MZDeiosotoperArgs {
 
         ms1_args.fit_filter.threshold = self.ms1_score_threshold;
         ms1_args.isotopic_model = self.ms1_isotopic_model.into();
+        ms1_args.charge_range = self.charge_range.into();
+        ms1_args.max_missed_peaks = self.ms1_missed_peaks;
 
         msn_args.fit_filter.threshold = self.msn_score_threshold;
         msn_args.isotopic_model = self.msn_isotopic_model.into();
+        msn_args.charge_range = self.charge_range.into();
+        msn_args.max_missed_peaks = self.msn_missed_peaks;
 
         signal_params.ms1_averaging = self.ms1_averaging_range as usize;
         signal_params.ms1_denoising = self.ms1_denoising;

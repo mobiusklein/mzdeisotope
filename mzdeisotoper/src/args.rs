@@ -1,6 +1,7 @@
-use std::fmt::Display;
+use std::{fmt::Display, str::FromStr};
 
 use clap::ValueEnum;
+use thiserror::Error;
 
 use mzdeisotope::{
     api::DeconvolutionEngine,
@@ -67,6 +68,72 @@ impl Display for ArgIsotopicModels {
         write!(f, "{:?}", self)
     }
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ArgChargeRange(pub i32, pub i32);
+
+impl Display for ArgChargeRange {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}-{}", self.0, self.1)
+    }
+}
+
+impl Default for ArgChargeRange {
+    fn default() -> Self {
+        Self(1, 8)
+    }
+}
+
+impl From<ArgChargeRange> for (i32, i32) {
+    fn from(value: ArgChargeRange) -> Self {
+        (value.0, value.1)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum ChargeRangeParserError {
+    #[error("Error parsing integer {0}")]
+    IntError(#[from] #[source] std::num::ParseIntError),
+    #[error("Charge range cannot be empty")]
+    EmptyRange,
+    #[error("Charge cannot be zero")]
+    ZeroCharge
+}
+
+impl FromStr for ArgChargeRange {
+    type Err = ChargeRangeParserError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let it = if s.contains(' ') {
+            s.split(' ')
+        } else if s.contains(':') {
+            s.split(':')
+        } else if s.find('-').map(|i| i > 0).unwrap_or(false) && s.chars().map(|t| (t == '-') as i32).sum::<i32>() == 1 {
+            s.split('-')
+        } else {
+            s.split(' ')
+        };
+        let r: Result<Vec<i32>, std::num::ParseIntError> = it.map(|t| t.parse()).collect();
+        let r = r?;
+        if r.len() == 0 {
+            Err(ChargeRangeParserError::EmptyRange)
+        } else {
+            if r.len() == 1 {
+                let val = r[0];
+                if val == 0 {
+                    Err(ChargeRangeParserError::ZeroCharge)
+                } else {
+                    return Ok(Self(val.signum(), val))
+                }
+            } else {
+                let low = *r.iter().min_by_key(|i| i.abs()).unwrap();
+                let high = *r.iter().max_by_key(|i| i.abs()).unwrap();
+                Ok(Self(low, high))
+            }
+        }
+    }
+}
+
 
 #[derive(Debug, Clone, Copy)]
 pub struct SignalParams {
@@ -193,5 +260,20 @@ pub fn make_default_signal_processing_params() -> SignalParams {
         mz_range: (80.0, 2200.0),
         interpolation_dx: 0.005,
         ms1_denoising: 0.0,
+    }
+}
+
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_charge_range_parse() -> Result<(), ChargeRangeParserError> {
+        let p: ArgChargeRange = "1-8".parse()?;
+        assert_eq!(p.1, 8);
+        assert_eq!(p.0, 1);
+
+        Ok(())
     }
 }
