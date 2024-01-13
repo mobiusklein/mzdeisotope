@@ -1,26 +1,35 @@
 [package]
 name = "mzdeisotoper"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 description = "Deisotoping and charge state deconvolution of mass spectrometry files"
+license = "Apache-2.0"
+repository = "https://github.com/mobiusklein/mzdeisotope"
+documentation = "https://docs.rs/mzdeisotoper"
+readme = "../README.md"
+exclude = ["tests/"]
+
+keywords = ['mass-spectrometry', 'deisotoping', 'charge-deconvolution']
+
+categories = ["science", "data-processing"]
 
 [features]
 
 mzmlb = ["mzdata/mzmlb"]
 
 [dependencies]
-mzdeisotope = { path = "../mzdeisotope" }
-mzdata = { version = "0.8.0", features = ["mzsignal", "nalgebra"]}
+mzdeisotope = { path = "../mzdeisotope", version = "0.1.1" }
+mzdata = { version = "0.8.0", features = ["mzsignal", "nalgebra"] }
 mzpeaks = { version = "0.9.0" }
 log = "0.4.20"
 itertools = "0.12.0"
 rayon = "1.7.0"
 flate2 = "1.0.28"
 pretty_env_logger = "0.5.0"
-clap = { version = "4.4.11", features = ["derive"]}
+clap = { version = "4.4.11", features = ["derive"] }
 thiserror = "1.0.56"
 
 

@@ -615,7 +615,7 @@ dependencies = [
 
 [[package]]
 name = "mzdeisotope"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "chemical_elements",
  "env_logger 0.10.1",
@@ -631,7 +631,7 @@ dependencies = [
 
 [[package]]
 name = "mzdeisotoper"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "clap",
  "flate2",

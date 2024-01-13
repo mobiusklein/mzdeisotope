@@ -1,9 +1,19 @@
 [package]
 name = "mzdeisotope"
-version = "0.1.0"
-edition = "2018"
+version = "0.1.1"
+edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+description = "A library to deisotope and charge state deconvolve mass spectra"
+license = "Apache-2.0"
+repository = "https://github.com/mobiusklein/mzdeisotope"
+documentation = "https://docs.rs/mzdeisotope"
+readme = "../README.md"
+exclude = ["tests/"]
+
+keywords = ['mass-spectrometry', 'deisotoping', 'charge-deconvolution']
+
+categories = ["science", "data-processing"]
 
 [[bin]]
 name = "mz-averagine"
@@ -17,14 +27,14 @@ name = "deisotoper"
 
 num-traits = "0.2"
 
-mzdata = { version = "0.8.0", features = ["mzsignal", "nalgebra"]}
+mzdata = { version = "0.8.0", features = ["mzsignal", "nalgebra"] }
 mzpeaks = { version = "0.9.0" }
-chemical_elements = { version = "0.3.0", features=['mzpeaks']}
+chemical_elements = { version = "0.3.0", features = ['mzpeaks'] }
 log = "0.4.20"
 itertools = "0.12.0"
 
 [dev-dependencies]
 flate2 = "1.0.28"
-env_logger = "*"
+env_logger = "0.10.1"
 test-log = "0.2.12 "
 rayon = "1.7.0"
