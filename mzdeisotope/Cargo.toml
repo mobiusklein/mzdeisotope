@@ -32,6 +32,7 @@ mzpeaks = { version = "0.9.0" }
 chemical_elements = { version = "0.3.0", features = ['mzpeaks'] }
 log = "0.4.20"
 itertools = "0.12.0"
+thiserror = "1.0.56"
 
 [dev-dependencies]
 flate2 = "1.0.28"

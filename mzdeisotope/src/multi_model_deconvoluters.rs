@@ -1,3 +1,5 @@
+/*! An **experimental** variant of the the deconvolution machinery using multiple
+ * isotopic models concurrently */
 use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 

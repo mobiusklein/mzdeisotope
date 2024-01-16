@@ -627,6 +627,7 @@ dependencies = [
  "num-traits",
  "rayon",
  "test-log",
+ "thiserror",
 ]
 
 [[package]]

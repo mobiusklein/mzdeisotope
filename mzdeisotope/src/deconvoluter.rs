@@ -1,3 +1,4 @@
+/*! Concrete deconvolution machinery implementations of [`deconv_traits`](crate::deconv_traits) */
 use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 

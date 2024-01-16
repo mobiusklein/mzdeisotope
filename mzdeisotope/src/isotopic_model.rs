@@ -1,3 +1,4 @@
+/*! Isotopic models for generating isotopic patterns */
 use std::cmp::Ordering;
 use std::collections::btree_map::{self, BTreeMap, Entry as BEntry};
 #[allow(unused)]

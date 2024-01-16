@@ -1,10 +1,90 @@
-use mzpeaks::prelude::*;
+/*! Utilities for describing charge state ranges and calculations */
 use std::cmp;
 
+use thiserror::Error;
+
+use mzpeaks::prelude::*;
+
+
+/// A charge range is just a pair of integers
 pub type ChargeRange = (i32, i32);
 
+#[doc(hidden)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ChargeRangeV2(pub i32, pub i32);
+
+impl From<ChargeRangeV2> for ChargeRange {
+    fn from(value: ChargeRangeV2) -> Self {
+        (value.0, value.1)
+    }
+}
+
+#[doc(hidden)]
+#[derive(Debug, Clone, Copy, PartialEq, Error)]
+pub enum ChargeRangeError {
+    #[error("Charge range cannot span zero")]
+    ChargeCannotBeZero,
+    #[error("Both min and max charge state must have the same sign")]
+    SignsMustMatch,
+}
+
+impl TryFrom<(i32, i32)> for ChargeRangeV2 {
+    type Error = ChargeRangeError;
+
+    fn try_from(value: (i32, i32)) -> Result<Self, Self::Error> {
+        let (a, b) = value;
+        if a.signum() != b.signum() {
+            Err(ChargeRangeError::SignsMustMatch)
+        } else if a == 0 || b == 0 {
+            Err(ChargeRangeError::ChargeCannotBeZero)
+        } else {
+            if a.abs() < b.abs() {
+                Ok(ChargeRangeV2(a, b))
+            } else {
+                Ok(ChargeRangeV2(b, a))
+            }
+        }
+    }
+}
+
+impl ChargeRangeV2 {
+    pub fn new(low: i32, high: i32) -> Result<Self, ChargeRangeError> {
+        (low, high).try_into()
+    }
+
+    pub fn iter(&self) -> ChargeRangeIter {
+        ChargeRangeIter::new(self.0, self.1)
+    }
+
+    pub fn abs(&self) -> ChargeRangeV2 {
+        Self::new(self.0.abs(), self.1.abs()).unwrap()
+    }
+}
+
+impl IntoIterator for ChargeRangeV2 {
+    type Item = i32;
+
+    type IntoIter = ChargeRangeIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+impl IntoIterator for &ChargeRangeV2 {
+    type Item = i32;
+
+    type IntoIter = ChargeRangeIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+/// A marker trait indicating that an iterator can be used to produce charge states
 pub trait ChargeIterator: Iterator<Item = i32> {}
 
+/// An iterator for a series of contiguous charge states within a range
 #[derive(Debug, Clone)]
 pub struct ChargeRangeIter {
     pub min: i32,
@@ -54,8 +134,41 @@ impl From<ChargeRange> for ChargeRangeIter {
     }
 }
 
+impl From<ChargeRangeV2> for ChargeRangeIter {
+    fn from(value: ChargeRangeV2) -> Self {
+        value.into_iter()
+    }
+}
+
 impl ChargeIterator for ChargeRangeIter {}
 
+/// Hoopman's [QuickCharge][1] algorithm to quickly estimate the charge states to actually try
+/// fitting a given seed peak with.
+///
+/// For safety, this does not rule out charge state 1.
+///
+/// # Arguments
+/// - `peaks`: The centroid mass spectrum being deconvoluted
+/// - `position`: The index of the peak to be checked
+/// - `charge_range`: The range of charge states to actually consider
+///
+/// ## Static Parameter
+/// - `N`: The maximum charge state to allocate a solution for. Rust's const expressions
+///        are not yet good enough to let us do more with this beyond a small memory
+///        optimization
+///
+/// # Caveats
+/// [`mzdeisotope`](crate) fits relative to the monoisotopic peak, and if A+1
+/// peak is missing due to interference or some other signal cleaning failure
+/// then the *true* charge state will be missing.
+///
+/// # References
+/// - [1]: <https://doi.org/10.1021/ac0700833>
+///   Hoopmann, M. R., Finney, G. L., MacCoss, M. J., Michael R. Hoopmann, Gregory L. Finney,
+///   and, MacCoss*, M. J., … MacCoss, M. J. (2007). "High-speed data reduction, feature detection
+///   and MS/MS spectrum quality assessment of shotgun proteomics data sets using high-resolution
+///   Mass Spectrometry". Analytical Chemistry, 79(15), 5620–5632. <https://doi.org/10.1021/ac0700833>
+///
 pub fn quick_charge<C: CentroidLike, const N: usize>(
     peaks: &[C],
     position: usize,
@@ -101,6 +214,8 @@ pub fn quick_charge<C: CentroidLike, const N: usize>(
     result.into()
 }
 
+/// A [`ChargeIterator`] implementation for a sequence of charge values that are not necessarily
+/// contiguous.
 #[derive(Debug, Clone)]
 pub struct ChargeListIter {
     valid: Vec<i32>,
@@ -139,6 +254,10 @@ impl From<Vec<i32>> for ChargeListIter {
     }
 }
 
+impl ChargeIterator for std::vec::IntoIter<i32> {}
+
+/// An wrapper around [`quick_charge`] which dispatches to an appropriate staticly compiled
+/// variant with minimal stack allocation.
 pub fn quick_charge_w<C: CentroidLike>(
     peaks: &[C],
     position: usize,
@@ -165,13 +284,16 @@ pub fn quick_charge_w<C: CentroidLike>(
     }
 }
 
+#[doc(hidden)]
+#[allow(unused)]
 #[derive(Debug, Clone, Copy, Default)]
-pub enum ChargeStrategy {
+pub(crate) enum ChargeStrategy {
     #[default]
     ChargeRange,
     QuickCharge,
 }
 
+#[allow(unused)]
 impl ChargeStrategy {
     pub fn for_peak<C: CentroidLike>(
         &self,

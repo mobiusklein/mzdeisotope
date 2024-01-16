@@ -1,3 +1,4 @@
+/*! Intervals and interval trees */
 use num_traits::real::Real;
 use std::borrow::Borrow;
 use std::collections::VecDeque;
@@ -68,6 +69,7 @@ pub trait Span2D {
     }
 }
 
+/// A basic [`Span1D`] implementation
 #[derive(Debug, Default, Clone, Copy, PartialEq, PartialOrd)]
 pub struct SimpleInterval<V: PartialOrd> {
     pub start: V,
@@ -104,6 +106,7 @@ impl<V: PartialOrd> From<Range<V>> for SimpleInterval<V> {
     }
 }
 
+/// A basic [`Span2D`] implementation
 #[derive(Debug, Default, Clone, Copy, PartialEq, PartialOrd)]
 pub struct BoundingBox<V1: PartialOrd, V2: PartialOrd> {
     pub start: (V1, V2),
@@ -162,6 +165,7 @@ pub fn intervals_overlapping<
     result
 }
 
+/// An interval tree over `T`
 #[derive(Debug, Clone)]
 pub struct IntervalTree<V: Real + Copy + Sum, T: Span1D<DimType = V>> {
     pub nodes: Vec<IntervalTreeNode<V, T>>,
@@ -535,6 +539,7 @@ impl<V: Real + Copy + Sum, T: Span1D<DimType = V>> Span1D for IntervalTree<V, T>
     }
 }
 
+/// A node in [`IntervalTree`] over `T`
 #[derive(Debug, Clone, Default)]
 pub struct IntervalTreeNode<V: Real + Copy + Sum, T: Span1D<DimType = V>> {
     pub start: V,

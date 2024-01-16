@@ -1,3 +1,4 @@
+/*! Traits that implement infrastructure for the deconvolution process */
 use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::ops::Range;
@@ -6,6 +7,7 @@ use chemical_elements::isotopic_pattern::TheoreticalIsotopicPattern;
 use chemical_elements::neutral_mass;
 use mzpeaks::peak::MZPoint;
 use mzpeaks::{CentroidLike, MZLocated, MassPeakSetType, Tolerance};
+use thiserror::Error;
 
 use crate::charge::{ChargeIterator, ChargeListIter, ChargeRange, ChargeRangeIter};
 use crate::isotopic_fit::IsotopicFit;
@@ -17,9 +19,12 @@ use crate::solution::DeconvolvedSolutionPeak;
 
 pub type QuerySet = HashSet<(PeakKey, i32)>;
 
-#[derive(Debug, Clone, PartialEq)]
+/// An error that might occur during deconvolution
+#[derive(Debug, Clone, PartialEq, Error)]
 pub enum DeconvolutionError {
+    #[error("Failed to resolve a deconvolution solution")]
     FailedToResolveSolution,
+    #[error("Failed to resolve a fit reference {0:?}")]
     FailedToResolveFit(FitRef)
 }
 

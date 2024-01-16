@@ -1,9 +1,11 @@
+/*! Description of isotopic pattern fits */
 use std::hash::{Hash, Hasher};
 
 use chemical_elements::isotopic_pattern::TheoreticalIsotopicPattern;
 
 use crate::{peaks::PeakKey, scorer::ScoreType};
 
+/// Describes an isotopic pattern fit
 #[derive(Debug, Clone)]
 pub struct IsotopicFit {
     pub experimental: Vec<PeakKey>,

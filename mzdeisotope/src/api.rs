@@ -1,3 +1,7 @@
+/*!
+ * High level APIs for running deconvolution operations
+ */
+
 use std::marker::PhantomData;
 use std::mem;
 
@@ -15,6 +19,19 @@ use crate::{
     solution::DeconvolvedSolutionPeak,
 };
 
+
+/// A single-shot deconvolution operation on the provided peak list
+///
+/// # Arguments
+/// - `peaks`: The centroided mass spectrum to process
+/// - `isotopic_model`: The model to generate isotpoic patterns from
+/// - `error_tolerance`: The mass accuracy constraint for isotopic peaks within a pattern
+/// - `charge_range`: The minimum to maximum charge state to consider, ordered by absolute magnitude
+/// - `scorer`: The strategy for scoring isotopic pattern fits
+/// - `fit_filter`: The strategy for filtering out isotopic pattern fits that are too poor to consider
+/// - `max_missed_peaks`: The number of missing isotopic peaks to tolerate in an isotopic pattern fit, regardless of quality
+/// - `isotopic_params`: The set of parameters to use for `isotopic_model` when generating an isotopic pattern for a given m/z
+/// - `use_quick_charge`: Whether or not to use Hoopman's QuickCharge algorithm to filter candidate charge states
 pub fn deconvolute_peaks<
     'lifespan,
     C: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut,
@@ -61,6 +78,19 @@ impl PeaksAndTargets {
     }
 }
 
+/// A single-shot deconvolution operation on the provided peak list with a set of priority targets
+///
+/// # Arguments
+/// - `peaks`: The centroided mass spectrum to process
+/// - `isotopic_model`: The model to generate isotpoic patterns from
+/// - `error_tolerance`: The mass accuracy constraint for isotopic peaks within a pattern
+/// - `charge_range`: The minimum to maximum charge state to consider, ordered by absolute magnitude
+/// - `scorer`: The strategy for scoring isotopic pattern fits
+/// - `fit_filter`: The strategy for filtering out isotopic pattern fits that are too poor to consider
+/// - `max_missed_peaks`: The number of missing isotopic peaks to tolerate in an isotopic pattern fit, regardless of quality
+/// - `isotopic_params`: The set of parameters to use for `isotopic_model` when generating an isotopic pattern for a given m/z
+/// - `use_quick_charge`: Whether or not to use Hoopman's QuickCharge algorithm to filter candidate
+/// - `targets`: A sequence of m/z values which the deconvolution machinery should track specifically
 pub fn deconvolute_peaks_with_targets<
     'lifespan,
     C: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut,
@@ -91,16 +121,29 @@ pub fn deconvolute_peaks_with_targets<
 }
 
 #[derive(Debug, Clone)]
+/// A state-manager for deconvolution with a preserved isotopic pattern model cache
+/// and a consistent set of parameters and strategies.
+///
+/// The type definition is templated on multiple compile time strategies.
+///
+/// Internally, this struct is in a mostly-unusable state while it is running a deconvolution
+/// operation, as gives up its ownership of its isotopic pattern cache temporarily. The cache is
+/// reclaimed after processing finishes.
 pub struct DeconvolutionEngine<
     'lifespan,
     C: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut,
     S: IsotopicPatternScorer,
     F: IsotopicFitFilter,
 > {
+    /// The set of parameters to use for `isotopic_model` when generating an isotopic pattern for a given m/z
     isotopic_params: IsotopicPatternParams,
+    /// Whether or not to use Hoopman's QuickCharge algorithm to filter candidate
     use_quick_charge: bool,
+    /// The model to generate isotpoic patterns from
     isotopic_model: Option<CachingIsotopicModel<'lifespan>>,
+    /// The strategy for scoring isotopic pattern fits
     scorer: Option<S>,
+    /// The strategy for filtering out isotopic pattern fits that are too poor to consider
     fit_filter: Option<F>,
     peak_type: PhantomData<C>
 }
@@ -112,6 +155,14 @@ impl<
         F: IsotopicFitFilter,
     > DeconvolutionEngine<'lifespan, C, S, F>
 {
+
+    /// Create a new [`DeconvolutionEngine`] with the associated strategies
+    /// # Arguments
+    /// - `isotopic_params`: The set of parameters to use for `isotopic_model` when generating an isotopic pattern for a given m/z
+    /// - `isotopic_model`: The model to generate isotpoic patterns from
+    /// - `scorer`: The strategy for scoring isotopic pattern fits
+    /// - `fit_filter`: The strategy for filtering out isotopic pattern fits that are too poor to consider
+    /// - `use_quick_charge`: Whether or not to use Hoopman's QuickCharge algorithm to filter candidate
     pub fn new(
         isotopic_params: IsotopicPatternParams,
         isotopic_model: CachingIsotopicModel<'lifespan>,
@@ -129,6 +180,8 @@ impl<
         }
     }
 
+    /// Pre-calculcate and cache all isotopic patterns between `min_mz` and `max_mz` for
+    /// charge states between `min_charge` and `max_charge`.
     pub fn populate_isotopic_model_cache(
         &mut self,
         min_mz: f64,
@@ -147,6 +200,12 @@ impl<
         }
     }
 
+    /// Deconvolute the provided `peaks` to neutral mass, charge labeled peaks
+    /// # Arguments
+    /// - `peaks`: The centroided mass spectrum to process
+    /// - `error_tolerance`: The mass accuracy constraint for isotopic peaks within a pattern
+    /// - `charge_range`: The minimum to maximum charge state to consider, ordered by absolute magnitude
+    /// - `max_missed_peaks`: The number of missing isotopic peaks to tolerate in an isotopic pattern fit, regardless of quality
     pub fn deconvolute_peaks(
         &mut self,
         peaks: MZPeakSetType<C>,
@@ -180,6 +239,13 @@ impl<
         output
     }
 
+    /// Deconvolute the provided `peaks` to neutral mass, charge labeled peaks with a set of priority targets
+    /// # Arguments
+    /// - `peaks`: The centroided mass spectrum to process
+    /// - `error_tolerance`: The mass accuracy constraint for isotopic peaks within a pattern
+    /// - `charge_range`: The minimum to maximum charge state to consider, ordered by absolute magnitude
+    /// - `max_missed_peaks`: The number of missing isotopic peaks to tolerate in an isotopic pattern fit, regardless of quality
+    /// - `targets`: A sequence of m/z values which the deconvolution machinery should track specifically
     pub fn deconvolute_peaks_with_targets(
         &mut self,
         peaks: MZPeakSetType<C>,

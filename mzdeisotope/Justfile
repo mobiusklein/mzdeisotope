@@ -1,0 +1,5 @@
+test:
+    cargo t
+
+docs:
+    cargo doc --lib --no-deps
