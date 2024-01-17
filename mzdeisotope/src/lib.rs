@@ -7,6 +7,7 @@ pub mod peaks;
 pub mod scorer;
 pub mod solution;
 pub mod api;
+pub mod isolation;
 
 pub mod multi_model_deconvoluters;
 pub mod deconvoluter;

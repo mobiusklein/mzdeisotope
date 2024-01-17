@@ -1,3 +1,5 @@
+set dotenv-load := true
+
 test-file:
     cargo r -r -- -g 1 \
         -v selected-precursors \
