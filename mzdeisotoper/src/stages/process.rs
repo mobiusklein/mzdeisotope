@@ -7,7 +7,7 @@ use mzpeaks::prelude::*;
 
 use mzdeisotope::{
     api::{DeconvolutionEngine, PeaksAndTargets},
-    isolation::{PrecursorPurityEstimator, Coisolation},
+    isolation::{Coisolation, PrecursorPurityEstimator},
     scorer::{IsotopicFitFilter, IsotopicPatternScorer},
     solution::DeconvolvedSolutionPeak,
 };
@@ -17,6 +17,20 @@ use crate::{
     progress::ProgressRecord,
     types::{CPeak, SpectrumGroupType},
 };
+
+
+pub fn coisolation_to_param(c: &Coisolation) -> Param {
+    Param::new_key_value(
+        "mzdeisotope:coisolation".to_string(),
+        format!(
+            "{} {} {}",
+            c.neutral_mass,
+            c.intensity,
+            c.charge.unwrap_or_default()
+        ),
+    )
+}
+
 
 pub struct PrecursorPeakMapper<'a> {
     mzs: &'a [f64],
@@ -29,9 +43,7 @@ impl<'a> PrecursorPeakMapper<'a> {
     }
 
     pub fn find_peak_for_mz(&self, mz: f64) -> Option<&DeconvolvedSolutionPeak> {
-        self.find_mz(mz).and_then(|i| {
-            self.peaks[i].as_ref()
-        })
+        self.find_mz(mz).and_then(|i| self.peaks[i].as_ref())
     }
 
     pub fn find_mz(&self, mz: f64) -> Option<usize> {
@@ -45,7 +57,7 @@ impl<'a> PrecursorPeakMapper<'a> {
 pub fn purities_of(
     purity_estimator: &PrecursorPurityEstimator,
     group: &SpectrumGroupType,
-    targets: &PrecursorPeakMapper
+    targets: &PrecursorPeakMapper,
 ) -> HashMap<usize, (f32, Vec<Coisolation>)> {
     let mut purities = HashMap::new();
     if let Some(precursor_scan) = group.precursor() {
@@ -62,7 +74,7 @@ pub fn purities_of(
                         peak,
                         Some(&prec.isolation_window),
                         0.1,
-                        true
+                        true,
                     );
                     purities.insert(i, (purity, coisolations));
                     Some(())
@@ -238,7 +250,8 @@ pub fn deconvolution_transform<
             scan.deconvoluted_peaks = Some(deconvoluted_peaks);
             scan.precursor_mut().and_then(|prec| {
                 let target_mz = prec.mz();
-                let _ = precursor_map.find_mz(target_mz)
+                let _ = precursor_map
+                    .find_mz(target_mz)
                     .and_then(|i| {
                         if let Some(peak) = &targets[i] {
                             let orig_charge = prec.ion.charge;
@@ -255,36 +268,28 @@ pub fn deconvolution_transform<
                                 prec.ion.mz = peak.mz();
                                 prec.ion.charge = Some(peak.charge);
                                 prec.ion.intensity = peak.intensity;
-                                let (purity, coisolated) = purities
-                                        .remove(&scan_i)
-                                        .unwrap_or_default();
+                                let (purity, coisolated) =
+                                    purities.remove(&scan_i).unwrap_or_default();
                                 prec.ion.params_mut().push(Param::new_key_value(
                                     "mzdeisotope:isolation purity".to_string(),
                                     purity.to_string(),
                                 ));
                                 coisolated.iter().for_each(|c| {
-                                    prec.ion.params_mut().push(Param::new_key_value(
-                                        "mzdeisotope:coisolation".to_string(),
-                                        format!("{} {} {}", c.neutral_mass, c.intensity, c.charge.unwrap_or_default()),
-                                    ));
+                                    prec.ion.params_mut().push(coisolation_to_param(c));
                                 });
                             } else {
                                 prec.ion.params_mut().push(Param::new_key_value(
                                     "mzdeisotope:defaulted".to_string(),
                                     true.to_string(),
                                 ));
-                                let (purity, coisolated) = purities
-                                        .remove(&scan_i)
-                                        .unwrap_or_default();
+                                let (purity, coisolated) =
+                                    purities.remove(&scan_i).unwrap_or_default();
                                 prec.ion.params_mut().push(Param::new_key_value(
                                     "mzdeisotope:isolation purity".to_string(),
                                     purity.to_string(),
                                 ));
                                 coisolated.iter().for_each(|c| {
-                                    prec.ion.params_mut().push(Param::new_key_value(
-                                        "mzdeisotope:coisolation".to_string(),
-                                        format!("{} {} {}", c.neutral_mass, c.intensity, c.charge.unwrap_or_default()),
-                                    ));
+                                    prec.ion.params_mut().push(coisolation_to_param(c));
                                 });
                                 prog.precursors_defaulted += 1;
                             }

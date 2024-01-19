@@ -7,21 +7,20 @@ use std::sync::mpsc::{channel, Sender};
 use std::thread;
 use std::time::Instant;
 
-use args::ArgChargeRange;
-use args::PrecursorProcessing;
 use clap::Parser;
 use log;
 
-use mzdata::io::infer_from_stream;
 use pretty_env_logger;
 use rayon::prelude::*;
+use thiserror::Error;
 
-use mzdata::io::mgf::MGFReaderType;
-use mzdata::io::mzml::{MzMLReaderType, MzMLWriterType};
 #[cfg(feature = "mzmlb")]
 use mzdata::io::MzMLbReaderType;
 use mzdata::io::{
-    infer_format, MassSpectrometryFormat, PreBufferedStream, StreamingSpectrumIterator,
+    infer_format, infer_from_stream,
+    mgf::MGFReaderType,
+    mzml::{MzMLReaderType, MzMLWriterType},
+    MassSpectrometryFormat, PreBufferedStream, StreamingSpectrumIterator,
 };
 use mzdata::prelude::*;
 use mzdata::spectrum::SignalContinuity;
@@ -30,8 +29,6 @@ use mzdeisotope::scorer::ScoreType;
 use mzdeisotope::scorer::{IsotopicFitFilter, IsotopicPatternScorer};
 
 use mzpeaks::Tolerance;
-use types::CPeak;
-use types::DPeak;
 
 mod args;
 mod progress;
@@ -42,14 +39,19 @@ mod types;
 
 use crate::args::{
     make_default_ms1_deconvolution_params, make_default_msn_deconvolution_params,
-    make_default_signal_processing_params, ArgIsotopicModels, DeconvolutionBuilderParams,
-    SignalParams,
+    make_default_signal_processing_params, ArgChargeRange, ArgIsotopicModels,
+    DeconvolutionBuilderParams, PrecursorProcessing, SignalParams,
 };
+
 use crate::progress::ProgressRecord;
 use crate::selection_targets::{MSnTargetTracking, SpectrumGroupTiming};
-use crate::stages::{collate_results, deconvolution_transform, write_output};
+#[allow(unused)]
+use crate::stages::{
+    collate_results, collate_results_spectra, deconvolution_transform, write_output,
+    write_output_spectra,
+};
 use crate::time_range::TimeRange;
-use crate::types::{SpectrumGroupType, SpectrumType};
+use crate::types::{CPeak, DPeak, SpectrumGroupType, SpectrumType};
 
 fn prepare_procesing<
     R: RandomAccessSpectrumIterator<CPeak, DPeak, SpectrumType> + Send + MSDataFileMetadata,
@@ -199,6 +201,24 @@ fn non_negative_float_f32(s: &str) -> Result<f32, String> {
     }
 }
 
+#[derive(Debug, Error)]
+enum MZDeisotoperError {
+    #[error("An IO error occurred: {0}")]
+    IOError(
+        #[source]
+        #[from]
+        io::Error,
+    ),
+    #[error("The file format for {0} was either unknown or not supported ({1:?})")]
+    FormatUnknownOrNotSupportedError(String, MassSpectrometryFormat),
+    #[error("The file format from STDIN was either unknown or not supported ({0:?})")]
+    FormatUnknownOrNotSupportedErrorStdIn(MassSpectrometryFormat),
+    #[error(
+        "The input stream was detected to be gzip compressed, which is not currently supported"
+    )]
+    CompressedInputError(String),
+}
+
 /// Deisotoping and charge state deconvolution of mass spectrometry files.
 ///
 /// Read a file or stream, transform the spectra, and write out a processed mzML
@@ -287,20 +307,11 @@ If a stop is not specified, processing stops at the end of the run.
     pub charge_range: ArgChargeRange,
 
     /// The maximum number of missed peaks for MS1 spectra
-    #[arg(
-        short = 'm',
-        long = "max-missed-peaks",
-        default_value_t = 1
-    )]
+    #[arg(short = 'm', long = "max-missed-peaks", default_value_t = 1)]
     pub ms1_missed_peaks: u16,
 
-
     /// The maximum number of missed peaks for MSn spectra
-    #[arg(
-        short = 'M',
-        long = "msn-max-missed-peaks",
-        default_value_t = 1
-    )]
+    #[arg(short = 'M', long = "msn-max-missed-peaks", default_value_t = 1)]
     pub msn_missed_peaks: u16,
 }
 
@@ -315,20 +326,20 @@ impl MZDeiosotoperArgs {
         }
     }
 
-    pub fn main(&self) -> io::Result<()> {
+    pub fn main(&self) -> Result<(), MZDeisotoperError> {
         self.set_threadpool();
         self.reader_then()
     }
 
-    fn reader_then(&self) -> io::Result<()> {
+    fn reader_then(&self) -> Result<(), MZDeisotoperError> {
         if self.input_file == "-" {
             let mut buffered =
                 PreBufferedStream::new_with_buffer_size(io::stdin(), 2usize.pow(20))?;
             let (ms_format, compressed) = infer_from_stream(&mut buffered)?;
             log::debug!("Detected {ms_format:?} from STDIN (compressed? {compressed})");
             if compressed {
-                eprintln!("STDIN is compressed, not currently supported");
-                std::process::exit(1);
+                log::debug!("STDIN is compressed, not currently supported");
+                return Err(MZDeisotoperError::CompressedInputError("-".to_string()));
             }
             match ms_format {
                 MassSpectrometryFormat::MGF => {
@@ -342,15 +353,18 @@ impl MZDeiosotoperArgs {
                     self.writer_then(reader, spectrum_count)?;
                 }
                 _ => {
-                    eprintln!("Cannot open {}, failed to detect format or format not supported via STDIN ({ms_format:?})", self.input_file);
-                    std::process::exit(1)
+                    return Err(MZDeisotoperError::FormatUnknownOrNotSupportedErrorStdIn(
+                        ms_format,
+                    ))
                 }
             }
         } else {
             let (ms_format, compressed) = infer_format(&self.input_file)?;
             if compressed {
                 eprintln!("{} is compressed, not currently supported", self.input_file);
-                std::process::exit(1);
+                return Err(MZDeisotoperError::CompressedInputError(
+                    self.input_file.clone(),
+                ));
             }
             log::debug!("Detected {ms_format:?} from path (compressed? {compressed})");
             match ms_format {
@@ -371,8 +385,10 @@ impl MZDeiosotoperArgs {
                     self.writer_then(reader, spectrum_count)?;
                 }
                 _ => {
-                    eprintln!("Cannot open {}, failed to detect format or format not supported ({ms_format:?})", self.input_file);
-                    std::process::exit(1)
+                    return Err(MZDeisotoperError::FormatUnknownOrNotSupportedError(
+                        self.input_file.clone(),
+                        ms_format,
+                    ))
                 }
             }
         }
@@ -455,9 +471,10 @@ impl MZDeiosotoperArgs {
             )
         });
 
-        let collate_task = thread::spawn(move || collate_results(recv_solved, send_collated));
+        let collate_task =
+            thread::spawn(move || collate_results_spectra(recv_solved, send_collated));
 
-        let write_task = thread::spawn(move || write_output(writer, recv_collated));
+        let write_task = thread::spawn(move || write_output_spectra(writer, recv_collated));
 
         match read_task.join() {
             Ok(o) => o?,
@@ -483,7 +500,7 @@ impl MZDeiosotoperArgs {
     }
 }
 
-fn main() -> io::Result<()> {
+fn main() -> Result<(), MZDeisotoperError> {
     pretty_env_logger::init_timed();
 
     let args = MZDeiosotoperArgs::parse();

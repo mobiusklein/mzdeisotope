@@ -11,3 +11,4 @@ pub(crate) type SpectrumType = MultiLayerSpectrum<CPeak, DPeak>;
 pub(crate) type SpectrumGroupType =
     TargetTrackingSpectrumGroup<CPeak, DPeak, SpectrumGroup<CPeak, DPeak, SpectrumType>>;
 pub(crate) type SpectrumGroupCollator = Collator<SpectrumGroupType>;
+pub(crate) type SpectrumCollator = Collator<SpectrumType>;
