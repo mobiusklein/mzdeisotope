@@ -104,3 +104,81 @@ impl From<(f64, f64)> for TimeRange {
         Self::new(value.0, value.1)
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_time_fromstr() -> Result<(), TimeRangeParseError> {
+        let t: TimeRange = "52.0-".parse()?;
+        assert_eq!(t.start(), 52.0);
+        assert_eq!(t.end(), f64::INFINITY);
+
+        let t: TimeRange = "-52.0".parse()?;
+        assert_eq!(t.start(), 0.0);
+        assert_eq!(t.end(), 52.0);
+
+        let t: TimeRange = "32-52.0".parse()?;
+        assert_eq!(t.start(), 32.0);
+        assert_eq!(t.end(), 52.0);
+
+        let t: TimeRange = "-".parse()?;
+        assert_eq!(t.start(), 0.0);
+        assert_eq!(t.end(), f64::INFINITY);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_time_fromstr_malformed() -> Result<(), TimeRangeParseError> {
+        match "a-".parse::<TimeRange>() {
+            Ok(_) => {
+                panic!("Can't happen")
+            },
+            Err(e) => {
+                match e {
+                    TimeRangeParseError::MalformedStart(_) => {
+
+                    },
+                    TimeRangeParseError::MalformedEnd(_) => {
+                        panic!("The problem is at the start")
+                    },
+                }
+            },
+        }
+
+        match "-b".parse::<TimeRange>() {
+            Ok(_) => {
+                panic!("Can't happen")
+            },
+            Err(e) => {
+                match e {
+                    TimeRangeParseError::MalformedStart(_) => {
+                        panic!("The problem is at the end")
+                    },
+                    TimeRangeParseError::MalformedEnd(_) => {
+                    },
+                }
+            },
+        }
+
+        match "a-b".parse::<TimeRange>() {
+            Ok(_) => {
+                panic!("Can't happen")
+            },
+            Err(e) => {
+                match e {
+                    TimeRangeParseError::MalformedStart(_) => {
+                    },
+                    TimeRangeParseError::MalformedEnd(_) => {
+                        panic!("The problem is at both ends, but err on the start first")
+                    },
+                }
+            },
+        }
+
+        Ok(())
+    }
+
+}

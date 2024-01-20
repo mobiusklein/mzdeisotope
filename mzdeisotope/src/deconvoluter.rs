@@ -982,7 +982,7 @@ mod test {
         assert_eq!(best_fit.charge, 4);
         assert_eq!(best_fit.missed_peaks, 0);
         assert!(
-            (best_fit.score - 3131.769).abs() < 1e-3,
+            (best_fit.score - 3127.7483).abs() < 1e-3,
             "{}",
             best_fit.score
         );
@@ -1020,19 +1020,19 @@ mod test {
             10,
         ).unwrap();
 
-        assert_eq!(dpeaks.len(), 557);
+        assert_eq!(dpeaks.len(), 558);
         let best_fit = dpeaks
             .iter()
             .max_by(|a, b| a.score.partial_cmp(&b.score).unwrap())
             .unwrap();
         assert_eq!(best_fit.charge, 4);
         assert!(
-            (best_fit.score - 3131.769).abs() < 1e-3,
+            (best_fit.score - 3127.7483).abs() < 1e-3,
             "{}",
             best_fit.score
         );
 
-        let expected_intensity = 1771624.4;
+        let expected_intensity = 1770737.8;
         assert!(
             (best_fit.intensity - expected_intensity).abs() < 1e-6,
             "Expected intensity {expected_intensity}, got {} delta {}",
@@ -1082,12 +1082,12 @@ mod test {
             .unwrap();
         assert_eq!(best_fit.charge, 4);
         assert!(
-            (best_fit.score - 3127.3096).abs() < 1e-3,
+            (best_fit.score - 3127.7483).abs() < 1e-3,
             "{}",
             best_fit.score
         );
 
-        let expected_intensity = 1770645.3;
+        let expected_intensity = 1770737.8;
         assert!(
             (best_fit.intensity - expected_intensity).abs() < 1e-6,
             "Expected intensity {expected_intensity}, got {} delta {}",
@@ -1095,7 +1095,7 @@ mod test {
             best_fit.intensity - expected_intensity
         );
         eprintln!("intensity {}", best_fit.intensity);
-        assert_eq!(dpeaks.len(), 566);
+        assert_eq!(dpeaks.len(), 567);
         Ok(())
     }
 
@@ -1198,8 +1198,8 @@ mod test {
         assert_eq!(total_missed, total_missed2);
         assert_eq!(total_fits, total_fits2);
         assert_eq!(total_combos, 19142);
-        assert_eq!(total_missed, 21124);
-        assert_eq!(total_fits, 10789);
+        assert_eq!(total_missed, 21125);
+        assert_eq!(total_fits, 10788);
 
         let fits =
             deconvoluter.step_deconvolve(Tolerance::PPM(10.0), (1, 8), 1, 1, isotopic_params);
@@ -1208,11 +1208,11 @@ mod test {
         assert_eq!(best_fit.charge, 4);
         assert_eq!(best_fit.missed_peaks, 0);
         assert!(
-            (best_fit.score - 3127.5288).abs() < 1e-3,
+            (best_fit.score - 3127.7483).abs() < 1e-3,
             "{}",
             best_fit.score
         );
-        assert_eq!(fits.len(), 10282);
+        assert_eq!(fits.len(), 10281);
         Ok(())
     }
 }

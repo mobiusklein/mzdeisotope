@@ -113,6 +113,16 @@ impl IsotopicPatternParams {
     }
 }
 
+/// A model for converting an m/z and a theoretical charge state into a theoretical
+/// isotopic pattern based upon an "average monomer" and linear extension.
+///
+/// This is an implementation of [Senko's Averagine][1]
+///
+/// # References
+/// - [1]: <https://doi.org/10.1016/1044-0305(95)00017-8>
+///     Senko M, Beu S, McLafferty F: Determination of Monoisotopic Masses and Ion
+///     Populations for Large Biomolecules from Resolved Isotopic Distributions.
+///     Journal of the American Society for Mass Spectrometry 1995, 6:229-233
 #[derive(Debug, Clone)]
 pub struct IsotopicModel<'lifespan> {
     pub base_composition: FractionalComposition<'lifespan>,
@@ -194,6 +204,9 @@ impl<'lifespan, T: IntoIterator<Item = (&'static str, f64)>> From<T> for Isotopi
     }
 }
 
+
+// TODO: Break this into two structs, one for m/z and charge, another for the rest, and
+// root the cache bucket off the latter struct, and then sort over the former struct
 #[derive(Debug, Clone, Copy)]
 pub struct IsotopicPatternSpec {
     pub mz: f64,
@@ -287,11 +300,14 @@ impl Iterator for FloatRange {
     }
 }
 
+/// A wrapper around [`IsotopicModel`] which includes a cache over isotopic patterns,
+/// mapping similar m/z values with the same charge and parameters to a previously calculated
+/// pattern if one exists, otherwise computing a new pattern and saving it in the cache.
 #[derive(Debug, Clone)]
 pub struct CachingIsotopicModel<'lifespan> {
     pub cache_truncation: f64,
     inner: IsotopicModel<'lifespan>,
-    cache: BTreeMap<IsotopicPatternSpec, TheoreticalIsotopicPattern>,
+    cache: BTreeMap<IsotopicPatternSpec, TheoreticalIsotopicPattern>, // See TODO for [`IsotopicPatternSpec`]
 }
 
 impl<'lifespan: 'transient, 'transient> CachingIsotopicModel<'lifespan> {
@@ -315,6 +331,11 @@ impl<'lifespan: 'transient, 'transient> CachingIsotopicModel<'lifespan> {
         self.cache.clear();
     }
 
+    #[inline(always)]
+    fn truncate_mz(&self, mz: f64) -> f64 {
+        (mz / self.cache_truncation).round() * self.cache_truncation
+    }
+
     pub fn make_cache_key(
         &self,
         mz: f64,
@@ -324,7 +345,7 @@ impl<'lifespan: 'transient, 'transient> CachingIsotopicModel<'lifespan> {
         ignore_below: f64,
     ) -> IsotopicPatternSpec {
         IsotopicPatternSpec {
-            mz: ((mz / self.cache_truncation).round() * self.cache_truncation),
+            mz: self.truncate_mz(mz),
             charge,
             charge_carrier,
             truncate_after,
@@ -401,7 +422,8 @@ impl<'lifespan> IsotopicPatternGenerator for CachingIsotopicModel<'lifespan> {
             }
             BEntry::Vacant(ent) => {
                 let res = self.inner.isotopic_cluster(
-                    mz,
+                    // mz,
+                    key.mz,
                     charge,
                     charge_carrier,
                     truncate_after,
@@ -633,6 +655,16 @@ mod test {
         let v1 = hasher1.finish();
         let v2 = hasher2.finish();
         assert_eq!(v1, v2);
+    }
+
+    #[test]
+    fn test_mz_truncation() {
+        let mut model: CachingIsotopicModel = IsotopicModels::Peptide.into();
+        model.cache_truncation = 1.0;
+        let x = model.truncate_mz(1000.0);
+        assert_eq!(x, 1000.0);
+        let x = model.truncate_mz(1000.1);
+        assert_eq!(x, 1000.0);
     }
 
     #[test]
