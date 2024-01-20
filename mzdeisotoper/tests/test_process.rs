@@ -9,7 +9,7 @@ fn test_file_missing() -> Result<(), Box<dyn Error>> {
 
     cmd.arg("not_real.mzML").arg("-o").arg("-");
     cmd.assert().failure().stderr(predicate::str::contains(
-        "The system cannot find the file specified",
+        "NotFound",
     ));
     Ok(())
 }
