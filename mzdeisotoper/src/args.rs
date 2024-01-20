@@ -93,11 +93,15 @@ impl From<ArgChargeRange> for (i32, i32) {
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum ChargeRangeParserError {
     #[error("Error parsing integer {0}")]
-    IntError(#[from] #[source] std::num::ParseIntError),
+    IntError(
+        #[from]
+        #[source]
+        std::num::ParseIntError,
+    ),
     #[error("Charge range cannot be empty")]
     EmptyRange,
     #[error("Charge cannot be zero")]
-    ZeroCharge
+    ZeroCharge,
 }
 
 impl FromStr for ArgChargeRange {
@@ -108,7 +112,9 @@ impl FromStr for ArgChargeRange {
             s.split(' ')
         } else if s.contains(':') {
             s.split(':')
-        } else if s.find('-').map(|i| i > 0).unwrap_or(false) && s.chars().map(|t| (t == '-') as i32).sum::<i32>() == 1 {
+        } else if s.find('-').map(|i| i > 0).unwrap_or(false)
+            && s.chars().map(|t| (t == '-') as i32).sum::<i32>() == 1
+        {
             s.split('-')
         } else {
             s.split(' ')
@@ -123,7 +129,7 @@ impl FromStr for ArgChargeRange {
                 if val == 0 {
                     Err(ChargeRangeParserError::ZeroCharge)
                 } else {
-                    return Ok(Self(val.signum(), val))
+                    return Ok(Self(val.signum(), val));
                 }
             } else {
                 let low = *r.iter().min_by_key(|i| i.abs()).unwrap();
@@ -133,7 +139,6 @@ impl FromStr for ArgChargeRange {
         }
     }
 }
-
 
 #[derive(Debug, Clone, Copy)]
 pub struct SignalParams {
@@ -262,7 +267,6 @@ pub fn make_default_signal_processing_params() -> SignalParams {
         ms1_denoising: 0.0,
     }
 }
-
 
 #[cfg(test)]
 mod test {

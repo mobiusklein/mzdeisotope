@@ -202,7 +202,7 @@ fn non_negative_float_f32(s: &str) -> Result<f32, String> {
 }
 
 #[derive(Debug, Error)]
-enum MZDeisotoperError {
+pub enum MZDeisotoperError {
     #[error("An IO error occurred: {0}")]
     IOError(
         #[source]
@@ -225,7 +225,7 @@ enum MZDeisotoperError {
 /// file or stream.
 #[derive(Parser, Debug)]
 #[command(author, version)]
-struct MZDeiosotoperArgs {
+pub struct MZDeiosotoperArgs {
     /// The path to read the input spectra from, or if '-' is passed, read from STDIN
     #[arg()]
     pub input_file: String,
