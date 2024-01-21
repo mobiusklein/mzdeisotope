@@ -96,17 +96,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "atty"
-version = "0.2.14"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d9b39be18770d11421cdb1b9947a45dd3f37e93092cbf377614828a319d5fee8"
-dependencies = [
- "hermit-abi 0.1.19",
- "libc",
- "winapi",
-]
-
-[[package]]
 name = "autocfg"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -303,24 +292,11 @@ checksum = "a26ae43d7bcc3b814de94796a5e736d4029efb0ee900c12e2d54c993ad1a1e07"
 
 [[package]]
 name = "env_logger"
-version = "0.7.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "44533bbbb3bb3c1fa17d9f2e4e38bbbaf8396ba82193c4cb1b6445d711445d36"
-dependencies = [
- "atty",
- "humantime 1.3.0",
- "log",
- "regex",
- "termcolor",
-]
-
-[[package]]
-name = "env_logger"
 version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "95b3f3e67048839cb0d0781f445682a35113da7121f7c949db0e2be96a4fbece"
 dependencies = [
- "humantime 2.1.0",
+ "humantime",
  "is-terminal",
  "log",
  "regex",
@@ -463,27 +439,9 @@ checksum = "95505c38b4572b2d910cecb0281560f54b440a19336cbbcb27bf6ce6adc6f5a8"
 
 [[package]]
 name = "hermit-abi"
-version = "0.1.19"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "62b467343b94ba476dcb2500d242dadbb39557df889310ac77c5d99100aaac33"
-dependencies = [
- "libc",
-]
-
-[[package]]
-name = "hermit-abi"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d77f7ec81a6d05a3abb01ab6eb7590f6083d08449fe5a1c8b1e620283546ccb7"
-
-[[package]]
-name = "humantime"
-version = "1.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df004cfca50ef23c36850aaaa59ad52cc70d0e90243c3c7737a4dd32dc7a3c4f"
-dependencies = [
- "quick-error",
-]
 
 [[package]]
 name = "humantime"
@@ -517,7 +475,7 @@ version = "0.4.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cb0889898416213fab133e1d33a0e5858a48177452750691bde3666d0fdbaf8b"
 dependencies = [
- "hermit-abi 0.3.3",
+ "hermit-abi",
  "rustix",
  "windows-sys 0.48.0",
 ]
@@ -636,9 +594,9 @@ dependencies = [
 
 [[package]]
 name = "mzdata"
-version = "0.8.0"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f86324988ef05c13b140d4d31d9529f9e60831d404ee5c0f81b6c076c21fd6b3"
+checksum = "4ffa95e15e482fbd3f480feb7baaa226166d1a3d36913635bb2b4f84c30c4495"
 dependencies = [
  "base64-simd",
  "bytemuck",
@@ -665,7 +623,7 @@ name = "mzdeisotope"
 version = "0.1.1"
 dependencies = [
  "chemical_elements",
- "env_logger 0.10.1",
+ "env_logger",
  "flate2",
  "itertools",
  "log",
@@ -690,7 +648,7 @@ dependencies = [
  "mzdeisotope",
  "mzpeaks 0.9.0",
  "predicates",
- "pretty_env_logger 0.5.0",
+ "pretty_env_logger",
  "rayon",
  "thiserror",
 ]
@@ -709,16 +667,15 @@ checksum = "d519a4d34d369ad9869553909c659de71e682119d58f00861d11be2978a25e67"
 
 [[package]]
 name = "mzsignal"
-version = "0.8.0"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2c823bb9a30eb9f1af0545991756778decbde45eb20e0906f207d67de5185d16"
+checksum = "9d55190be3cb81b86fb4339db69525ce9e96277cfaf4906d12790042a60c38d6"
 dependencies = [
  "cfg-if",
  "log",
  "mzpeaks 0.9.0",
  "nalgebra",
  "num-traits",
- "pretty_env_logger 0.4.0",
  "thiserror",
 ]
 
@@ -882,21 +839,11 @@ dependencies = [
 
 [[package]]
 name = "pretty_env_logger"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "926d36b9553851b8b0005f1275891b392ee4d2d833852c417ed025477350fb9d"
-dependencies = [
- "env_logger 0.7.1",
- "log",
-]
-
-[[package]]
-name = "pretty_env_logger"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "865724d4dbe39d9f3dd3b52b88d859d66bcb2d6a0acfd5ea68a65fb66d4bdc1c"
 dependencies = [
- "env_logger 0.10.1",
+ "env_logger",
  "log",
 ]
 
@@ -908,12 +855,6 @@ checksum = "95fc56cda0b5c3325f5fbbd7ff9fda9e02bb00bb3dac51252d2f1bfa1cb8cc8c"
 dependencies = [
  "unicode-ident",
 ]
-
-[[package]]
-name = "quick-error"
-version = "1.2.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a1d01941d82fa2ab50be1e79e6714289dd7cde78eba4c074bc5a4374f650dfe0"
 
 [[package]]
 name = "quick-xml"
@@ -1131,7 +1072,7 @@ version = "0.2.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6159ab4116165c99fc88cce31f99fa2c9dbe08d3691cb38da02fc3b45f357d2b"
 dependencies = [
- "env_logger 0.10.1",
+ "env_logger",
  "test-log-macros",
 ]
 

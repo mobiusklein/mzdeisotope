@@ -27,3 +27,15 @@ test-stdin-range:
         -r 125-128.1 \
         -o tmp/batching_test.processed.mzML \
         < ./tests/data/batching_test.mzML
+
+test-file-mgf:
+    cargo r -r -- -g 1 \
+        -v tandem-only \
+        ./tests/data/batching_test.mzML \
+        -o tmp/batching_test.processed.mgf
+
+test-file-mzmlb:
+    cargo r -r --features mzmlb -- -g 1 \
+        -v selected-precursors \
+        ./tests/data/batching_test.mzML \
+        -o tmp/batching_test.processed.mzMLb

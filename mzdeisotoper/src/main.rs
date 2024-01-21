@@ -3,7 +3,7 @@ use std::io;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicU16, Ordering};
-use std::sync::mpsc::{channel, Sender};
+use std::sync::mpsc::{sync_channel, SyncSender};
 use std::thread;
 use std::time::Instant;
 
@@ -15,10 +15,12 @@ use rayon::prelude::*;
 use thiserror::Error;
 
 #[cfg(feature = "mzmlb")]
-use mzdata::io::MzMLbReaderType;
+use std::env;
+#[cfg(feature = "mzmlb")]
+use mzdata::io::mzmlb::{MzMLbReaderType, MzMLbWriterBuilder};
 use mzdata::io::{
-    infer_format, infer_from_stream,
-    mgf::MGFReaderType,
+    infer_format, infer_from_stream, infer_from_path,
+    mgf::{MGFReaderType, MGFWriterType},
     mzml::{MzMLReaderType, MzMLWriterType},
     MassSpectrometryFormat, PreBufferedStream, StreamingSpectrumIterator,
 };
@@ -64,10 +66,10 @@ fn prepare_procesing<
     ms1_deconv_params: DeconvolutionBuilderParams<'static, S, F>,
     msn_deconv_params: DeconvolutionBuilderParams<'static, SN, FN>,
     signal_processing_params: SignalParams,
-    sender: Sender<(usize, SpectrumGroupType)>,
+    sender: SyncSender<(usize, SpectrumGroupType)>,
     time_range: Option<TimeRange>,
     precursor_processing: Option<PrecursorProcessing>,
-) -> io::Result<()> {
+) -> io::Result<ProgressRecord> {
     let init_counter = AtomicU16::new(0);
     let started = Instant::now();
     let precursor_processing = precursor_processing.unwrap_or_default();
@@ -179,17 +181,8 @@ fn prepare_procesing<
         "{} threads run for deconvolution",
         init_counter.load(Ordering::SeqCst)
     );
-    log::info!("MS1 Spectra: {}", prog.ms1_spectra);
-    log::info!("MSn Spectra: {}", prog.msn_spectra);
-    log::info!(
-        "Precursors Defaulted: {} | Mismatched Charge State: {}",
-        prog.precursors_defaulted,
-        prog.precursor_charge_state_mismatch
-    );
-    log::info!("MS1 Peaks: {}", prog.ms1_peaks);
-    log::info!("MSn Peaks: {}", prog.msn_peaks);
     log::info!("Elapsed Time: {:0.3?}", elapsed);
-    Ok(())
+    Ok(prog)
 }
 
 fn non_negative_float_f32(s: &str) -> Result<f32, String> {
@@ -209,10 +202,12 @@ pub enum MZDeisotoperError {
         #[from]
         io::Error,
     ),
-    #[error("The file format for {0} was either unknown or not supported ({1:?})")]
+    #[error("The input file format for {0} was either unknown or not supported ({1:?})")]
     FormatUnknownOrNotSupportedError(String, MassSpectrometryFormat),
-    #[error("The file format from STDIN was either unknown or not supported ({0:?})")]
+    #[error("The input file format from STDIN was either unknown or not supported ({0:?})")]
     FormatUnknownOrNotSupportedErrorStdIn(MassSpectrometryFormat),
+    #[error("The output file format for {0} was either unknown or not supported ({1:?})")]
+    OutputFormatUnknownOrNotSupportedError(String, MassSpectrometryFormat),
     #[error(
         "The input stream was detected to be gzip compressed, which is not currently supported"
     )]
@@ -404,7 +399,7 @@ impl MZDeiosotoperArgs {
         &self,
         reader: R,
         spectrum_count: Option<u64>,
-    ) -> io::Result<()> {
+    ) -> Result<(), MZDeisotoperError> {
         if self.output_file == PathBuf::from("-") {
             let outfile = io::stdout();
             let mut writer = MzMLWriterType::<_, CPeak, DPeak>::new(outfile);
@@ -414,14 +409,47 @@ impl MZDeiosotoperArgs {
             }
             self.run_workflow(reader, writer)?;
         } else {
-            let mut writer = MzMLWriterType::new(io::BufWriter::new(fs::File::create(
-                self.output_file.clone(),
-            )?));
-            writer.copy_metadata_from(&reader);
-            if let Some(spectrum_count) = spectrum_count {
-                writer.set_spectrum_count(spectrum_count);
+            let (ms_format, _) = infer_from_path(&self.output_file);
+            match ms_format {
+                MassSpectrometryFormat::MGF => {
+                    let writer = MGFWriterType::new(io::BufWriter::new(fs::File::create(self.output_file.clone())?));
+                    self.run_workflow(reader, writer)?;
+                },
+                MassSpectrometryFormat::MzML => {
+                    let mut writer = MzMLWriterType::new(io::BufWriter::new(fs::File::create(
+                        self.output_file.clone(),
+                    )?));
+                    writer.copy_metadata_from(&reader);
+                    if let Some(spectrum_count) = spectrum_count {
+                        writer.set_spectrum_count(spectrum_count);
+                    }
+                    self.run_workflow(reader, writer)?;
+                },
+                #[cfg(feature = "mzmlb")]
+                MassSpectrometryFormat::MzMLb => {
+                    let mut builder = MzMLbWriterBuilder::new(self.output_file.clone());
+                    if let Ok(value) = env::var("MZDEIOSTOPE_BLOSC_ZSTD") {
+                        log::warn!("Non-standard Blosc compression was requested via MZDEIOSTOPE_BLOSC_ZSTD env-var");
+                        MzMLbReaderType::<CPeak, DPeak>::set_blosc_nthreads(4);
+                        builder = builder.with_blosc_zstd_compression(value.parse().unwrap());
+                    } else {
+                        builder = builder.with_zlib_compression(9);
+                    }
+                    let mut writer = builder.create()?;
+                    // let mut writer = MzMLbWriterType::new(&self.output_file)?;
+                    writer.copy_metadata_from(&reader);
+                    if let Some(spectrum_count) = spectrum_count {
+                        writer.set_spectrum_count(spectrum_count);
+                    }
+                    self.run_workflow(reader, writer)?;
+                }
+                _ => {
+                    return Err(MZDeisotoperError::OutputFormatUnknownOrNotSupportedError(
+                        self.output_file.to_string_lossy().to_string(),
+                        ms_format,
+                    ))
+                }
             }
-            self.run_workflow(reader, writer)?;
         }
         Ok(())
     }
@@ -431,14 +459,15 @@ impl MZDeiosotoperArgs {
             + MSDataFileMetadata
             + Send
             + 'static,
-        W: io::Write + Send + 'static,
+        W: ScanWriter<'static, CPeak, DPeak> + Send + 'static,
     >(
         &self,
         reader: R,
-        writer: MzMLWriterType<W, CPeak, DPeak>,
+        writer: W,
     ) -> io::Result<()> {
-        let (send_solved, recv_solved) = channel();
-        let (send_collated, recv_collated) = channel();
+        let buffer_size = 10000;
+        let (send_solved, recv_solved) = sync_channel(buffer_size);
+        let (send_collated, recv_collated) = sync_channel(buffer_size);
 
         let mut ms1_args = make_default_ms1_deconvolution_params();
         let mut signal_params = make_default_signal_processing_params();
@@ -459,6 +488,8 @@ impl MZDeiosotoperArgs {
 
         let rt_range = self.time_range;
         let precursor_processing = self.precursor_processing;
+
+        let start = Instant::now();
         let read_task = thread::spawn(move || {
             prepare_procesing(
                 reader,
@@ -477,11 +508,25 @@ impl MZDeiosotoperArgs {
         let write_task = thread::spawn(move || write_output_spectra(writer, recv_collated));
 
         match read_task.join() {
-            Ok(o) => o?,
+            Ok(o) => {
+                let prog = o?;
+                log::info!("MS1 Spectra: {}", prog.ms1_spectra);
+                log::info!("MSn Spectra: {}", prog.msn_spectra);
+                log::info!(
+                    "Precursors Defaulted: {} | Mismatched Charge State: {}",
+                    prog.precursors_defaulted,
+                    prog.precursor_charge_state_mismatch
+                );
+                log::info!("MS1 Peaks: {}", prog.ms1_peaks);
+                log::info!("MSn Peaks: {}", prog.msn_peaks);
+
+            }
             Err(e) => {
                 log::warn!("Failed to join reader task: {e:?}");
             }
         }
+        let read_done = Instant::now();
+        let processing_elapsed = read_done - start;
 
         match collate_task.join() {
             Ok(_) => {}
@@ -495,6 +540,12 @@ impl MZDeiosotoperArgs {
             Err(e) => {
                 log::warn!("Failed to join writer task: {e:?}");
             }
+        }
+
+        let done = Instant::now();
+        let elapsed = done - start;
+        if (elapsed.as_secs_f64() - processing_elapsed.as_secs_f64()) > 2.0 {
+            log::info!("Total Elapsed Time: {:0.3?}", elapsed);
         }
         Ok(())
     }

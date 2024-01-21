@@ -1,6 +1,6 @@
 use std::{
     io,
-    sync::mpsc::{Receiver, Sender, TryRecvError},
+    sync::mpsc::{Receiver, SyncSender, TryRecvError},
 };
 
 use mzdata::prelude::*;
@@ -11,7 +11,7 @@ use crate::types::{
 
 pub fn collate_results(
     receiver: Receiver<(usize, SpectrumGroupType)>,
-    sender: Sender<(usize, SpectrumGroupType)>,
+    sender: SyncSender<(usize, SpectrumGroupType)>,
 ) {
     let mut collator = SpectrumGroupCollator::default();
     loop {
@@ -42,7 +42,7 @@ pub fn collate_results(
 
 pub fn collate_results_spectra(
     receiver: Receiver<(usize, SpectrumGroupType)>,
-    sender: Sender<(usize, SpectrumType)>,
+    sender: SyncSender<(usize, SpectrumType)>,
 ) {
     let mut collator = SpectrumCollator::default();
     loop {
@@ -135,7 +135,7 @@ pub fn write_output_spectra<S: ScanWriter<'static, CPeak, DPeak>>(
         writer.write(&scan)?;
     }
     if time_checkpoint != scan_time {
-        log::info!("Finished Processing | Scans={scan_counter} Time={scan_time:0.3}");
+        log::info!("Finished | Scans={scan_counter} Time={scan_time:0.3}");
     }
     writer.close()?;
     Ok(())

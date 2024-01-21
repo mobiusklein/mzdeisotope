@@ -190,7 +190,9 @@ pub fn deconvolution_transform<
                 scan.deconvoluted_peaks = Some(deconvoluted_peaks);
                 targets
             } else {
-                Vec::new()
+                // let mut fake_targets = Vec::new();
+                let fake_targets = vec![None; precursor_mz.len()];
+                fake_targets
             }
         }
         None => precursor_mz.iter().map(|_| None).collect(),
