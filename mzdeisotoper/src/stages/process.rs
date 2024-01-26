@@ -1,9 +1,9 @@
-use std::{borrow::Cow, collections::HashMap};
+use std::collections::HashMap;
 
 use itertools::Itertools;
 
 use mzdata::{prelude::*, spectrum::SignalContinuity, Param};
-use mzpeaks::prelude::*;
+use mzpeaks::{prelude::*, MZPeakSetType};
 
 use mzdeisotope::{
     api::{DeconvolutionEngine, PeaksAndTargets},
@@ -15,9 +15,8 @@ use mzdeisotope::{
 use crate::{
     args::{DeconvolutionParams, PrecursorProcessing, SignalParams},
     progress::ProgressRecord,
-    types::{CPeak, SpectrumGroupType},
+    types::{CPeak, SpectrumGroupType, SpectrumType},
 };
-
 
 pub fn coisolation_to_param(c: &Coisolation) -> Param {
     Param::new_key_value(
@@ -30,7 +29,6 @@ pub fn coisolation_to_param(c: &Coisolation) -> Param {
         ),
     )
 }
-
 
 pub struct PrecursorPeakMapper<'a> {
     mzs: &'a [f64],
@@ -85,6 +83,75 @@ pub fn purities_of(
     purities
 }
 
+pub fn pick_ms1_peaks(
+    scan: &mut SpectrumType,
+    precursor_processing: &PrecursorProcessing,
+    selected_mz_ranges: &[(f64, f64)],
+    signal_processing_params: &SignalParams,
+) -> Option<MZPeakSetType<CPeak>> {
+    match scan.signal_continuity() {
+        SignalContinuity::Unknown => {
+            panic!("Can't infer peak mode for {}", scan.id())
+        }
+        SignalContinuity::Centroid => match precursor_processing {
+            PrecursorProcessing::Full | PrecursorProcessing::MS1Only => {
+                Some(scan.try_build_centroids().unwrap().clone())
+            }
+            PrecursorProcessing::SelectedPrecursors => {
+                let peaks = scan.try_build_centroids().unwrap();
+                let peaks = selected_mz_ranges
+                    .iter()
+                    .map(|(low, high)| peaks.between(*low, *high, Tolerance::PPM(5.0)))
+                    .flatten()
+                    .cloned()
+                    .collect();
+
+                Some(peaks)
+            }
+            PrecursorProcessing::TandemOnly => None,
+        },
+        SignalContinuity::Profile => {
+            if signal_processing_params.ms1_denoising > 0.0 {
+                log::trace!("Denoising {}", scan.id());
+                if let Err(e) = scan.denoise(signal_processing_params.ms1_denoising) {
+                    log::error!("An error occurred while denoising {}: {e}", scan.id());
+                }
+            }
+            match precursor_processing {
+                PrecursorProcessing::SelectedPrecursors => {
+                    scan.pick_peaks_in_intervals(1.0, Default::default(), &selected_mz_ranges)
+                        .unwrap();
+                    scan.description_mut().signal_continuity = SignalContinuity::Centroid;
+                    Some(scan.peaks.clone().unwrap())
+                }
+                PrecursorProcessing::Full | PrecursorProcessing::MS1Only => {
+                    scan.pick_peaks(1.0, Default::default()).unwrap();
+                    scan.description_mut().signal_continuity = SignalContinuity::Centroid;
+                    Some(scan.peaks.clone().unwrap())
+                }
+                PrecursorProcessing::TandemOnly => None,
+            }
+        }
+    }
+}
+
+pub fn pick_msn_peaks(
+    scan: &mut SpectrumType,
+    _signal_processing_params: &SignalParams,
+) -> MZPeakSetType<CPeak> {
+    match scan.signal_continuity() {
+        SignalContinuity::Unknown => {
+            panic!("Can't infer peak mode for {}", scan.id())
+        }
+        SignalContinuity::Centroid => scan.try_build_centroids().unwrap().clone(),
+        SignalContinuity::Profile => {
+            scan.pick_peaks(1.0, Default::default()).unwrap();
+            scan.description_mut().signal_continuity = SignalContinuity::Centroid;
+            scan.peaks.clone().unwrap()
+        }
+    }
+}
+
 pub fn deconvolution_transform<
     S: IsotopicPatternScorer + Send + 'static,
     F: IsotopicFitFilter + Send + 'static,
@@ -112,62 +179,25 @@ pub fn deconvolution_transform<
     let purity_estimator = PrecursorPurityEstimator::default();
 
     let selected_mz_ranges = group.selected_intervals(1.0, 3.0);
+
+    // Process the precursor spectrum and collect the updated selected ions' solutions
     let targets = match group.precursor_mut() {
         Some(scan) => {
-            log::trace!(
-                "Processing {} MS{} ({:0.3})",
-                scan.id(),
-                scan.ms_level(),
-                scan.acquisition().start_time()
-            );
-            let peaks = match scan.signal_continuity() {
-                SignalContinuity::Unknown => {
-                    panic!("Can't infer peak mode for {}", scan.id())
-                }
-                SignalContinuity::Centroid => match precursor_processing {
-                    PrecursorProcessing::Full | PrecursorProcessing::MS1Only => {
-                        Some(Cow::Borrowed(scan.try_build_centroids().unwrap()))
-                    }
-                    PrecursorProcessing::SelectedPrecursors => {
-                        let peaks = scan.try_build_centroids().unwrap();
-                        let peaks = selected_mz_ranges
-                            .iter()
-                            .map(|(low, high)| peaks.between(*low, *high, Tolerance::PPM(5.0)))
-                            .flatten()
-                            .cloned()
-                            .collect();
+            if log::log_enabled!(log::Level::Trace) {
+                log::trace!(
+                    "Processing {} MS{} ({:0.3})",
+                    scan.id(),
+                    scan.ms_level(),
+                    scan.acquisition().start_time()
+                );
+            }
 
-                        Some(Cow::Owned(peaks))
-                    }
-                    PrecursorProcessing::TandemOnly => None,
-                },
-                SignalContinuity::Profile => {
-                    if signal_processing_params.ms1_denoising > 0.0 {
-                        log::trace!("Denoising {}", scan.id());
-                        if let Err(e) = scan.denoise(signal_processing_params.ms1_denoising) {
-                            log::error!("An error occurred while denoising {}: {e}", scan.id());
-                        }
-                    }
-                    match precursor_processing {
-                        PrecursorProcessing::SelectedPrecursors => {
-                            scan.pick_peaks_in_intervals(
-                                1.0,
-                                Default::default(),
-                                &selected_mz_ranges,
-                            )
-                            .unwrap();
-                            scan.description_mut().signal_continuity = SignalContinuity::Centroid;
-                            Some(Cow::Borrowed(scan.peaks.as_ref().unwrap()))
-                        }
-                        PrecursorProcessing::Full | PrecursorProcessing::MS1Only => {
-                            scan.pick_peaks(1.0, Default::default()).unwrap();
-                            scan.description_mut().signal_continuity = SignalContinuity::Centroid;
-                            Some(Cow::Borrowed(scan.peaks.as_ref().unwrap()))
-                        }
-                        PrecursorProcessing::TandemOnly => None,
-                    }
-                }
-            };
+            let peaks = pick_ms1_peaks(
+                scan,
+                &precursor_processing,
+                &selected_mz_ranges,
+                signal_processing_params,
+            );
 
             if let Some(peaks) = peaks {
                 let PeaksAndTargets {
@@ -175,10 +205,7 @@ pub fn deconvolution_transform<
                     targets,
                 } = ms1_engine
                     .deconvolute_peaks_with_targets(
-                        match peaks {
-                            Cow::Borrowed(x) => x.clone(),
-                            Cow::Owned(x) => x,
-                        },
+                        peaks,
                         Tolerance::PPM(20.0),
                         ms1_deconv_params.charge_range,
                         ms1_deconv_params.max_missed_peaks,
@@ -190,12 +217,11 @@ pub fn deconvolution_transform<
                 scan.deconvoluted_peaks = Some(deconvoluted_peaks);
                 targets
             } else {
-                // let mut fake_targets = Vec::new();
-                let fake_targets = vec![None; precursor_mz.len()];
-                fake_targets
+                // We aren't actually deconvoluting the MS1 spectrum, so create a stub for each precursor
+                vec![None; precursor_mz.len()]
             }
         }
-        None => precursor_mz.iter().map(|_| None).collect(),
+        None => vec![None; precursor_mz.len()],
     };
     let mut purities = HashMap::new();
 
@@ -210,7 +236,7 @@ pub fn deconvolution_transform<
         .iter_mut()
         .enumerate()
         .for_each(|(scan_i, scan)| {
-            if !had_precursor {
+            if !had_precursor && log::log_enabled!(log::Level::Trace) {
                 log::trace!(
                     "Processing {} MS{} ({:0.3})",
                     scan.id(),
@@ -227,21 +253,11 @@ pub fn deconvolution_transform<
             let mut msn_charge_range = msn_deconv_params.charge_range;
             msn_charge_range.1 = msn_charge_range.1.max(precursor_charge);
 
-            let peaks = match scan.signal_continuity() {
-                SignalContinuity::Unknown => {
-                    panic!("Can't infer peak mode for {}", scan.id())
-                }
-                SignalContinuity::Centroid => scan.try_build_centroids().unwrap(),
-                SignalContinuity::Profile => {
-                    scan.pick_peaks(1.0, Default::default()).unwrap();
-                    scan.description_mut().signal_continuity = SignalContinuity::Centroid;
-                    scan.peaks.as_ref().unwrap()
-                }
-            };
+            let peaks = pick_msn_peaks(scan, &signal_processing_params);
 
             let deconvoluted_peaks = msn_engine
                 .deconvolute_peaks(
-                    peaks.clone(),
+                    peaks,
                     Tolerance::PPM(20.0),
                     msn_charge_range,
                     msn_deconv_params.max_missed_peaks,

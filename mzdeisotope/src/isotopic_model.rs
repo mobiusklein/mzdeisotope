@@ -267,6 +267,111 @@ impl hash::Hash for IsotopicPatternSpec {
     }
 }
 
+#[allow(unused)]
+mod partition {
+    use super::*;
+
+    #[derive(Debug, Clone, Copy)]
+    pub struct IsotopicPatternCachePartitionKey {
+        pub charge: i32,
+        pub charge_carrier: f64,
+        pub truncate_after: f64,
+        pub ignore_below: f64,
+    }
+
+    impl PartialOrd for IsotopicPatternCachePartitionKey {
+        fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+            Some(self.cmp(other))
+        }
+    }
+
+    impl Ord for IsotopicPatternCachePartitionKey {
+        fn cmp(&self, other: &Self) -> Ordering {
+            match self.charge.cmp(&other.charge) {
+                Ordering::Equal => match self.truncate_after.total_cmp(&other.truncate_after) {
+                    Ordering::Equal => match self.ignore_below.total_cmp(&other.ignore_below) {
+                        Ordering::Equal => self.charge_carrier.total_cmp(&other.charge_carrier),
+                        x => x,
+                    },
+                    x => x,
+                },
+                x => x,
+            }
+        }
+    }
+
+    impl PartialEq for IsotopicPatternCachePartitionKey {
+        #[inline]
+        fn eq(&self, other: &Self) -> bool {
+            self.charge == other.charge
+                && isclose(self.charge_carrier, other.charge_carrier, 1e-6)
+                && isclose(self.truncate_after, other.truncate_after, 1e-6)
+                && isclose(self.ignore_below, other.ignore_below, 1e-6)
+        }
+    }
+
+    impl Eq for IsotopicPatternCachePartitionKey {}
+
+    impl hash::Hash for IsotopicPatternCachePartitionKey {
+        #[inline]
+        fn hash<H: hash::Hasher>(&self, state: &mut H) {
+            self.charge.hash(state);
+            let i = (self.truncate_after * 10.0).round() as i64;
+            i.hash(state);
+            let i = (self.ignore_below * 10.0).round() as i64;
+            i.hash(state);
+        }
+    }
+
+
+    #[derive(Debug, Clone)]
+    pub struct CachedIsotopicPattern {
+        pub mz: f64,
+        pub pattern: TheoreticalIsotopicPattern
+    }
+
+    impl PartialEq for CachedIsotopicPattern {
+        fn eq(&self, other: &Self) -> bool {
+            self.mz == other.mz && self.pattern == other.pattern
+        }
+    }
+
+    impl Eq for CachedIsotopicPattern {}
+
+    impl PartialOrd for CachedIsotopicPattern {
+        fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+            Some(self.cmp(other))
+        }
+    }
+
+    impl Ord for CachedIsotopicPattern {
+        fn cmp(&self, other: &Self) -> Ordering {
+            self.mz.total_cmp(&other.mz)
+        }
+    }
+
+    impl PartialEq<f64> for CachedIsotopicPattern {
+        fn eq(&self, other: &f64) -> bool {
+            self.mz.eq(other)
+        }
+    }
+
+    impl PartialOrd<f64> for CachedIsotopicPattern {
+        fn partial_cmp(&self, other: &f64) -> Option<Ordering> {
+            Some(self.mz.total_cmp(other))
+        }
+    }
+
+
+    #[derive(Debug, Clone, Default)]
+    pub struct PartitionedIsotopicPatternCache {
+        cache: HashMap<IsotopicPatternCachePartitionKey, Vec<CachedIsotopicPattern>>
+    }
+
+
+
+}
+
 #[derive(Debug, Clone, Copy)]
 struct FloatRange {
     start: f64,

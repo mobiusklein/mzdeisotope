@@ -594,9 +594,9 @@ dependencies = [
 
 [[package]]
 name = "mzdata"
-version = "0.9.0"
+version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4ffa95e15e482fbd3f480feb7baaa226166d1a3d36913635bb2b4f84c30c4495"
+checksum = "9cf6f27be7fb811470287cb72fcad6fd3c1212eb33918798bfccc2ab25f988f6"
 dependencies = [
  "base64-simd",
  "bytemuck",

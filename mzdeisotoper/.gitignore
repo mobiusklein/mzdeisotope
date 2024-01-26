@@ -1,2 +1,4 @@
 *.mzML.gz
 *.mzML
+*.mzMLb
+*.mgf

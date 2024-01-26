@@ -15,17 +15,17 @@ use rayon::prelude::*;
 use thiserror::Error;
 
 #[cfg(feature = "mzmlb")]
-use std::env;
-#[cfg(feature = "mzmlb")]
 use mzdata::io::mzmlb::{MzMLbReaderType, MzMLbWriterBuilder};
 use mzdata::io::{
-    infer_format, infer_from_stream, infer_from_path,
+    infer_format, infer_from_path, infer_from_stream,
     mgf::{MGFReaderType, MGFWriterType},
     mzml::{MzMLReaderType, MzMLWriterType},
     MassSpectrometryFormat, PreBufferedStream, StreamingSpectrumIterator,
 };
 use mzdata::prelude::*;
 use mzdata::spectrum::SignalContinuity;
+#[cfg(feature = "mzmlb")]
+use std::env;
 
 use mzdeisotope::scorer::ScoreType;
 use mzdeisotope::scorer::{IsotopicFitFilter, IsotopicPatternScorer};
@@ -213,6 +213,23 @@ pub enum MZDeisotoperError {
     )]
     CompressedInputError(String),
 }
+
+
+#[allow(unused)]
+macro_rules! reader_dispatch {
+    ($path:expr, $compressed:expr, $reader_type:expr) => {
+        if $compressed {
+            let reader = $reader_type::open_path(self.input_file.clone())?;
+            let spectrum_count = Some(reader.len() as u64);
+            self.writer_then(reader, spectrum_count)?;
+        } else {
+            let reader = $reader_type::open_path(self.input_file.clone())?;
+            let spectrum_count = Some(reader.len() as u64);
+            self.writer_then(reader, spectrum_count)?;
+        }
+    };
+}
+
 
 /// Deisotoping and charge state deconvolution of mass spectrometry files.
 ///
@@ -412,9 +429,11 @@ impl MZDeiosotoperArgs {
             let (ms_format, _) = infer_from_path(&self.output_file);
             match ms_format {
                 MassSpectrometryFormat::MGF => {
-                    let writer = MGFWriterType::new(io::BufWriter::new(fs::File::create(self.output_file.clone())?));
+                    let writer = MGFWriterType::new(io::BufWriter::new(fs::File::create(
+                        self.output_file.clone(),
+                    )?));
                     self.run_workflow(reader, writer)?;
-                },
+                }
                 MassSpectrometryFormat::MzML => {
                     let mut writer = MzMLWriterType::new(io::BufWriter::new(fs::File::create(
                         self.output_file.clone(),
@@ -424,7 +443,7 @@ impl MZDeiosotoperArgs {
                         writer.set_spectrum_count(spectrum_count);
                     }
                     self.run_workflow(reader, writer)?;
-                },
+                }
                 #[cfg(feature = "mzmlb")]
                 MassSpectrometryFormat::MzMLb => {
                     let mut builder = MzMLbWriterBuilder::new(self.output_file.clone());
@@ -465,7 +484,7 @@ impl MZDeiosotoperArgs {
         reader: R,
         writer: W,
     ) -> io::Result<()> {
-        let buffer_size = 10000;
+        let buffer_size = 2000;
         let (send_solved, recv_solved) = sync_channel(buffer_size);
         let (send_collated, recv_collated) = sync_channel(buffer_size);
 
@@ -519,7 +538,6 @@ impl MZDeiosotoperArgs {
                 );
                 log::info!("MS1 Peaks: {}", prog.ms1_peaks);
                 log::info!("MSn Peaks: {}", prog.msn_peaks);
-
             }
             Err(e) => {
                 log::warn!("Failed to join reader task: {e:?}");

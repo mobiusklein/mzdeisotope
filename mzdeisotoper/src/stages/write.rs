@@ -45,7 +45,9 @@ pub fn collate_results_spectra(
     sender: SyncSender<(usize, SpectrumType)>,
 ) {
     let mut collator = SpectrumCollator::default();
+    let mut i = 0;
     loop {
+        i += 1;
         match receiver.try_recv() {
             Ok((group_idx, group)) => {
                 if group_idx == 0 {
@@ -65,6 +67,11 @@ pub fn collate_results_spectra(
                     break;
                 }
             },
+        }
+
+        let n = collator.waiting.len();
+        if i % 1000000 == 0 && i > 0 && n > 0 {
+            log::debug!("Collator holding {n} entries at tick {i}, next key {} ({})", collator.next_key, collator.has_next())
         }
 
         while let Some((group_idx, group)) = collator.try_next() {
