@@ -15,21 +15,107 @@ use chemical_elements::{
 use mzpeaks::CentroidLike;
 use num_traits::Float;
 
-pub fn isclose<T: Float>(a: T, b: T, delta: T) -> bool {
+pub(crate) fn isclose<T: Float>(a: T, b: T, delta: T) -> bool {
     (a - b).abs() < delta
 }
 
+/// The mass of H+, a hydrogen atom minus an electron
 pub const PROTON: f64 = _PROTON;
 
-pub type FractionalComposition<'a> = HashMap<ElementSpecification<'a>, f64>;
+/// A fractional elemental composition with non-ordinal element counts used to represent
+/// "averaged" chemical compositions.
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct FractionalComposition<'a>(HashMap<ElementSpecification<'a>, f64>);
 
-fn fractional_mass(comp: &FractionalComposition) -> f64 {
-    comp.iter()
-        .map(|(e, c)| e.element.most_abundant_mass * *c)
-        .sum()
+impl<'a> Extend<(ElementSpecification<'a>, f64)> for FractionalComposition<'a> {
+    fn extend<T: IntoIterator<Item = (ElementSpecification<'a>, f64)>>(&mut self, iter: T) {
+        <HashMap<ElementSpecification<'a>, f64> as Extend<(ElementSpecification<'a>, f64)>>::extend(
+            &mut self.0,
+            iter,
+        )
+    }
 }
 
+impl<'a> FromIterator<(ElementSpecification<'a>, f64)> for FractionalComposition<'a> {
+    fn from_iter<T: IntoIterator<Item = (ElementSpecification<'a>, f64)>>(iter: T) -> Self {
+        let mut this = Self::default();
+        this.extend(iter);
+        this
+    }
+}
+
+impl<'a> From<HashMap<ElementSpecification<'a>, f64>> for FractionalComposition<'a> {
+    fn from(value: HashMap<ElementSpecification<'a>, f64>) -> Self {
+        Self::new(value)
+    }
+}
+
+impl<'a> From<Vec<(ElementSpecification<'a>, f64)>> for FractionalComposition<'a> {
+    fn from(value: Vec<(ElementSpecification<'a>, f64)>) -> Self {
+        value.into_iter().collect()
+    }
+}
+
+impl<'a> FractionalComposition<'a> {
+    #[inline]
+    pub fn new(composition: HashMap<ElementSpecification<'a>, f64>) -> Self {
+        Self(composition)
+    }
+
+    #[inline]
+    pub fn get<Q: ?Sized>(&self, k: &Q) -> Option<&f64>
+    where
+        ElementSpecification<'a>: std::borrow::Borrow<Q>,
+        Q: hash::Hash + Eq,
+    {
+        self.0.get(k)
+    }
+
+    #[inline]
+    pub fn iter(&self) -> hash_map::Iter<'_, ElementSpecification<'a>, f64> {
+        self.0.iter()
+    }
+
+    #[inline]
+    pub fn mass(&self) -> f64 {
+        self.iter()
+            .map(|(e, c)| e.element.most_abundant_mass * *c)
+            .sum()
+    }
+
+    pub fn insert(&mut self, k: ElementSpecification<'a>, v: f64) -> Option<f64> {
+        self.0.insert(k, v)
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn contains_key<Q: ?Sized>(&self, k: &Q) -> bool
+    where
+        ElementSpecification<'a>: std::borrow::Borrow<Q>,
+        Q: hash::Hash + Eq,
+    {
+        self.0.contains_key(k)
+    }
+
+    pub fn iter_mut(&mut self) -> hash_map::IterMut<'_, ElementSpecification<'a>, f64> {
+        self.0.iter_mut()
+    }
+}
+
+
+/// The capability to generate theoretical isotopic patterns from a given mass
 pub trait IsotopicPatternGenerator {
+
+    /// Generate a theoretical isotopic pattern for a given m/z and charge
+    ///
+    /// # Arguments
+    /// - `mz`:  The m/z to use as a point of reference when generating the isotopic pattern
+    /// - `charge`: The charge state to use to convert `mz` to a mass
+    /// - `charge_carrier`: The mass of the charge carrier, usually a proton
+    /// - `truncate_after`: The cumulative abundance percentage of isotopic signal to retain
+    /// - `ignore_below`: The minimum abundance percentage of isotopic signal a peak must have to be kept
     fn isotopic_cluster(
         &mut self,
         mz: f64,
@@ -39,6 +125,15 @@ pub trait IsotopicPatternGenerator {
         ignore_below: f64,
     ) -> TheoreticalIsotopicPattern;
 
+    /// Populate a cache, if available, pre-computing isotopic patterns from them and store them
+    /// away for future use
+    ///
+    /// # Arguments
+    /// - `min_mz`, `max_mz`: The m/z range to generate patterns between
+    /// - `min_charge`, `max_charge`: The charge range to generate patterns over for each m/z
+    /// - `charge_carrier`: The mass of the charge carrier, usually a proton
+    /// - `truncate_after`: The cumulative abundance percentage of isotopic signal to retain
+    /// - `ignore_below`: The minimum abundance percentage of isotopic signal a peak must have to be kept
     #[allow(unused)]
     fn populate_cache(
         &mut self,
@@ -54,6 +149,9 @@ pub trait IsotopicPatternGenerator {
     }
 }
 
+
+/// The mass difference between isotopes C[13] and C[12]. Not precisely universal, but the
+/// majority of expected applications are carbon-based
 pub const NEUTRON_SHIFT: f64 = 1.0033548378;
 
 const ISOTOPIC_SHIFT: [f64; 10] = [
@@ -69,6 +167,8 @@ const ISOTOPIC_SHIFT: [f64; 10] = [
     NEUTRON_SHIFT / 10.0,
 ];
 
+
+/// Get the m/z difference between isotopic peaks at a given charge state
 #[inline(always)]
 pub fn isotopic_shift(charge: i32) -> f64 {
     if charge > 0 && charge < 11 {
@@ -78,11 +178,18 @@ pub fn isotopic_shift(charge: i32) -> f64 {
     }
 }
 
+/// A package of parameters used to generate isotopic patterns
 #[derive(Debug, Clone, Copy)]
 pub struct IsotopicPatternParams {
+    /// The cumulative abundance percentage of isotopic signal to retain
     pub truncate_after: f64,
+    /// The minimum abundance percentage of isotopic signal a peak must have
+    /// to be kept
     pub ignore_below: f64,
+    /// Whether or not to use the incremental truncation algorithm, and how far
+    /// down to truncate
     pub incremental_truncation: Option<f64>,
+    /// The mass of the charge carrier, e.g. proton mass
     pub charge_carrier: f64,
 }
 
@@ -125,7 +232,9 @@ impl IsotopicPatternParams {
 ///     Journal of the American Society for Mass Spectrometry 1995, 6:229-233
 #[derive(Debug, Clone)]
 pub struct IsotopicModel<'lifespan> {
+    /// The "average" monomer composition
     pub base_composition: FractionalComposition<'lifespan>,
+    /// The mass of the average monomer to interpolate with
     pub base_mass: f64,
     hydrogen: ElementSpecification<'lifespan>,
     generator: BafflingRecursiveIsotopicPatternGenerator<'lifespan>,
@@ -138,9 +247,12 @@ impl<'lifespan> PartialEq for IsotopicModel<'lifespan> {
 }
 
 impl<'lifespan: 'transient, 'transient> IsotopicModel<'lifespan> {
-    pub fn new(base_composition: FractionalComposition<'lifespan>) -> Self {
+    /// Create a new [`IsotopicModel`] from a fractional composition
+    pub fn new<C: Into<FractionalComposition<'lifespan>>>(base_composition: C) -> Self {
+        let base_composition = base_composition.into();
         Self {
-            base_mass: fractional_mass(&base_composition),
+            // base_mass: fractional_mass(&base_composition),
+            base_mass: base_composition.mass(),
             base_composition,
             hydrogen: ElementSpecification::parse("H").unwrap(),
             generator: BafflingRecursiveIsotopicPatternGenerator::new(),
@@ -196,7 +308,7 @@ impl<'lifespan> IsotopicPatternGenerator for IsotopicModel<'lifespan> {
 
 impl<'lifespan, T: IntoIterator<Item = (&'static str, f64)>> From<T> for IsotopicModel<'lifespan> {
     fn from(iter: T) -> Self {
-        let mut f = FractionalComposition::new();
+        let mut f = FractionalComposition::default();
         for (e, c) in iter {
             f.insert(e.parse().expect("Failed to parse element specification"), c);
         }
@@ -204,7 +316,13 @@ impl<'lifespan, T: IntoIterator<Item = (&'static str, f64)>> From<T> for Isotopi
     }
 }
 
+impl<'a> From<IsotopicModel<'a>> for FractionalComposition<'a> {
+    fn from(value: IsotopicModel<'a>) -> Self {
+        value.base_composition
+    }
+}
 
+#[doc(hidden)]
 // TODO: Break this into two structs, one for m/z and charge, another for the rest, and
 // root the cache bucket off the latter struct, and then sort over the former struct
 #[derive(Debug, Clone, Copy)]
@@ -323,11 +441,10 @@ mod partition {
         }
     }
 
-
     #[derive(Debug, Clone)]
     pub struct CachedIsotopicPattern {
         pub mz: f64,
-        pub pattern: TheoreticalIsotopicPattern
+        pub pattern: TheoreticalIsotopicPattern,
     }
 
     impl PartialEq for CachedIsotopicPattern {
@@ -362,14 +479,10 @@ mod partition {
         }
     }
 
-
     #[derive(Debug, Clone, Default)]
     pub struct PartitionedIsotopicPatternCache {
-        cache: HashMap<IsotopicPatternCachePartitionKey, Vec<CachedIsotopicPattern>>
+        cache: HashMap<IsotopicPatternCachePartitionKey, Vec<CachedIsotopicPattern>>,
     }
-
-
-
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -410,13 +523,16 @@ impl Iterator for FloatRange {
 /// pattern if one exists, otherwise computing a new pattern and saving it in the cache.
 #[derive(Debug, Clone)]
 pub struct CachingIsotopicModel<'lifespan> {
-    pub cache_truncation: f64,
+    cache_truncation: f64,
     inner: IsotopicModel<'lifespan>,
     cache: BTreeMap<IsotopicPatternSpec, TheoreticalIsotopicPattern>, // See TODO for [`IsotopicPatternSpec`]
 }
 
 impl<'lifespan: 'transient, 'transient> CachingIsotopicModel<'lifespan> {
-    pub fn new(base_composition: FractionalComposition<'lifespan>, cache_truncation: f64) -> Self {
+    pub fn new<C: Into<FractionalComposition<'lifespan>>>(
+        base_composition: C,
+        cache_truncation: f64,
+    ) -> Self {
         Self {
             inner: IsotopicModel::new(base_composition),
             cache: BTreeMap::new(),
@@ -576,7 +692,7 @@ pub enum IsotopicModels {
     Glycopeptide,
     PermethylatedGlycan,
     Heparin,
-    HeparanSulfate
+    HeparanSulfate,
 }
 
 impl From<IsotopicModels> for IsotopicModel<'_> {
@@ -597,9 +713,19 @@ impl From<IsotopicModels> for IsotopicModel<'_> {
                 ("O", 6.4773),
                 ("N", 1.6577),
             ],
-            IsotopicModels::PermethylatedGlycan => vec![("C", 12.0), ("H", 21.8333), ("N", 0.5), ("O", 5.16666)],
-            IsotopicModels::Heparin => vec![("H", 10.5), ("C", 6.0), ("S", 0.5), ("O", 5.5), ("N", 0.5)],
-            IsotopicModels::HeparanSulfate => vec![("H", 10.667), ("C", 6.0), ("S", 1.333), ("O", 9.0), ("N", 0.667)],
+            IsotopicModels::PermethylatedGlycan => {
+                vec![("C", 12.0), ("H", 21.8333), ("N", 0.5), ("O", 5.16666)]
+            }
+            IsotopicModels::Heparin => {
+                vec![("H", 10.5), ("C", 6.0), ("S", 0.5), ("O", 5.5), ("N", 0.5)]
+            }
+            IsotopicModels::HeparanSulfate => vec![
+                ("H", 10.667),
+                ("C", 6.0),
+                ("S", 1.333),
+                ("O", 9.0),
+                ("N", 0.667),
+            ],
         }
         .into()
     }
@@ -611,8 +737,6 @@ impl From<IsotopicModels> for CachingIsotopicModel<'_> {
         model.into()
     }
 }
-
-
 
 /// Strategies for scaling a theoretical isotopic pattern to pair with an experimental
 /// isotopic pattern expected to follow the same distribution.
@@ -644,9 +768,12 @@ impl TheoreticalIsotopicDistributionScalingMethod {
                     .for_each(|p| p.intensity *= total as f64);
             }
             Self::Max => {
-                let (index, theo_max) = theoretical.iter().enumerate().max_by(|a, b| {
-                    a.1.intensity().total_cmp(&b.1.intensity())
-                }).and_then(|(i, p)| Some((i, p.intensity()))).unwrap();
+                let (index, theo_max) = theoretical
+                    .iter()
+                    .enumerate()
+                    .max_by(|a, b| a.1.intensity().total_cmp(&b.1.intensity()))
+                    .and_then(|(i, p)| Some((i, p.intensity())))
+                    .unwrap();
                 // let (index, peak) = experimental
                 //     .iter()
                 //     .enumerate()

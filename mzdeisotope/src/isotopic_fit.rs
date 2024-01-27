@@ -5,14 +5,21 @@ use chemical_elements::isotopic_pattern::TheoreticalIsotopicPattern;
 
 use crate::{peaks::PeakKey, scorer::ScoreType};
 
-/// Describes an isotopic pattern fit
+/// Describes an isotopic pattern fit produced during the deconvolution of a
+/// spectrum.
 #[derive(Debug, Clone)]
 pub struct IsotopicFit {
+    /// The set of references to observed peaks
     pub experimental: Vec<PeakKey>,
+    /// The associated theoretical isotopic pattern
     pub theoretical: TheoreticalIsotopicPattern,
+    /// The peak reference that was used to seed the isotopic pattern
     pub seed_peak: PeakKey,
+    /// The charge state of the isotopic pattern fitted
     pub charge: i32,
+    /// The quality of the isotopic fit calculated by some algorithm
     pub score: ScoreType,
+    /// The number of experimental peaks that were *missing* in `experimental`
     pub missed_peaks: u16,
 }
 
@@ -62,6 +69,7 @@ impl Hash for IsotopicFit {
 }
 
 impl IsotopicFit {
+    #[inline]
     pub fn new(
         experimental: Vec<PeakKey>,
         seed_peak: PeakKey,
@@ -80,18 +88,22 @@ impl IsotopicFit {
         }
     }
 
+    #[inline]
     pub fn len(&self) -> usize {
         self.experimental.len()
     }
 
+    #[inline]
     pub fn num_missed_peaks(&self) -> usize {
-        self.experimental.iter().map(|p| p.is_placeholder() as usize).sum()
+        self.missed_peaks as usize
     }
 
+    #[inline]
     pub fn num_matched_peaks(&self) -> usize {
-        self.experimental.iter().map(|p| p.is_matched() as usize).sum()
+        self.len() - self.num_missed_peaks()
     }
 
+    #[inline]
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }

@@ -73,7 +73,7 @@ impl BuildFromArrayMap for DeconvolvedSolutionPeak {
             None => {
                 return Err(ArrayRetrievalError::NotFound(
                     ArrayType::NonStandardDataArray {
-                        name: Box::new("deconvolution score array".to_string()),
+                        name: Box::new(DECONVOLUTION_SCORE_ARRAY_NAME.to_string()),
                     },
                 ))
             }
@@ -86,7 +86,7 @@ impl BuildFromArrayMap for DeconvolvedSolutionPeak {
             None => {
                 return Err(ArrayRetrievalError::NotFound(
                     ArrayType::NonStandardDataArray {
-                        name: Box::new("isotopic envelopes array".to_string()),
+                        name: Box::new(ISOTOPIC_ENVELOPE_ARRAY_NAME.to_string()),
                     },
                 ))
             }
