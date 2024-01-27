@@ -56,27 +56,43 @@ pub fn purities_of(
     purity_estimator: &PrecursorPurityEstimator,
     group: &SpectrumGroupType,
     targets: &PrecursorPeakMapper,
+    is_dia: bool
 ) -> HashMap<usize, (f32, Vec<Coisolation>)> {
     let mut purities = HashMap::new();
     if let Some(precursor_scan) = group.precursor() {
         group.products().iter().enumerate().for_each(|(i, scan)| {
             if let Some(prec) = scan.precursor() {
-                targets.find_peak_for_mz(prec.ion.mz).and_then(|peak| {
-                    let purity = purity_estimator.precursor_purity(
-                        &precursor_scan.peaks.as_ref().unwrap(),
-                        peak,
-                        Some(&prec.isolation_window),
-                    );
+                if is_dia {
                     let coisolations = purity_estimator.coisolation(
                         &precursor_scan.deconvoluted_peaks.as_ref().unwrap(),
-                        peak,
+                        &DeconvolvedSolutionPeak::new(prec.ion.mz, 0.0, 1, 0, 0.0, Box::new(Vec::new())),
                         Some(&prec.isolation_window),
                         0.1,
                         true,
                     );
-                    purities.insert(i, (purity, coisolations));
-                    Some(())
-                });
+                    purities.insert(i, (0.0, coisolations));
+                } else {
+                    targets.find_peak_for_mz(prec.ion.mz).and_then(|peak| {
+                        if is_dia {
+
+                        } else {
+                            let purity = purity_estimator.precursor_purity(
+                                &precursor_scan.peaks.as_ref().unwrap(),
+                                peak,
+                                Some(&prec.isolation_window),
+                            );
+                            let coisolations = purity_estimator.coisolation(
+                                &precursor_scan.deconvoluted_peaks.as_ref().unwrap(),
+                                peak,
+                                Some(&prec.isolation_window),
+                                0.1,
+                                true,
+                            );
+                            purities.insert(i, (purity, coisolations));
+                        }
+                        Some(())
+                    });
+                }
             }
         });
     }
@@ -94,7 +110,7 @@ pub fn pick_ms1_peaks(
             panic!("Can't infer peak mode for {}", scan.id())
         }
         SignalContinuity::Centroid => match precursor_processing {
-            PrecursorProcessing::Full | PrecursorProcessing::MS1Only => {
+            PrecursorProcessing::Full | PrecursorProcessing::MS1Only | PrecursorProcessing::DIA => {
                 Some(scan.try_build_centroids().unwrap().clone())
             }
             PrecursorProcessing::SelectedPrecursors => {
@@ -124,7 +140,7 @@ pub fn pick_ms1_peaks(
                     scan.description_mut().signal_continuity = SignalContinuity::Centroid;
                     Some(scan.peaks.clone().unwrap())
                 }
-                PrecursorProcessing::Full | PrecursorProcessing::MS1Only => {
+                PrecursorProcessing::Full | PrecursorProcessing::MS1Only | PrecursorProcessing::DIA => {
                     scan.pick_peaks(1.0, Default::default()).unwrap();
                     scan.description_mut().signal_continuity = SignalContinuity::Centroid;
                     Some(scan.peaks.clone().unwrap())
@@ -169,12 +185,17 @@ pub fn deconvolution_transform<
 ) -> (usize, SpectrumGroupType, ProgressRecord) {
     let had_precursor = group.precursor().is_some();
     let mut prog = ProgressRecord::default();
+    let is_dia = matches!(precursor_processing, PrecursorProcessing::DIA);
 
-    let precursor_mz: Vec<_> = group
+    let precursor_mz: Vec<_> = if is_dia {
+        vec![]
+    } else {
+        group
         .products()
         .into_iter()
         .flat_map(|s| s.precursor().and_then(|prec| Some(prec.ion().mz)))
-        .collect();
+        .collect()
+    };
 
     let purity_estimator = PrecursorPurityEstimator::default();
 
@@ -228,7 +249,7 @@ pub fn deconvolution_transform<
     let precursor_map = PrecursorPeakMapper::new(&precursor_mz, &targets);
 
     if had_precursor {
-        purities = purities_of(&purity_estimator, &group, &precursor_map);
+        purities = purities_of(&purity_estimator, &group, &precursor_map, is_dia);
     }
 
     group
@@ -266,69 +287,80 @@ pub fn deconvolution_transform<
             prog.msn_peaks += deconvoluted_peaks.len();
             prog.msn_spectra += 1;
             scan.deconvoluted_peaks = Some(deconvoluted_peaks);
-            scan.precursor_mut().and_then(|prec| {
-                let target_mz = prec.mz();
-                let _ = precursor_map
-                    .find_mz(target_mz)
-                    .and_then(|i| {
-                        if let Some(peak) = &targets[i] {
-                            let orig_charge = prec.ion.charge;
-                            let update_ion = if let Some(orig_z) = orig_charge {
-                                let t = orig_z == peak.charge;
-                                if !t {
-                                    prog.precursor_charge_state_mismatch += 1;
-                                }
-                                t
-                            } else {
-                                true
-                            };
-                            if update_ion {
-                                prec.ion.mz = peak.mz();
-                                prec.ion.charge = Some(peak.charge);
-                                prec.ion.intensity = peak.intensity;
-                                let (purity, coisolated) =
-                                    purities.remove(&scan_i).unwrap_or_default();
-                                prec.ion.params_mut().push(Param::new_key_value(
-                                    "mzdeisotope:isolation purity".to_string(),
-                                    purity.to_string(),
-                                ));
-                                coisolated.iter().for_each(|c| {
-                                    prec.ion.params_mut().push(coisolation_to_param(c));
-                                });
-                            } else {
-                                prec.ion.params_mut().push(Param::new_key_value(
-                                    "mzdeisotope:defaulted".to_string(),
-                                    true.to_string(),
-                                ));
-                                let (purity, coisolated) =
-                                    purities.remove(&scan_i).unwrap_or_default();
-                                prec.ion.params_mut().push(Param::new_key_value(
-                                    "mzdeisotope:isolation purity".to_string(),
-                                    purity.to_string(),
-                                ));
-                                coisolated.iter().for_each(|c| {
-                                    prec.ion.params_mut().push(coisolation_to_param(c));
-                                });
-                                prog.precursors_defaulted += 1;
-                            }
-                        }
-                        Some(())
-                    })
-                    .or_else(|| {
-                        prec.ion.params_mut().push(Param::new_key_value(
-                            "mzdeisotope:defaulted".to_string(),
-                            true.to_string(),
-                        ));
-                        prec.ion.params_mut().push(Param::new_key_value(
-                            "mzdeisotope:orphan".to_string(),
-                            true.to_string(),
-                        ));
-                        prog.precursors_defaulted += 1;
-                        None
+            if is_dia {
+                scan.precursor_mut().and_then(|prec| {
+                    let (_, coisolated) = purities.remove(&scan_i).unwrap_or_default();
+                    coisolated.iter().for_each(|c| {
+                        prec.ion.params_mut().push(coisolation_to_param(c));
                     });
+                    Some(())
+                });
+            }
+            else {
+                scan.precursor_mut().and_then(|prec| {
+                    let target_mz = prec.mz();
+                    let _ = precursor_map
+                        .find_mz(target_mz)
+                        .and_then(|i| {
+                            if let Some(peak) = &targets[i] {
+                                let orig_charge = prec.ion.charge;
+                                let update_ion = if let Some(orig_z) = orig_charge {
+                                    let t = orig_z == peak.charge;
+                                    if !t {
+                                        prog.precursor_charge_state_mismatch += 1;
+                                    }
+                                    t
+                                } else {
+                                    true
+                                };
+                                if update_ion {
+                                    prec.ion.mz = peak.mz();
+                                    prec.ion.charge = Some(peak.charge);
+                                    prec.ion.intensity = peak.intensity;
+                                    let (purity, coisolated) =
+                                        purities.remove(&scan_i).unwrap_or_default();
+                                    prec.ion.params_mut().push(Param::new_key_value(
+                                        "mzdeisotope:isolation purity".to_string(),
+                                        purity.to_string(),
+                                    ));
+                                    coisolated.iter().for_each(|c| {
+                                        prec.ion.params_mut().push(coisolation_to_param(c));
+                                    });
+                                } else {
+                                    prec.ion.params_mut().push(Param::new_key_value(
+                                        "mzdeisotope:defaulted".to_string(),
+                                        true.to_string(),
+                                    ));
+                                    let (purity, coisolated) =
+                                        purities.remove(&scan_i).unwrap_or_default();
+                                    prec.ion.params_mut().push(Param::new_key_value(
+                                        "mzdeisotope:isolation purity".to_string(),
+                                        purity.to_string(),
+                                    ));
+                                    coisolated.iter().for_each(|c| {
+                                        prec.ion.params_mut().push(coisolation_to_param(c));
+                                    });
+                                    prog.precursors_defaulted += 1;
+                                }
+                            }
+                            Some(())
+                        })
+                        .or_else(|| {
+                            prec.ion.params_mut().push(Param::new_key_value(
+                                "mzdeisotope:defaulted".to_string(),
+                                true.to_string(),
+                            ));
+                            prec.ion.params_mut().push(Param::new_key_value(
+                                "mzdeisotope:orphan".to_string(),
+                                true.to_string(),
+                            ));
+                            prog.precursors_defaulted += 1;
+                            None
+                        });
 
-                Some(())
-            });
+                    Some(())
+                });
+            }
         });
     (group_idx, group, prog)
 }

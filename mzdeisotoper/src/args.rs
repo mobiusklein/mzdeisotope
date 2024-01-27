@@ -25,6 +25,9 @@ pub enum PrecursorProcessing {
     TandemOnly,
     /// Process only the MS1 spectra without examining MSn spectra
     MS1Only,
+    /// The spectra were acquired using some flavor of data-independent acquisition
+    /// so selected ions are meaningless
+    DIA
 }
 
 impl Display for PrecursorProcessing {

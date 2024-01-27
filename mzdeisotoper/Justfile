@@ -39,3 +39,16 @@ test-file-mzmlb:
         -v selected-precursors \
         ./tests/data/batching_test.mzML \
         -o tmp/batching_test.processed.mzMLb
+
+test-read-gzip-file:
+    cargo r -r -- -g 1 \
+        -v selected-precursors \
+        ./tests/data/batching_test.mzML.gz \
+        -o tmp/batching_test.processed.mzML
+
+test-gzip-stdin:
+    cargo r -r -- -g 1 \
+        -v selected-precursors \
+        - \
+        -o tmp/batching_test.processed.mzML \
+        < ./tests/data/batching_test.mzML.gz

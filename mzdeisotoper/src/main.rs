@@ -20,7 +20,7 @@ use mzdata::io::{
     infer_format, infer_from_path, infer_from_stream,
     mgf::{MGFReaderType, MGFWriterType},
     mzml::{MzMLReaderType, MzMLWriterType},
-    MassSpectrometryFormat, PreBufferedStream, StreamingSpectrumIterator,
+    MassSpectrometryFormat, PreBufferedStream, RestartableGzDecoder, StreamingSpectrumIterator,
 };
 use mzdata::prelude::*;
 use mzdata::spectrum::SignalContinuity;
@@ -214,23 +214,6 @@ pub enum MZDeisotoperError {
     CompressedInputError(String),
 }
 
-
-#[allow(unused)]
-macro_rules! reader_dispatch {
-    ($path:expr, $compressed:expr, $reader_type:expr) => {
-        if $compressed {
-            let reader = $reader_type::open_path(self.input_file.clone())?;
-            let spectrum_count = Some(reader.len() as u64);
-            self.writer_then(reader, spectrum_count)?;
-        } else {
-            let reader = $reader_type::open_path(self.input_file.clone())?;
-            let spectrum_count = Some(reader.len() as u64);
-            self.writer_then(reader, spectrum_count)?;
-        }
-    };
-}
-
-
 /// Deisotoping and charge state deconvolution of mass spectrometry files.
 ///
 /// Read a file or stream, transform the spectra, and write out a processed mzML
@@ -349,20 +332,32 @@ impl MZDeiosotoperArgs {
                 PreBufferedStream::new_with_buffer_size(io::stdin(), 2usize.pow(20))?;
             let (ms_format, compressed) = infer_from_stream(&mut buffered)?;
             log::debug!("Detected {ms_format:?} from STDIN (compressed? {compressed})");
-            if compressed {
-                log::debug!("STDIN is compressed, not currently supported");
-                return Err(MZDeisotoperError::CompressedInputError("-".to_string()));
-            }
             match ms_format {
                 MassSpectrometryFormat::MGF => {
-                    let reader = StreamingSpectrumIterator::new(MGFReaderType::new(buffered));
-                    let spectrum_count = reader.spectrum_count_hint();
-                    self.writer_then(reader, spectrum_count)?;
+                    if compressed {
+                        let reader = StreamingSpectrumIterator::new(MGFReaderType::new(
+                            RestartableGzDecoder::new(io::BufReader::new(buffered)),
+                        ));
+                        let spectrum_count = reader.spectrum_count_hint();
+                        self.writer_then(reader, spectrum_count)?;
+                    } else {
+                        let reader = StreamingSpectrumIterator::new(MGFReaderType::new(buffered));
+                        let spectrum_count = reader.spectrum_count_hint();
+                        self.writer_then(reader, spectrum_count)?;
+                    }
                 }
                 MassSpectrometryFormat::MzML => {
-                    let reader = StreamingSpectrumIterator::new(MzMLReaderType::new(buffered));
-                    let spectrum_count = reader.spectrum_count_hint();
-                    self.writer_then(reader, spectrum_count)?;
+                    if compressed {
+                        let reader = StreamingSpectrumIterator::new(MzMLReaderType::new(
+                            RestartableGzDecoder::new(io::BufReader::new(buffered)),
+                        ));
+                        let spectrum_count = reader.spectrum_count_hint();
+                        self.writer_then(reader, spectrum_count)?;
+                    } else {
+                        let reader = StreamingSpectrumIterator::new(MzMLReaderType::new(buffered));
+                        let spectrum_count = reader.spectrum_count_hint();
+                        self.writer_then(reader, spectrum_count)?;
+                    }
                 }
                 _ => {
                     return Err(MZDeisotoperError::FormatUnknownOrNotSupportedErrorStdIn(
@@ -372,23 +367,35 @@ impl MZDeiosotoperArgs {
             }
         } else {
             let (ms_format, compressed) = infer_format(&self.input_file)?;
-            if compressed {
-                eprintln!("{} is compressed, not currently supported", self.input_file);
-                return Err(MZDeisotoperError::CompressedInputError(
-                    self.input_file.clone(),
-                ));
-            }
             log::debug!("Detected {ms_format:?} from path (compressed? {compressed})");
             match ms_format {
                 MassSpectrometryFormat::MGF => {
-                    let reader = MGFReaderType::open_path(self.input_file.clone())?;
-                    let spectrum_count = Some(reader.len() as u64);
-                    self.writer_then(reader, spectrum_count)?;
+                    if compressed {
+                        let fh = RestartableGzDecoder::new(io::BufReader::new(fs::File::open(
+                            &self.input_file,
+                        )?));
+                        let reader = StreamingSpectrumIterator::new(MGFReaderType::new(fh));
+                        let spectrum_count = Some(reader.len() as u64);
+                        self.writer_then(reader, spectrum_count)?;
+                    } else {
+                        let reader = MGFReaderType::open_path(self.input_file.clone())?;
+                        let spectrum_count = Some(reader.len() as u64);
+                        self.writer_then(reader, spectrum_count)?;
+                    }
                 }
                 MassSpectrometryFormat::MzML => {
-                    let reader = MzMLReaderType::open_path(self.input_file.clone())?;
-                    let spectrum_count = Some(reader.len() as u64);
-                    self.writer_then(reader, spectrum_count)?;
+                    if compressed {
+                        let fh = RestartableGzDecoder::new(io::BufReader::new(fs::File::open(
+                            &self.input_file,
+                        )?));
+                        let reader = StreamingSpectrumIterator::new(MzMLReaderType::new(fh));
+                        let spectrum_count = Some(reader.len() as u64);
+                        self.writer_then(reader, spectrum_count)?;
+                    } else {
+                        let reader = MzMLReaderType::open_path(self.input_file.clone())?;
+                        let spectrum_count = Some(reader.len() as u64);
+                        self.writer_then(reader, spectrum_count)?;
+                    }
                 }
                 #[cfg(feature = "mzmlb")]
                 MassSpectrometryFormat::MzMLb => {
