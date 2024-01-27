@@ -52,3 +52,10 @@ test-gzip-stdin:
         - \
         -o tmp/batching_test.processed.mzML \
         < ./tests/data/batching_test.mzML.gz
+
+test-gzip-output:
+    cargo r -r -- -g 1 \
+        -v selected-precursors \
+        - \
+        -o tmp/batching_test.processed.mzML.gz \
+        < ./tests/data/batching_test.mzML.gz

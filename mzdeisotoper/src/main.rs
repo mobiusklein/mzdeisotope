@@ -8,6 +8,8 @@ use std::thread;
 use std::time::Instant;
 
 use clap::Parser;
+use flate2::write::GzEncoder;
+use flate2::Compression;
 use log;
 
 use pretty_env_logger;
@@ -33,11 +35,12 @@ use mzdeisotope::scorer::{IsotopicFitFilter, IsotopicPatternScorer};
 use mzpeaks::Tolerance;
 
 mod args;
+mod deconv;
 mod progress;
 mod selection_targets;
-mod stages;
 mod time_range;
 mod types;
+mod write;
 
 use crate::args::{
     make_default_ms1_deconvolution_params, make_default_msn_deconvolution_params,
@@ -45,13 +48,12 @@ use crate::args::{
     DeconvolutionBuilderParams, PrecursorProcessing, SignalParams,
 };
 
+#[allow(unused)]
+use crate::write::{collate_results, collate_results_spectra, write_output, write_output_spectra};
+
+use crate::deconv::deconvolution_transform;
 use crate::progress::ProgressRecord;
 use crate::selection_targets::{MSnTargetTracking, SpectrumGroupTiming};
-#[allow(unused)]
-use crate::stages::{
-    collate_results, collate_results_spectra, deconvolution_transform, write_output,
-    write_output_spectra,
-};
 use crate::time_range::TimeRange;
 use crate::types::{CPeak, DPeak, SpectrumGroupType, SpectrumType};
 
@@ -225,7 +227,9 @@ pub struct MZDeiosotoperArgs {
     #[arg()]
     pub input_file: String,
 
-    /// The path to write the output file to, or if '-' is passed, write to STDOUT
+    /// The path to write the output file to, or if '-' is passed, write to STDOUT.
+    ///
+    /// If a path is specified, the output format is inferred, otherwise mzML is assumed.
     #[arg(short = 'o', long = "output-file", default_value = "-")]
     pub output_file: PathBuf,
 
@@ -433,23 +437,37 @@ impl MZDeiosotoperArgs {
             }
             self.run_workflow(reader, writer)?;
         } else {
-            let (ms_format, _) = infer_from_path(&self.output_file);
+            let (ms_format, compressed) = infer_from_path(&self.output_file);
             match ms_format {
                 MassSpectrometryFormat::MGF => {
-                    let writer = MGFWriterType::new(io::BufWriter::new(fs::File::create(
-                        self.output_file.clone(),
-                    )?));
-                    self.run_workflow(reader, writer)?;
+                    let handle = io::BufWriter::new(fs::File::create(self.output_file.clone())?);
+                    if compressed {
+                        let encoder = GzEncoder::new(handle, Compression::best());
+                        let writer = MGFWriterType::new(encoder);
+                        self.run_workflow(reader, writer)?
+                    } else {
+                        let writer = MGFWriterType::new(handle);
+                        self.run_workflow(reader, writer)?
+                    }
                 }
                 MassSpectrometryFormat::MzML => {
-                    let mut writer = MzMLWriterType::new(io::BufWriter::new(fs::File::create(
-                        self.output_file.clone(),
-                    )?));
-                    writer.copy_metadata_from(&reader);
-                    if let Some(spectrum_count) = spectrum_count {
-                        writer.set_spectrum_count(spectrum_count);
+                    let handle = io::BufWriter::new(fs::File::create(self.output_file.clone())?);
+                    if compressed {
+                        let encoder = GzEncoder::new(handle, Compression::best());
+                        let mut writer = MzMLWriterType::new(encoder);
+                        writer.copy_metadata_from(&reader);
+                        if let Some(spectrum_count) = spectrum_count {
+                            writer.set_spectrum_count(spectrum_count);
+                        }
+                        self.run_workflow(reader, writer)?;
+                    } else {
+                        let mut writer = MzMLWriterType::new(handle);
+                        writer.copy_metadata_from(&reader);
+                        if let Some(spectrum_count) = spectrum_count {
+                            writer.set_spectrum_count(spectrum_count);
+                        }
+                        self.run_workflow(reader, writer)?;
                     }
-                    self.run_workflow(reader, writer)?;
                 }
                 #[cfg(feature = "mzmlb")]
                 MassSpectrometryFormat::MzMLb => {
