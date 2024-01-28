@@ -65,16 +65,16 @@ pub fn purities_of(
                 if is_dia {
                     let coisolations = purity_estimator.coisolation(
                         &precursor_scan.deconvoluted_peaks.as_ref().unwrap(),
-                        &DeconvolvedSolutionPeak::new(prec.ion.mz, 0.0, 1, 0, 0.0, Box::new(Vec::new())),
+                        &DeconvolvedSolutionPeak::new(prec.ion().mz, 0.0, 1, 0, 0.0, Box::new(Vec::new())),
                         Some(&prec.isolation_window),
                         0.1,
                         true,
                     );
                     purities.insert(i, (0.0, coisolations));
                 } else {
-                    targets.find_peak_for_mz(prec.ion.mz).and_then(|peak| {
+                    targets.find_peak_for_mz(prec.ion().mz).and_then(|peak| {
                         if is_dia {
-
+                            // For DIA mode, purity isn't meaningful
                         } else {
                             let purity = purity_estimator.precursor_purity(
                                 &precursor_scan.peaks.as_ref().unwrap(),
@@ -291,7 +291,7 @@ pub fn deconvolution_transform<
                 scan.precursor_mut().and_then(|prec| {
                     let (_, coisolated) = purities.remove(&scan_i).unwrap_or_default();
                     coisolated.iter().for_each(|c| {
-                        prec.ion.params_mut().push(coisolation_to_param(c));
+                        prec.ion_mut().params_mut().push(coisolation_to_param(c));
                     });
                     Some(())
                 });
@@ -303,7 +303,7 @@ pub fn deconvolution_transform<
                         .find_mz(target_mz)
                         .and_then(|i| {
                             if let Some(peak) = &targets[i] {
-                                let orig_charge = prec.ion.charge;
+                                let orig_charge = prec.ion().charge;
                                 let update_ion = if let Some(orig_z) = orig_charge {
                                     let t = orig_z == peak.charge;
                                     if !t {
@@ -313,32 +313,33 @@ pub fn deconvolution_transform<
                                 } else {
                                     true
                                 };
+                                let prec_ion = prec.ion_mut();
                                 if update_ion {
-                                    prec.ion.mz = peak.mz();
-                                    prec.ion.charge = Some(peak.charge);
-                                    prec.ion.intensity = peak.intensity;
+                                    prec_ion.mz = peak.mz();
+                                    prec_ion.charge = Some(peak.charge);
+                                    prec_ion.intensity = peak.intensity;
                                     let (purity, coisolated) =
                                         purities.remove(&scan_i).unwrap_or_default();
-                                    prec.ion.params_mut().push(Param::new_key_value(
+                                    prec_ion.params_mut().push(Param::new_key_value(
                                         "mzdeisotope:isolation purity".to_string(),
                                         purity.to_string(),
                                     ));
                                     coisolated.iter().for_each(|c| {
-                                        prec.ion.params_mut().push(coisolation_to_param(c));
+                                        prec_ion.params_mut().push(coisolation_to_param(c));
                                     });
                                 } else {
-                                    prec.ion.params_mut().push(Param::new_key_value(
+                                    prec_ion.params_mut().push(Param::new_key_value(
                                         "mzdeisotope:defaulted".to_string(),
                                         true.to_string(),
                                     ));
                                     let (purity, coisolated) =
                                         purities.remove(&scan_i).unwrap_or_default();
-                                    prec.ion.params_mut().push(Param::new_key_value(
+                                    prec_ion.params_mut().push(Param::new_key_value(
                                         "mzdeisotope:isolation purity".to_string(),
                                         purity.to_string(),
                                     ));
                                     coisolated.iter().for_each(|c| {
-                                        prec.ion.params_mut().push(coisolation_to_param(c));
+                                        prec_ion.params_mut().push(coisolation_to_param(c));
                                     });
                                     prog.precursors_defaulted += 1;
                                 }
@@ -346,11 +347,12 @@ pub fn deconvolution_transform<
                             Some(())
                         })
                         .or_else(|| {
-                            prec.ion.params_mut().push(Param::new_key_value(
+                            let prec_ion = prec.ion_mut();
+                            prec_ion.params_mut().push(Param::new_key_value(
                                 "mzdeisotope:defaulted".to_string(),
                                 true.to_string(),
                             ));
-                            prec.ion.params_mut().push(Param::new_key_value(
+                            prec_ion.params_mut().push(Param::new_key_value(
                                 "mzdeisotope:orphan".to_string(),
                                 true.to_string(),
                             ));

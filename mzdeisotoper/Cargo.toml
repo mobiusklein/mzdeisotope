@@ -10,7 +10,7 @@ license = "Apache-2.0"
 repository = "https://github.com/mobiusklein/mzdeisotope"
 documentation = "https://docs.rs/mzdeisotoper"
 readme = "../README.md"
-exclude = ["tests/"]
+exclude = ["tests/", "tmp/", ]
 
 keywords = ['mass-spectrometry', 'deisotoping', 'charge-deconvolution']
 

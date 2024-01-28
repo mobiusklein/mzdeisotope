@@ -222,7 +222,7 @@ pub enum MZDeisotoperError {
 /// file or stream.
 #[derive(Parser, Debug)]
 #[command(author, version)]
-pub struct MZDeiosotoperArgs {
+pub struct MZDeiosotoper {
     /// The path to read the input spectra from, or if '-' is passed, read from STDIN
     #[arg()]
     pub input_file: String,
@@ -241,13 +241,13 @@ pub struct MZDeiosotoperArgs {
     )]
     pub threads: i32,
 
-    /// The time range to process, denoted [start?]-[stop?]
+    /// The time range to process, denoted (start?)-(stop?)
     #[arg(
         short='r',
         long="time-range",
         value_parser=TimeRange::from_str,
         value_name="BEGIN-END",
-        long_help=r#"The time range to process, denoted [start?]-[stop?]
+        long_help=r#"The time range to process, denoted (start?)-(stop?)
 
 If a start is not specified, processing begins from the start of the run.
 If a stop is not specified, processing stops at the end of the run.
@@ -297,7 +297,7 @@ If a stop is not specified, processing stops at the end of the run.
     )]
     pub precursor_processing: PrecursorProcessing,
 
-    /// The range of charge states to consider for each peak denoted [low]-[high] or [high]
+    /// The range of charge states to consider for each peak denoted (low)-(high) or (high)
     #[arg(
         short = 'z',
         long = "charge-range",
@@ -314,7 +314,7 @@ If a stop is not specified, processing stops at the end of the run.
     pub msn_missed_peaks: u16,
 }
 
-impl MZDeiosotoperArgs {
+impl MZDeiosotoper {
     pub fn set_threadpool(&self) {
         if self.threads > 0 {
             log::debug!("Using {} threads", self.threads);
@@ -594,10 +594,10 @@ impl MZDeiosotoperArgs {
     }
 }
 
-fn main() -> Result<(), MZDeisotoperError> {
+pub fn main() -> Result<(), MZDeisotoperError> {
     pretty_env_logger::init_timed();
 
-    let args = MZDeiosotoperArgs::parse();
+    let args = MZDeiosotoper::parse();
     args.main()?;
     Ok(())
 }

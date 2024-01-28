@@ -25,7 +25,7 @@ pub enum PrecursorProcessing {
     TandemOnly,
     /// Process only the MS1 spectra without examining MSn spectra
     MS1Only,
-    /// Process all data as [`Full`], but ignore selected ion information
+    /// Process all data as [`PrecursorProcessing::Full`], but ignore selected ion information
     DIA
 }
 
