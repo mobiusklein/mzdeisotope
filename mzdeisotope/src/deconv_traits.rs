@@ -118,6 +118,7 @@ pub trait IsotopicPatternFitter<C: CentroidLike> {
     fn create_key(&mut self, mz: f64) -> PeakKey;
     fn peak_count(&self) -> usize;
 
+    #[tracing::instrument(skip_all, level="trace")]
     fn merge_isobaric_peaks(
         &self,
         mut peaks: Vec<DeconvolvedSolutionPeak>,

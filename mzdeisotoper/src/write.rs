@@ -9,6 +9,7 @@ use crate::types::{
     CPeak, DPeak, SpectrumCollator, SpectrumGroupCollator, SpectrumGroupType, SpectrumType,
 };
 
+#[tracing::instrument(skip_all, level="trace")]
 pub fn collate_results(
     receiver: Receiver<(usize, SpectrumGroupType)>,
     sender: SyncSender<(usize, SpectrumGroupType)>,
@@ -33,13 +34,14 @@ pub fn collate_results(
             match sender.send((group_idx, group)) {
                 Ok(()) => {}
                 Err(e) => {
-                    log::error!("Failed to send {group_idx} for writing: {e}")
+                    tracing::error!("Failed to send {group_idx} for writing: {e}")
                 }
             }
         }
     }
 }
 
+#[tracing::instrument(skip_all, level="trace")]
 pub fn collate_results_spectra(
     receiver: Receiver<(usize, SpectrumGroupType)>,
     sender: SyncSender<(usize, SpectrumType)>,
@@ -71,20 +73,21 @@ pub fn collate_results_spectra(
 
         let n = collator.waiting.len();
         if i % 1000000 == 0 && i > 0 && n > 0 {
-            log::debug!("Collator holding {n} entries at tick {i}, next key {} ({})", collator.next_key, collator.has_next())
+            tracing::debug!("Collator holding {n} entries at tick {i}, next key {} ({})", collator.next_key, collator.has_next())
         }
 
         while let Some((group_idx, group)) = collator.try_next() {
             match sender.send((group_idx, group)) {
                 Ok(()) => {}
                 Err(e) => {
-                    log::error!("Failed to send {group_idx} for writing: {e}")
+                    tracing::error!("Failed to send {group_idx} for writing: {e}")
                 }
             }
         }
     }
 }
 
+#[tracing::instrument(skip_all, level="trace")]
 pub fn write_output<S: ScanWriter<'static, CPeak, DPeak>>(
     mut writer: S,
     receiver: Receiver<(usize, SpectrumGroupType)>,
@@ -108,19 +111,20 @@ pub fn write_output<S: ScanWriter<'static, CPeak, DPeak>>(
         if ((group_idx - checkpoint) % 100 == 0 && group_idx != 0)
             || (scan_time - time_checkpoint) > 1.0
         {
-            log::info!("Completed Group {group_idx} | Scans={scan_counter} Time={scan_time:0.3}");
+            tracing::info!("Completed Group {group_idx} | Scans={scan_counter} Time={scan_time:0.3}");
             checkpoint = group_idx;
             time_checkpoint = scan_time;
         }
         writer.write_group(&group)?;
     }
     if time_checkpoint != scan_time {
-        log::info!("Finished Processing | Scans={scan_counter} Time={scan_time:0.3}");
+        tracing::info!("Finished Processing | Scans={scan_counter} Time={scan_time:0.3}");
     }
     writer.close()?;
     Ok(())
 }
 
+#[tracing::instrument(skip_all, level="trace")]
 pub fn write_output_spectra<S: ScanWriter<'static, CPeak, DPeak>>(
     mut writer: S,
     receiver: Receiver<(usize, SpectrumType)>,
@@ -135,14 +139,14 @@ pub fn write_output_spectra<S: ScanWriter<'static, CPeak, DPeak>>(
         if ((group_idx - checkpoint) % 1000 == 0 && group_idx != 0)
             || (scan_time - time_checkpoint) > 1.0
         {
-            log::info!("Completed Scan {} | Scans={scan_counter} Time={scan_time:0.3}", group_idx + 1);
+            tracing::info!("Completed Scan {} | Scans={scan_counter} Time={scan_time:0.3}", group_idx + 1);
             checkpoint = group_idx;
             time_checkpoint = scan_time;
         }
         writer.write(&scan)?;
     }
     if time_checkpoint != scan_time {
-        log::info!("Finished | Scans={scan_counter} Time={scan_time:0.3}");
+        tracing::info!("Finished | Scans={scan_counter} Time={scan_time:0.3}");
     }
     writer.close()?;
     Ok(())

@@ -2,9 +2,8 @@ use std::env;
 use std::fmt::Display;
 use std::io;
 
-use env_logger;
+use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 use itertools::Itertools;
-use log;
 
 use mzdata::io::mzml::MzMLReaderType;
 use mzdata::prelude::*;
@@ -32,7 +31,14 @@ pub fn isclose<T: Float>(a: T, b: T, delta: T) -> bool {
 }
 
 fn main() -> io::Result<()> {
-    env_logger::init();
+    tracing_subscriber::registry()
+    .with(
+        fmt::layer().compact().with_writer(io::stderr).with_filter(
+            EnvFilter::builder()
+                .with_default_directive(tracing::Level::INFO.into())
+                .from_env_lossy(),
+        ),
+    ).init();
     let mut args = env::args().skip(1);
 
     let path1 = args.next().unwrap_or_else(|| panic!("Missing first file"));
@@ -102,7 +108,7 @@ fn main() -> io::Result<()> {
                 if mismatched_intensities == 0 && mismatched_masses == 0 && mismatched_scores == 0 {
                     (MatchingStatus::Matched, scan1.ms_level())
                 } else {
-                    log::info!(
+                    tracing::info!(
                         "Mismatching peak values {} {}/{}/{} {:?}",
                         scan1.id(),
                         mismatched_masses,
@@ -120,7 +126,7 @@ fn main() -> io::Result<()> {
                     )
                 }
             } else {
-                log::info!("Mismatching peak count {}", scan1.id());
+                tracing::info!("Mismatching peak count {}", scan1.id());
                 (
                     MatchingStatus::MismatchingPeakCount(dpeaks1.len(), dpeaks2.len()),
                     scan1.ms_level(),

@@ -618,7 +618,7 @@ impl<
         let mut converged = false;
         let mut convergence_check = f32::MAX;
         for i in 0..max_iterations {
-            log::debug!(
+            tracing::debug!(
                 "Starting iteration {i} with remaining TIC {before_tic:0.4e} ({:0.3}%), {} peaks fit",
                 before_tic / ref_tick * 100.0,
                 deconvoluted_peaks.len()
@@ -658,7 +658,7 @@ impl<
             let after_tic = self.inner.peaks.tic();
             convergence_check = (before_tic - after_tic) / after_tic;
             if convergence_check <= convergence {
-                log::debug!(
+                tracing::debug!(
                     "Converged at on iteration {i} with remaining TIC {before_tic:0.4e} - {after_tic:0.4e} = {:0.4e} ({convergence_check}), {} peaks fit",
                     before_tic - after_tic,
                     deconvoluted_peaks.len()
@@ -671,7 +671,7 @@ impl<
             self.peak_graph.reset();
         }
         if !converged {
-            log::debug!(
+            tracing::debug!(
                 "Failed to converge after {max_iterations} iterations with remaining TIC {before_tic:0.4e} ({convergence_check}), {} peaks fit",
                 deconvoluted_peaks.len()
             );
@@ -699,7 +699,7 @@ impl<
                         PeakKey::Placeholder(j) => {
                             if !mask.contains(&j) {
                                 let c = link_table.get(&t.query).unwrap();
-                                log::debug!("Query peak {} is a placeholder", c.mz());
+                                tracing::debug!("Query peak {} is a placeholder", c.mz());
                                 mask.insert(j);
                             }
                             false

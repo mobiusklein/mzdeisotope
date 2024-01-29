@@ -12,6 +12,8 @@ use mzdeisotope::{
     solution::DeconvolvedSolutionPeak,
 };
 
+use tracing::{self, instrument};
+
 use crate::{
     args::{DeconvolutionParams, PrecursorProcessing, SignalParams},
     progress::ProgressRecord,
@@ -128,9 +130,9 @@ pub fn pick_ms1_peaks(
         },
         SignalContinuity::Profile => {
             if signal_processing_params.ms1_denoising > 0.0 {
-                log::trace!("Denoising {}", scan.id());
+                tracing::trace!("Denoising {}", scan.id());
                 if let Err(e) = scan.denoise(signal_processing_params.ms1_denoising) {
-                    log::error!("An error occurred while denoising {}: {e}", scan.id());
+                    tracing::error!("An error occurred while denoising {}: {e}", scan.id());
                 }
             }
             match precursor_processing {
@@ -168,6 +170,7 @@ pub fn pick_msn_peaks(
     }
 }
 
+#[instrument(skip_all, fields(groupno=group_idx), level="trace")]
 pub fn deconvolution_transform<
     S: IsotopicPatternScorer + Send + 'static,
     F: IsotopicFitFilter + Send + 'static,
@@ -204,8 +207,8 @@ pub fn deconvolution_transform<
     // Process the precursor spectrum and collect the updated selected ions' solutions
     let targets = match group.precursor_mut() {
         Some(scan) => {
-            if log::log_enabled!(log::Level::Trace) {
-                log::trace!(
+            if tracing::enabled!(tracing::Level::TRACE) {
+                tracing::trace!(
                     "Processing {} MS{} ({:0.3})",
                     scan.id(),
                     scan.ms_level(),
@@ -257,8 +260,8 @@ pub fn deconvolution_transform<
         .iter_mut()
         .enumerate()
         .for_each(|(scan_i, scan)| {
-            if !had_precursor && log::log_enabled!(log::Level::Trace) {
-                log::trace!(
+            if !had_precursor && tracing::enabled!(tracing::Level::TRACE) {
+                tracing::trace!(
                     "Processing {} MS{} ({:0.3})",
                     scan.id(),
                     scan.ms_level(),

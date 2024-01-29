@@ -145,7 +145,7 @@ pub trait IsotopicPatternGenerator {
         truncate_after: f64,
         ignore_below: f64,
     ) {
-        log::warn!("No cache to populate");
+        tracing::warn!("No cache to populate");
     }
 }
 
@@ -604,7 +604,7 @@ impl<'lifespan: 'transient, 'transient> CachingIsotopicModel<'lifespan> {
         ignore_below: f64,
     ) {
         let sign = min_charge / min_charge.abs();
-        log::trace!("Starting isotopic cache population");
+        tracing::trace!("Starting isotopic cache population");
         FloatRange::new(min_mz, max_mz, 0.1)
             .into_iter()
             .for_each(|mz| {
@@ -618,7 +618,7 @@ impl<'lifespan: 'transient, 'transient> CachingIsotopicModel<'lifespan> {
                     );
                 });
             });
-        log::trace!(
+        tracing::trace!(
             "Finished isotopic cache population, {} entries created",
             self.len()
         );

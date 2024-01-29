@@ -2,6 +2,7 @@ set dotenv-load := true
 
 test-file:
     cargo r -r -- -g 1 \
+        -l ./tmp/log.txt \
         -v selected-precursors \
         ./tests/data/batching_test.mzML \
         -o tmp/batching_test.processed.mzML

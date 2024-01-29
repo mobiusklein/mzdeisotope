@@ -290,7 +290,7 @@ impl<
             })
             .sum();
         if new_targets > 0 {
-            log::debug!("Added {new_targets} new targets");
+            tracing::debug!("Added {new_targets} new targets");
         }
     }
 
@@ -301,7 +301,7 @@ impl<
             .and_then(|s| s.earliest_spectrum().map(|s| s.start_time()))
             .unwrap();
         let end_time = start_time + self.time_width;
-        log::debug!("Initial time window {start_time} to {end_time}");
+        tracing::debug!("Initial time window {start_time} to {end_time}");
         if let Some(g) = group {
             self.observe(&g);
             self.buffer.push_back((g, start_time));
@@ -316,7 +316,7 @@ impl<
                 break;
             }
         }
-        log::debug!(
+        tracing::debug!(
             "{} targets extracted from buffer size {}",
             self.targets.len(),
             self.buffer.len()
@@ -379,7 +379,7 @@ impl<
                     // Keep targets which have not ended by this time point
                     let cond = target.time_range.end >= t;
                     if !cond {
-                        log::debug!("Dropping {target:?} at {t}")
+                        tracing::debug!("Dropping {target:?} at {t}")
                     }
                     cond
                 })

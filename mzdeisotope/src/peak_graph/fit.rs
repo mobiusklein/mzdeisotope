@@ -222,7 +222,7 @@ impl FitGraph {
                     deps.push(f);
                     nodes.push(node)
                 } else {
-                    log::warn!("Failed to find a node for fit {f:?}");
+                    tracing::warn!("Failed to find a node for fit {f:?}");
                 }
             });
             cluster.dependencies = deps;

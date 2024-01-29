@@ -7,8 +7,6 @@ use std::sync::mpsc::{channel, Receiver, Sender, TryRecvError};
 use std::thread;
 use std::time::Instant;
 
-use env_logger;
-use log;
 use rayon::prelude::*;
 
 use chemical_elements::PROTON;
@@ -28,6 +26,8 @@ use mzdeisotope::scorer::{MSDeconvScorer, MaximizingFitFilter, PenalizedMSDeconv
 use mzdeisotope::solution::DeconvolvedSolutionPeak;
 
 use mzpeaks::{CentroidPeak, PeakCollection, Tolerance};
+
+use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 type SolvedSpectrumGroup = SpectrumGroup<CentroidPeak, DeconvolvedSolutionPeak>;
 
@@ -105,7 +105,7 @@ fn run_deconvolution(
                     .collect();
                 let targets = match group.precursor_mut() {
                     Some(scan) => {
-                        // log::info!("Processing {} MS{} ({:0.3})", scan.id(), scan.ms_level(), scan.acquisition().start_time());
+                        // tracing::info!("Processing {} MS{} ({:0.3})", scan.id(), scan.ms_level(), scan.acquisition().start_time());
 
                         let peaks = match scan.signal_continuity() {
                             SignalContinuity::Unknown => {
@@ -139,7 +139,7 @@ fn run_deconvolution(
 
                 group.products_mut().iter_mut().for_each(|scan| {
                     if !had_precursor {
-                        log::info!(
+                        tracing::info!(
                             "Processing {} MS{} ({:0.3})",
                             scan.id(),
                             scan.ms_level(),
@@ -186,7 +186,7 @@ fn run_deconvolution(
                                         prec.ion.charge = Some(peak.charge);
                                         prec.ion.intensity = peak.intensity;
                                     } else {
-                                        // log::warn!("Expected ion of charge state {} @ {orig_mz:0.3}, found {} @ {:0.3}", orig_charge.unwrap(), peak.charge, peak.mz());
+                                        // tracing::warn!("Expected ion of charge state {} @ {orig_mz:0.3}, found {} @ {:0.3}", orig_charge.unwrap(), peak.charge, peak.mz());
                                         prec.ion.params_mut().push(Param::new_key_value(
                                             "mzdeisotope:defaulted".to_string(),
                                             true.to_string(),
@@ -217,7 +217,7 @@ fn run_deconvolution(
             match sender.send((group_idx, group)) {
                 Ok(_) => {}
                 Err(e) => {
-                    log::warn!("Failed to send group: {}", e);
+                    tracing::warn!("Failed to send group: {}", e);
                 }
             }
             (n_ms1_peaks_local, n_msn_peaks_local)
@@ -228,12 +228,12 @@ fn run_deconvolution(
         );
     let finished = Instant::now();
     let elapsed = finished - started;
-    log::debug!(
+    tracing::debug!(
         "{} threads run for deconvolution",
         init_counter.load(Ordering::SeqCst)
     );
-    log::info!("MS1 Peaks: {n_ms1_peaks}\tMSn Peaks: {n_msn_peaks}");
-    log::info!("Elapsed Time: {:0.3?}", elapsed);
+    tracing::info!("MS1 Peaks: {n_ms1_peaks}\tMSn Peaks: {n_msn_peaks}");
+    tracing::info!("Elapsed Time: {:0.3?}", elapsed);
     Ok(())
 }
 
@@ -261,7 +261,7 @@ fn collate_results(
             match sender.send((group_idx, group)) {
                 Ok(()) => {}
                 Err(e) => {
-                    log::error!("Failed to send {group_idx} for writing: {e}")
+                    tracing::error!("Failed to send {group_idx} for writing: {e}")
                 }
             }
         }
@@ -290,7 +290,7 @@ fn write_output<W: io::Write + io::Seek>(
         if ((group_idx - checkpoint) % 100 == 0 && group_idx != 0)
             || (scan_time - time_checkpoint) > 1.0
         {
-            log::info!("Completed Group {group_idx} | Scans={scan_counter} Time={scan_time:0.3}");
+            tracing::info!("Completed Group {group_idx} | Scans={scan_counter} Time={scan_time:0.3}");
             checkpoint = group_idx;
             time_checkpoint = scan_time;
         }
@@ -307,7 +307,15 @@ fn write_output<W: io::Write + io::Seek>(
 }
 
 fn main() -> io::Result<()> {
-    env_logger::init();
+    tracing_subscriber::registry()
+    .with(
+        fmt::layer().compact().with_writer(io::stderr).with_filter(
+            EnvFilter::builder()
+                .with_default_directive(tracing::Level::INFO.into())
+                .from_env_lossy(),
+        ),
+    ).init();
+
     let mut args = env::args().skip(1);
     let inpath = path::PathBuf::from(args.next().unwrap());
 
@@ -331,21 +339,21 @@ fn main() -> io::Result<()> {
     match read_task.join() {
         Ok(o) => o?,
         Err(e) => {
-            log::warn!("Failed to join reader task: {e:?}");
+            tracing::warn!("Failed to join reader task: {e:?}");
         }
     }
 
     match collate_task.join() {
         Ok(_) => {}
         Err(e) => {
-            log::warn!("Failed to join collator task: {e:?}")
+            tracing::warn!("Failed to join collator task: {e:?}")
         }
     }
 
     match write_task.join() {
         Ok(o) => o?,
         Err(e) => {
-            log::warn!("Failed to join writer task: {e:?}");
+            tracing::warn!("Failed to join writer task: {e:?}");
         }
     }
     Ok(())

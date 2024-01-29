@@ -30,12 +30,12 @@ num-traits = "0.2"
 mzdata = { version = "0.11.0", features = ["mzsignal", "nalgebra"] }
 mzpeaks = { version = "0.9.0" }
 chemical_elements = { version = "0.3.0", features = ['mzpeaks'] }
-log = "0.4.20"
+tracing = { version = "0.1.40" }
 itertools = "0.12.0"
 thiserror = "1.0.56"
 
 [dev-dependencies]
 flate2 = "1.0.28"
-env_logger = "0.10.1"
 test-log = "0.2.12 "
 rayon = "1.7.0"
+tracing-subscriber = { version = "0.3.18", features = ["env-filter", "fmt"]}

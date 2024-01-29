@@ -10,9 +10,7 @@ use std::time::Instant;
 use clap::Parser;
 use flate2::write::GzEncoder;
 use flate2::Compression;
-use log;
 
-use pretty_env_logger;
 use rayon::prelude::*;
 use thiserror::Error;
 
@@ -28,6 +26,9 @@ use mzdata::prelude::*;
 use mzdata::spectrum::SignalContinuity;
 #[cfg(feature = "mzmlb")]
 use std::env;
+use tracing_subscriber::fmt;
+use tracing_subscriber::prelude::*;
+use tracing_subscriber::EnvFilter;
 
 use mzdeisotope::scorer::ScoreType;
 use mzdeisotope::scorer::{IsotopicFitFilter, IsotopicPatternScorer};
@@ -81,7 +82,7 @@ fn prepare_procesing<
 
     let mut group_iter = reader.into_groups();
     let end_time = if let Some(time_range) = time_range {
-        log::info!("Starting from {}", time_range.start);
+        tracing::info!("Starting from {}", time_range.start);
         group_iter.start_from_time(time_range.start).unwrap();
         time_range.end
     } else {
@@ -136,7 +137,7 @@ fn prepare_procesing<
             )
             .map(|(group_idx, group, prog)| {
                 if let Err(e) = sender.send((group_idx, group)) {
-                    log::warn!("Failed to send group: {}", e);
+                    tracing::warn!("Failed to send group: {}", e);
                 }
                 prog
             })
@@ -169,7 +170,7 @@ fn prepare_procesing<
             )
             .map(|(group_idx, group, prog)| {
                 if let Err(e) = sender.send((group_idx, group)) {
-                    log::warn!("Failed to send group: {}", e);
+                    tracing::warn!("Failed to send group: {}", e);
                 }
                 prog
             })
@@ -179,11 +180,12 @@ fn prepare_procesing<
 
     let finished = Instant::now();
     let elapsed = finished - started;
-    log::debug!(
+    tracing::debug!(
         "{} threads run for deconvolution",
         init_counter.load(Ordering::SeqCst)
     );
-    log::info!("Elapsed Time: {:0.3?}", elapsed);
+    let spectra_per_second = (prog.ms1_spectra + prog.msn_spectra) as f64 / elapsed.as_secs() as f64;
+    tracing::info!("Elapsed Time: {:0.3?} ({:0.2} spectra/sec)", elapsed, spectra_per_second);
     Ok(prog)
 }
 
@@ -232,6 +234,10 @@ pub struct MZDeiosotoper {
     /// If a path is specified, the output format is inferred, otherwise mzML is assumed.
     #[arg(short = 'o', long = "output-file", default_value = "-")]
     pub output_file: PathBuf,
+
+    /// The path to write a log file to, in addition to STDERR
+    #[arg(short = 'l', long = "log-file")]
+    pub log_file: Option<PathBuf>,
 
     /// The number of threads to use, passing a value < 1 to use all available threads
     #[arg(
@@ -317,7 +323,7 @@ If a stop is not specified, processing stops at the end of the run.
 impl MZDeiosotoper {
     pub fn set_threadpool(&self) {
         if self.threads > 0 {
-            log::debug!("Using {} threads", self.threads);
+            tracing::debug!("Using {} threads", self.threads);
             rayon::ThreadPoolBuilder::new()
                 .num_threads(self.threads as usize)
                 .build_global()
@@ -326,6 +332,9 @@ impl MZDeiosotoper {
     }
 
     pub fn main(&self) -> Result<(), MZDeisotoperError> {
+        tracing::info!("mzdeisotoper v{}", option_env!("CARGO_PKG_VERSION").unwrap_or("unknown"));
+        tracing::info!("Input: {}", self.input_file);
+        tracing::info!("Output: {}", self.output_file.display());
         self.set_threadpool();
         self.reader_then()
     }
@@ -335,7 +344,7 @@ impl MZDeiosotoper {
             let mut buffered =
                 PreBufferedStream::new_with_buffer_size(io::stdin(), 2usize.pow(20))?;
             let (ms_format, compressed) = infer_from_stream(&mut buffered)?;
-            log::debug!("Detected {ms_format:?} from STDIN (compressed? {compressed})");
+            tracing::debug!("Detected {ms_format:?} from STDIN (compressed? {compressed})");
             match ms_format {
                 MassSpectrometryFormat::MGF => {
                     if compressed {
@@ -371,7 +380,7 @@ impl MZDeiosotoper {
             }
         } else {
             let (ms_format, compressed) = infer_format(&self.input_file)?;
-            log::debug!("Detected {ms_format:?} from path (compressed? {compressed})");
+            tracing::debug!("Detected {ms_format:?} from path (compressed? {compressed})");
             match ms_format {
                 MassSpectrometryFormat::MGF => {
                     if compressed {
@@ -473,7 +482,7 @@ impl MZDeiosotoper {
                 MassSpectrometryFormat::MzMLb => {
                     let mut builder = MzMLbWriterBuilder::new(self.output_file.clone());
                     if let Ok(value) = env::var("MZDEIOSTOPE_BLOSC_ZSTD") {
-                        log::warn!("Non-standard Blosc compression was requested via MZDEIOSTOPE_BLOSC_ZSTD env-var");
+                        tracing::warn!("Non-standard Blosc compression was requested via MZDEIOSTOPE_BLOSC_ZSTD env-var");
                         MzMLbReaderType::<CPeak, DPeak>::set_blosc_nthreads(4);
                         builder = builder.with_blosc_zstd_compression(value.parse().unwrap());
                     } else {
@@ -554,18 +563,18 @@ impl MZDeiosotoper {
         match read_task.join() {
             Ok(o) => {
                 let prog = o?;
-                log::info!("MS1 Spectra: {}", prog.ms1_spectra);
-                log::info!("MSn Spectra: {}", prog.msn_spectra);
-                log::info!(
+                tracing::info!("MS1 Spectra: {}", prog.ms1_spectra);
+                tracing::info!("MSn Spectra: {}", prog.msn_spectra);
+                tracing::info!(
                     "Precursors Defaulted: {} | Mismatched Charge State: {}",
                     prog.precursors_defaulted,
                     prog.precursor_charge_state_mismatch
                 );
-                log::info!("MS1 Peaks: {}", prog.ms1_peaks);
-                log::info!("MSn Peaks: {}", prog.msn_peaks);
+                tracing::info!("MS1 Peaks: {}", prog.ms1_peaks);
+                tracing::info!("MSn Peaks: {}", prog.msn_peaks);
             }
             Err(e) => {
-                log::warn!("Failed to join reader task: {e:?}");
+                tracing::warn!("Failed to join reader task: {e:?}");
             }
         }
         let read_done = Instant::now();
@@ -574,30 +583,60 @@ impl MZDeiosotoper {
         match collate_task.join() {
             Ok(_) => {}
             Err(e) => {
-                log::warn!("Failed to join collator task: {e:?}")
+                tracing::warn!("Failed to join collator task: {e:?}")
             }
         }
 
         match write_task.join() {
             Ok(o) => o?,
             Err(e) => {
-                log::warn!("Failed to join writer task: {e:?}");
+                tracing::warn!("Failed to join writer task: {e:?}");
             }
         }
 
         let done = Instant::now();
         let elapsed = done - start;
         if (elapsed.as_secs_f64() - processing_elapsed.as_secs_f64()) > 2.0 {
-            log::info!("Total Elapsed Time: {:0.3?}", elapsed);
+            tracing::info!("Total Elapsed Time: {:0.3?}", elapsed);
         }
         Ok(())
     }
 }
 
 pub fn main() -> Result<(), MZDeisotoperError> {
-    pretty_env_logger::init_timed();
+    let subscriber = tracing_subscriber::registry()
+        .with(EnvFilter::from_default_env().add_directive(tracing::Level::TRACE.into()))
+        .with(
+            fmt::layer().compact().with_writer(io::stderr).with_filter(
+                EnvFilter::builder()
+                    .with_default_directive(tracing::Level::INFO.into())
+                    .from_env_lossy(),
+            ),
+        );
 
     let args = MZDeiosotoper::parse();
-    args.main()?;
+
+    if let Some(log_path) = args.log_file.as_ref() {
+        let log_file = fs::File::create(log_path)?;
+        let (log_file, _guard) = tracing_appender::non_blocking(log_file);
+        let subscriber = subscriber
+            .with(
+                fmt::layer()
+                    .compact()
+                    .with_ansi(false)
+                    .with_writer(log_file)
+                    .with_filter(
+                        EnvFilter::builder()
+                            .with_default_directive(tracing::Level::INFO.into())
+                            .from_env_lossy(),
+                    ),
+            );
+        subscriber.init();
+        args.main()?;
+    } else {
+        subscriber.init();
+        args.main()?;
+    }
+
     Ok(())
 }
