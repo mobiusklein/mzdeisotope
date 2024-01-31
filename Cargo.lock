@@ -572,9 +572,9 @@ dependencies = [
 
 [[package]]
 name = "mzdata"
-version = "0.11.0"
+version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9cf6f27be7fb811470287cb72fcad6fd3c1212eb33918798bfccc2ab25f988f6"
+checksum = "c52e4e628e598ce33ee07dc19073dd9accb3796c2ad2954035931033b91aefdc"
 dependencies = [
  "base64-simd",
  "bytemuck",
@@ -647,9 +647,9 @@ checksum = "d519a4d34d369ad9869553909c659de71e682119d58f00861d11be2978a25e67"
 
 [[package]]
 name = "mzsignal"
-version = "0.9.0"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9d55190be3cb81b86fb4339db69525ce9e96277cfaf4906d12790042a60c38d6"
+checksum = "b8aa6b2785466f3db02e8cd5d64105307fce6e04d92929b9e0069b505dc4ffe4"
 dependencies = [
  "cfg-if",
  "log",
