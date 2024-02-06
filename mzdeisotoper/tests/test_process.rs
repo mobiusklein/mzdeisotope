@@ -43,7 +43,7 @@ fn test_run_subset() -> Result<(), Box<dyn Error>> {
     result
         .stderr(predicate::str::contains("MS1 Spectra: 1"))
         .stderr(predicate::str::contains("MSn Spectra: 21"))
-        .stderr(predicate::str::contains("| Scans=1 Time=120.004"));
+        .stderr(predicate::str::contains("| Time=120.004"));
 
     Ok(())
 }
@@ -62,7 +62,7 @@ fn test_run_subset_stdin() -> Result<(), Box<dyn Error>> {
     result
         .stderr(predicate::str::contains("MS1 Spectra: 1"))
         .stderr(predicate::str::contains("MSn Spectra: 21"))
-        .stderr(predicate::str::contains("| Scans=1 Time=120.004"));
+        .stderr(predicate::str::contains("| Time=120.004"));
 
     Ok(())
 }

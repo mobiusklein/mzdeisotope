@@ -10,5 +10,6 @@ pub(crate) type DPeak = DeconvolvedSolutionPeak;
 pub(crate) type SpectrumType = MultiLayerSpectrum<CPeak, DPeak>;
 pub(crate) type SpectrumGroupType =
     TargetTrackingSpectrumGroup<CPeak, DPeak, SpectrumGroup<CPeak, DPeak, SpectrumType>>;
+#[allow(unused)]
 pub(crate) type SpectrumGroupCollator = Collator<SpectrumGroupType>;
 pub(crate) type SpectrumCollator = Collator<SpectrumType>;

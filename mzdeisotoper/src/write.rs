@@ -139,7 +139,11 @@ pub fn write_output_spectra<S: ScanWriter<'static, CPeak, DPeak>>(
         if ((group_idx - checkpoint) % 1000 == 0 && group_idx != 0)
             || (scan_time - time_checkpoint) > 1.0
         {
-            tracing::info!("Completed Scan {} | Scans={scan_counter} Time={scan_time:0.3}", group_idx + 1);
+            if group_idx + 1 != scan_counter {
+                tracing::info!("Completed Scan {} | Scans={scan_counter} Time={scan_time:0.3}", group_idx + 1);
+            } else {
+                tracing::info!("Completed Scan {} | Time={scan_time:0.3}", group_idx + 1);
+            }
             checkpoint = group_idx;
             time_checkpoint = scan_time;
         }

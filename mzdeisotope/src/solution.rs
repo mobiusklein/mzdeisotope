@@ -6,7 +6,7 @@ use mzdata::spectrum::{BinaryArrayMap, BinaryDataArrayType, DataArray};
 use mzpeaks;
 use mzpeaks::peak::MZPoint;
 use mzpeaks::prelude::*;
-use mzpeaks::{IntensityMeasurement, KnownCharge};
+use mzpeaks::{IntensityMeasurement, KnownCharge, CoordinateLike, MZ};
 
 use mzdata::spectrum::bindata::{
     ArrayRetrievalError, ArrayType, BinaryCompressionType, BuildArrayMapFrom, BuildFromArrayMap,
@@ -54,6 +54,12 @@ impl DeconvolvedSolutionPeak {
 }
 
 mzpeaks::implement_deconvoluted_centroidlike!(DeconvolvedSolutionPeak, true);
+
+impl CoordinateLike<MZ> for DeconvolvedSolutionPeak {
+    fn coordinate(&self) -> f64 {
+        self.mz()
+    }
+}
 
 const DECONVOLUTION_SCORE_ARRAY_NAME: &'static str = "deconvolution score array";
 const ISOTOPIC_ENVELOPE_ARRAY_NAME: &'static str = "isotopic envelopes array";
