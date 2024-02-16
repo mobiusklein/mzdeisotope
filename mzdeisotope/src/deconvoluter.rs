@@ -8,7 +8,7 @@ use crate::isotopic_model::{
     CachingIsotopicModel, IsotopicPatternGenerator, IsotopicPatternParams, TheoreticalIsotopicDistributionScalingMethod,
 };
 use crate::peak_graph::{DependenceCluster, FitRef, PeakDependenceGraph, SubgraphSolverMethod};
-use crate::peaks::{PeakKey, WorkingPeakSet};
+use crate::peaks::{PeakKey, WorkingPeakSet, PeakLike};
 use crate::scorer::{
     IsotopicFitFilter, IsotopicPatternScorer, MSDeconvScorer, MaximizingFitFilter, ScoreType,
 };
@@ -20,7 +20,7 @@ use crate::deconv_traits::{
 use crate::solution::DeconvolvedSolutionPeak;
 
 use chemical_elements::isotopic_pattern::TheoreticalIsotopicPattern;
-use mzpeaks::{prelude::*, IntensityMeasurementMut, MassPeakSetType};
+use mzpeaks::{prelude::*, MassPeakSetType};
 use mzpeaks::{CentroidPeak, MZPeakSetType, Tolerance};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -37,7 +37,7 @@ impl TrivialTargetLink {
 
 #[derive(Debug, Default)]
 pub struct DeconvoluterBuilder<
-    C: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut,
+    C: PeakLike,
     I: IsotopicPatternGenerator,
     S: IsotopicPatternScorer,
     F: IsotopicFitFilter,
@@ -51,7 +51,7 @@ pub struct DeconvoluterBuilder<
 }
 
 impl<
-        C: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut,
+        C: PeakLike,
         I: IsotopicPatternGenerator,
         S: IsotopicPatternScorer,
         F: IsotopicFitFilter,
@@ -123,7 +123,7 @@ impl<
 
 #[derive(Debug)]
 pub struct DeconvoluterType<
-    C: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut,
+    C: PeakLike,
     I: IsotopicPatternGenerator,
     S: IsotopicPatternScorer,
     F: IsotopicFitFilter,
@@ -139,7 +139,7 @@ pub struct DeconvoluterType<
 }
 
 impl<
-        C: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut,
+        C: PeakLike,
         I: IsotopicPatternGenerator,
         S: IsotopicPatternScorer,
         F: IsotopicFitFilter,
@@ -148,7 +148,7 @@ impl<
 }
 
 impl<
-        C: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut,
+        C: PeakLike,
         I: IsotopicPatternGenerator,
         S: IsotopicPatternScorer,
         F: IsotopicFitFilter,
@@ -174,7 +174,7 @@ impl<
 }
 
 impl<
-        C: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut,
+        C: PeakLike,
         I: IsotopicPatternGenerator,
         S: IsotopicPatternScorer,
         F: IsotopicFitFilter,
@@ -223,7 +223,7 @@ impl<
 }
 
 impl<
-        C: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut,
+        C: PeakLike,
         I: IsotopicPatternGenerator,
         S: IsotopicPatternScorer,
         F: IsotopicFitFilter,
@@ -345,7 +345,7 @@ pub type AveragineDeconvoluter<'lifespan> = DeconvoluterType<
 >;
 
 impl<
-        C: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut,
+        C: PeakLike,
         I: IsotopicPatternGenerator,
         S: IsotopicPatternScorer,
         F: IsotopicFitFilter,
@@ -404,7 +404,7 @@ impl<
 }
 
 impl<
-        C: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut,
+        C: PeakLike,
         I: IsotopicPatternGenerator,
         S: IsotopicPatternScorer,
         F: IsotopicFitFilter,
@@ -473,7 +473,7 @@ pub struct PeakDepenceGraphTargetLink {
 /// Graph deconvolution tracks fit dependencies so that whole peak list deconvolution doesn't re-use peaks
 #[derive(Debug)]
 pub struct GraphDeconvoluterType<
-    C: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut,
+    C: PeakLike,
     I: IsotopicPatternGenerator,
     S: IsotopicPatternScorer,
     F: IsotopicFitFilter,
@@ -484,7 +484,7 @@ pub struct GraphDeconvoluterType<
 }
 
 impl<
-        C: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut,
+        C: PeakLike,
         I: IsotopicPatternGenerator,
         S: IsotopicPatternScorer,
         F: IsotopicFitFilter,
@@ -532,7 +532,7 @@ impl<
 }
 
 impl<
-        C: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut,
+        C: PeakLike,
         I: IsotopicPatternGenerator,
         S: IsotopicPatternScorer,
         F: IsotopicFitFilter,
@@ -561,7 +561,7 @@ impl<
 }
 
 impl<
-        C: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut,
+        C: PeakLike,
         I: IsotopicPatternGenerator,
         S: IsotopicPatternScorer,
         F: IsotopicFitFilter,
@@ -649,7 +649,7 @@ impl<
 }
 
 impl<
-        C: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut,
+        C: PeakLike,
         I: IsotopicPatternGenerator,
         S: IsotopicPatternScorer,
         F: IsotopicFitFilter,
@@ -658,7 +658,7 @@ impl<
 }
 
 impl<
-        C: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut,
+        C: PeakLike,
         I: IsotopicPatternGenerator,
         S: IsotopicPatternScorer,
         F: IsotopicFitFilter,
@@ -679,7 +679,7 @@ impl<
 }
 
 impl<
-        C: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut,
+        C: PeakLike,
         I: IsotopicPatternGenerator,
         S: IsotopicPatternScorer,
         F: IsotopicFitFilter,
@@ -704,7 +704,7 @@ impl<
 }
 
 impl<
-        C: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut,
+        C: PeakLike,
         I: IsotopicPatternGenerator,
         S: IsotopicPatternScorer,
         F: IsotopicFitFilter,
@@ -761,7 +761,7 @@ impl<
 }
 
 impl<
-        C: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut,
+        C: PeakLike,
         I: IsotopicPatternGenerator,
         S: IsotopicPatternScorer,
         F: IsotopicFitFilter,

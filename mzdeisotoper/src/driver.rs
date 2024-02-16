@@ -10,6 +10,8 @@ use clap::Parser;
 use flate2::write::GzEncoder;
 use flate2::Compression;
 
+use mzdata::meta::{ProcessingMethod, Software};
+use mzdata::params::{ControlledVocabulary, Param};
 use thiserror::Error;
 
 use tracing::{debug, info, warn};
@@ -31,10 +33,10 @@ use mzdeisotope::scorer::ScoreType;
 use crate::args::make_default_ms1_deconvolution_params;
 use crate::args::make_default_msn_deconvolution_params;
 use crate::args::make_default_signal_processing_params;
-use crate::proc::prepare_procesing;
-use crate::types::{CPeak, DPeak, SpectrumType};
 use crate::args::{ArgChargeRange, ArgIsotopicModels, PrecursorProcessing};
+use crate::proc::prepare_procesing;
 use crate::time_range::TimeRange;
+use crate::types::{CPeak, DPeak, SpectrumType};
 use crate::write::collate_results_spectra;
 use crate::write::write_output_spectra;
 
@@ -46,7 +48,6 @@ fn non_negative_float_f32(s: &str) -> Result<f32, String> {
         Ok(value)
     }
 }
-
 
 #[derive(Debug, Error)]
 pub enum MZDeisotoperError {
@@ -62,10 +63,6 @@ pub enum MZDeisotoperError {
     FormatUnknownOrNotSupportedErrorStdIn(MassSpectrometryFormat),
     #[error("The output file format for {0} was either unknown or not supported ({1:?})")]
     OutputFormatUnknownOrNotSupportedError(String, MassSpectrometryFormat),
-    #[error(
-        "The input stream was detected to be gzip compressed, which is not currently supported"
-    )]
-    CompressedInputError(String),
 }
 
 /// Deisotoping and charge state deconvolution of mass spectrometry files.
@@ -171,13 +168,113 @@ If a stop is not specified, processing stops at the end of the run.
 }
 
 impl MZDeiosotoper {
-    pub fn set_threadpool(&self) {
-        if self.threads > 0 {
-            debug!("Using {} threads", self.threads);
-            rayon::ThreadPoolBuilder::new()
-                .num_threads(self.threads as usize)
-                .build_global()
-                .unwrap();
+    fn create_threadpool(&self) -> rayon::ThreadPool {
+        let num_threads = if self.threads > 0 {
+            self.threads as usize
+        } else {
+            thread::available_parallelism().unwrap().into()
+        };
+        debug!("Using {} cores", num_threads);
+        rayon::ThreadPoolBuilder::new()
+            .num_threads(num_threads)
+            .build()
+            .unwrap()
+    }
+
+    fn make_software(&self) -> Software {
+        let mut sw = Software::default();
+        let mut name = Param::new();
+        name.accession = Some(1000799);
+        name.controlled_vocabulary = Some(ControlledVocabulary::MS);
+        name.name = "custom unreleased software tool".to_string();
+        name.value = "mzdeisotoper".to_string();
+        sw.add_param(name);
+        sw.id = "mzdeisotoper".to_string();
+        sw.version = option_env!("CARGO_PKG_VERSION")
+            .unwrap_or("unknown")
+            .to_string();
+        sw
+    }
+
+    fn make_processing_method(&self) -> ProcessingMethod {
+        let mut processing = ProcessingMethod::default();
+        let cv = ControlledVocabulary::MS;
+        processing.software_reference = "mzdeisotoper".to_string();
+        processing.add_param(cv.const_param_ident("deisotoping", 1000033).into());
+        processing.add_param(cv.const_param_ident("charge deconvolution", 1000034).into());
+        processing.add_param(cv.const_param_ident("peak picking", 1000035).into());
+        processing.add_param(
+            cv.const_param_ident("charge state calculation", 1000778)
+                .into(),
+        );
+        processing.add_param(Param::new_key_value(
+            "ms1_averaging_range".into(),
+            self.ms1_averaging_range.to_string(),
+        ));
+        processing.add_param(Param::new_key_value(
+            "ms1_denoising".into(),
+            self.ms1_denoising.to_string(),
+        ));
+        processing.add_param(Param::new_key_value(
+            "ms1_isotopic_model".into(),
+            self.ms1_isotopic_model.to_string(),
+        ));
+        processing.add_param(Param::new_key_value(
+            "msn_isotopic_model".into(),
+            self.msn_isotopic_model.to_string(),
+        ));
+        processing.add_param(Param::new_key_value(
+            "ms1_score_threshold".into(),
+            self.ms1_score_threshold.to_string(),
+        ));
+        processing.add_param(Param::new_key_value(
+            "msn_score_threshold".into(),
+            self.msn_score_threshold.to_string(),
+        ));
+        processing.add_param(Param::new_key_value(
+            "precursor_processing".into(),
+            self.precursor_processing.to_string(),
+        ));
+        processing.add_param(Param::new_key_value(
+            "charge_range".into(),
+            self.charge_range.to_string(),
+        ));
+        processing.add_param(Param::new_key_value(
+            "ms1_missed_peaks".into(),
+            self.ms1_missed_peaks.to_string(),
+        ));
+        processing.add_param(Param::new_key_value(
+            "msn_missed_peaks".into(),
+            self.msn_missed_peaks.to_string(),
+        ));
+        processing.order = i8::MAX;
+        processing
+    }
+
+    fn update_data_processing<T: MSDataFileMetadata>(&self, source: &mut T) {
+        let sw_id = {
+            let mut sw = self.make_software();
+            let stem = sw.id.clone();
+            let mut i = 0;
+            let mut query = stem.clone();
+            while let Some(_) = source.softwares().iter().find(|s| s.id == query) {
+                i += 1;
+                query = format!("{stem}_{i}");
+            }
+            sw.id = query.clone();
+            source.softwares_mut().push(sw);
+            query
+        };
+        for dp in source.data_processings_mut().iter_mut() {
+            let last_step = dp
+                .iter()
+                .max_by(|a, b| a.order.cmp(&b.order))
+                .map(|m| m.order)
+                .unwrap_or(-1);
+            let mut method = self.make_processing_method();
+            method.order = last_step + 1;
+            method.software_reference = sw_id.clone();
+            dp.push(method)
         }
     }
 
@@ -188,8 +285,7 @@ impl MZDeiosotoper {
         );
         info!("Input: {}", self.input_file);
         info!("Output: {}", self.output_file.display());
-        self.set_threadpool();
-        self.reader_then()
+        self.create_threadpool().install(|| self.reader_then())
     }
 
     fn reader_then(&self) -> Result<(), MZDeisotoperError> {
@@ -294,6 +390,7 @@ impl MZDeiosotoper {
             let outfile = io::stdout();
             let mut writer = MzMLWriterType::<_, CPeak, DPeak>::new(outfile);
             writer.copy_metadata_from(&reader);
+            self.update_data_processing(&mut writer);
             if let Some(spectrum_count) = spectrum_count {
                 writer.set_spectrum_count(spectrum_count);
             }
@@ -318,6 +415,7 @@ impl MZDeiosotoper {
                         let encoder = GzEncoder::new(handle, Compression::best());
                         let mut writer = MzMLWriterType::new(encoder);
                         writer.copy_metadata_from(&reader);
+                        self.update_data_processing(&mut writer);
                         if let Some(spectrum_count) = spectrum_count {
                             writer.set_spectrum_count(spectrum_count);
                         }
@@ -325,6 +423,7 @@ impl MZDeiosotoper {
                     } else {
                         let mut writer = MzMLWriterType::new(handle);
                         writer.copy_metadata_from(&reader);
+                        self.update_data_processing(&mut writer);
                         if let Some(spectrum_count) = spectrum_count {
                             writer.set_spectrum_count(spectrum_count);
                         }
@@ -344,6 +443,7 @@ impl MZDeiosotoper {
                     let mut writer = builder.create()?;
                     // let mut writer = MzMLbWriterType::new(&self.output_file)?;
                     writer.copy_metadata_from(&reader);
+                    self.update_data_processing(&mut writer);
                     if let Some(spectrum_count) = spectrum_count {
                         writer.set_spectrum_count(spectrum_count);
                     }

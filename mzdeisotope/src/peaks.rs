@@ -14,6 +14,11 @@ const PEAK_ELIMINATION_FACTOR: f32 = 0.7;
 
 type Placeholder = i64;
 
+pub trait PeakLike : CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut {}
+
+impl<T> PeakLike for T where T: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut {}
+
+
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum PeakKey {
@@ -48,11 +53,11 @@ impl hash::Hash for PeakKey {
 }
 
 #[derive(Debug)]
-pub struct PlaceholderCache<C: CentroidLike + Clone + From<CentroidPeak>> {
+pub struct PlaceholderCache<C: PeakLike> {
     placeholders: HashMap<Placeholder, C>,
 }
 
-impl<C: CentroidLike + Clone + From<CentroidPeak>> Default for PlaceholderCache<C> {
+impl<C: PeakLike> Default for PlaceholderCache<C> {
     fn default() -> Self {
         Self {
             placeholders: Default::default(),
@@ -67,7 +72,7 @@ pub trait MZCaching {
     }
 }
 
-impl<C: CentroidLike + Clone + From<CentroidPeak>> PlaceholderCache<C> {
+impl<C: PeakLike> PlaceholderCache<C> {
     pub fn create(&mut self, mz: f64) -> Placeholder {
         let key = self.key_for(mz);
         self.placeholders
@@ -96,7 +101,7 @@ impl<C: CentroidLike + Clone + From<CentroidPeak>> PlaceholderCache<C> {
     }
 }
 
-impl<C: CentroidLike + Clone + From<CentroidPeak>> MZCaching for PlaceholderCache<C> {}
+impl<C: PeakLike> MZCaching for PlaceholderCache<C> {}
 
 #[derive(Debug, Clone, Default)]
 pub struct SliceCache {
@@ -123,13 +128,13 @@ impl SliceCache {
 }
 
 #[derive(Debug)]
-pub struct WorkingPeakSet<C: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut> {
+pub struct WorkingPeakSet<C: PeakLike + IntensityMeasurementMut> {
     pub peaks: MZPeakSetType<C>,
     pub placeholders: PlaceholderCache<C>,
     pub slice_cache: SliceCache,
 }
 
-impl<C: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut> WorkingPeakSet<C> {
+impl<C: PeakLike + IntensityMeasurementMut> WorkingPeakSet<C> {
     pub fn new(peaks: MZPeakSetType<C>) -> Self {
         Self {
             peaks,
@@ -246,7 +251,7 @@ impl<C: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut> Wor
     }
 }
 
-impl<C: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut> Index<usize> for WorkingPeakSet<C> {
+impl<C: PeakLike + IntensityMeasurementMut> Index<usize> for WorkingPeakSet<C> {
     type Output = C;
 
     fn index(&self, index: usize) -> &Self::Output {
@@ -254,7 +259,7 @@ impl<C: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut> Ind
     }
 }
 
-impl<C: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut> Index<PeakKey> for WorkingPeakSet<C> {
+impl<C: PeakLike + IntensityMeasurementMut> Index<PeakKey> for WorkingPeakSet<C> {
     type Output = C;
 
     fn index(&self, index: PeakKey) -> &Self::Output {
