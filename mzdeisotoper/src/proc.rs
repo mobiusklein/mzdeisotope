@@ -77,10 +77,10 @@ pub fn prepare_procesing<
                 || (averager.clone(), reprofiler.clone()),
                 |(averager, reprofiler), (i, g)| {
                     let (mut g, arrays) = g.reprofile_with_average_with(averager, reprofiler);
-                    g.precursor_mut().and_then(|p| {
+                    g.precursor_mut().map(|p| {
                         p.arrays = Some(arrays.into());
                         p.description_mut().signal_continuity = SignalContinuity::Profile;
-                        Some(())
+                        ()
                     });
                     (i, g)
                 },
@@ -115,7 +115,7 @@ pub fn prepare_procesing<
         let grouper = group_iter
             .track_precursors(2.0, Tolerance::PPM(5.0))
             .enumerate()
-            .take_while(|(_, g)| !(g.earliest_time().unwrap_or_default() > end_time))
+            .take_while(|(_, g)| (g.earliest_time().unwrap_or_default() <= end_time))
             .par_bridge();
         grouper
             .map_init(

@@ -69,7 +69,7 @@ impl FromStr for TimeRange {
             s.split(' ')
         };
         let start_s = tokens.next().unwrap();
-        let start_t = if start_s == "" {
+        let start_t = if start_s.is_empty() {
             0.0
         } else {
             match start_s.parse() {
@@ -78,7 +78,7 @@ impl FromStr for TimeRange {
             }
         };
         let end_s = tokens.next().unwrap();
-        let end_t = if end_s == "" {
+        let end_t = if end_s.is_empty() {
             f64::INFINITY
         } else {
             match end_s.parse() {

@@ -43,7 +43,7 @@ use crate::write::write_output_spectra;
 fn non_negative_float_f32(s: &str) -> Result<f32, String> {
     let value = s.parse::<f32>().map_err(|e| e.to_string())?;
     if value < 0.0 {
-        return Err(format!("`{s}` is less than zero"));
+        Err(format!("`{s}` is less than zero"))
     } else {
         Ok(value)
     }
@@ -257,7 +257,7 @@ impl MZDeiosotoper {
             let stem = sw.id.clone();
             let mut i = 0;
             let mut query = stem.clone();
-            while let Some(_) = source.softwares().iter().find(|s| s.id == query) {
+            while source.softwares().iter().find(|s| s.id == query).is_some() {
                 i += 1;
                 query = format!("{stem}_{i}");
             }

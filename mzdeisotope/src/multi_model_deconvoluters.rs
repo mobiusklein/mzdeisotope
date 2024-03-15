@@ -64,14 +64,7 @@ impl<
         let exp = self.peaks.collect_for(&keys);
         self.scaling_method.scale(&exp, &mut tid);
         let score = self.score_isotopic_fit(exp.as_slice(), &tid);
-        let fit = IsotopicFit::new(keys, peak, tid, charge, score, missed_peaks as u16);
-        #[cfg(feature="verbose")]
-        self.write_log(&format!(
-            "fit\t{:?}\t{}\t{}\t{}\t{}\t{}\n",
-            peak, mz, charge, score, fit.theoretical, fit.theoretical.origin
-        ))
-        .unwrap();
-        fit
+        IsotopicFit::new(keys, peak, tid, charge, score, missed_peaks as u16)
     }
 
     fn has_peak(&mut self, mz: f64, error_tolerance: Tolerance) -> PeakKey {
@@ -110,14 +103,13 @@ impl<
         charge: i32,
         params: IsotopicPatternParams,
     ) -> TheoreticalIsotopicPattern {
-        let tid = self.isotopic_models[self.current_model_index].isotopic_cluster(
+        self.isotopic_models[self.current_model_index].isotopic_cluster(
             mz,
             charge,
             params.charge_carrier,
             params.truncate_after,
             params.ignore_below,
-        );
-        tid
+        )
     }
 
     fn score_isotopic_fit(
@@ -284,9 +276,8 @@ impl<
         if let Some(target) = target.link.as_ref() {
             solution
                 .all_peaks_for(target.neutral_mass, Tolerance::PPM(1.0))
-                .into_iter()
-                .filter(|p| *p == target)
-                .next()
+                .iter()
+                .find(|p| *p == target)
         } else {
             None
         }
@@ -340,11 +331,10 @@ impl<
             .for_each(|p| {
                 self.targets
                     .iter_mut()
-                    .filter(|t| {
+                    .find(|t| {
                         let k = t.query.to_index_unchecked();
                         k == 0 && p.index == u32::MAX || p.index == k
                     })
-                    .next()
                     .and_then(|t| -> Option<i8> {
                         t.link = Some(p.clone());
                         None
@@ -388,7 +378,7 @@ impl<
                 Ok(())
             }
             else {
-                Err(DeconvolutionError::FailedToResolveFit(best_fit_key.clone()))
+                Err(DeconvolutionError::FailedToResolveFit(*best_fit_key))
             }
         } else {
             Ok(())
@@ -531,10 +521,9 @@ impl<
 
     fn select_best_disjoint_subgraphs(&mut self, fit_accumulator: &mut Vec<IsotopicFit>) -> Result<(), DeconvolutionError> {
         let solutions = self.peak_graph.solutions(SubgraphSolverMethod::Greedy);
-        let res: Result<(), DeconvolutionError> = solutions.into_iter().map(|(cluster, fits)| {
+        solutions.into_iter().try_for_each(|(cluster, fits)| {
             self.solve_subgraph_top(cluster, fits, fit_accumulator)
-        }).collect();
-        res
+        })
     }
 }
 
@@ -583,9 +572,8 @@ impl<
             if let Some(target) = target.link.as_ref() {
                 solution
                     .all_peaks_for(target.neutral_mass, Tolerance::PPM(1.0))
-                    .into_iter()
-                    .filter(|p| *p == target)
-                    .next()
+                    .iter()
+                    .find(|p| *p == target)
             } else {
                 None
             }
@@ -694,7 +682,7 @@ impl<
             .for_each(|p| {
                 self.solutions
                     .iter_mut()
-                    .filter(|t| match t.query {
+                    .find(|t| match t.query {
                         PeakKey::Matched(k) => k == 0 && p.index == u32::MAX || p.index == k,
                         PeakKey::Placeholder(j) => {
                             if !mask.contains(&j) {
@@ -705,7 +693,6 @@ impl<
                             false
                         }
                     })
-                    .next()
                     .and_then(|t| -> Option<i8> {
                         t.link = Some(p.clone());
                         None

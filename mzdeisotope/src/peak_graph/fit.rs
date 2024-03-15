@@ -87,22 +87,22 @@ impl Hash for FitNode {
 
 impl PartialOrd for FitNode {
     fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
-        match self.score.partial_cmp(&other.score) {
-            Some(ord) => match ord {
-                cmp::Ordering::Less => Some(ord),
-                cmp::Ordering::Equal => {
-                    Some(self.peak_indices.len().cmp(&other.peak_indices.len()))
-                }
-                cmp::Ordering::Greater => Some(ord),
-            },
-            None => None,
-        }
+        Some(self.cmp(other))
     }
 }
 
 impl Ord for FitNode {
     fn cmp(&self, other: &Self) -> cmp::Ordering {
-        self.partial_cmp(other).unwrap()
+        match self.score.partial_cmp(&other.score) {
+            Some(ord) => match ord {
+                cmp::Ordering::Less => ord,
+                cmp::Ordering::Equal => {
+                    self.peak_indices.len().cmp(&other.peak_indices.len())
+                }
+                cmp::Ordering::Greater => ord,
+            },
+            None => panic!("FitNode scores were not compare-able: {} <=> {}", self.score, other.score),
+        }
     }
 }
 
@@ -139,13 +139,13 @@ impl Hash for FitRef {
 
 impl PartialOrd for FitRef {
     fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
-        self.score.partial_cmp(&other.score)
+        Some(self.cmp(other))
     }
 }
 
 impl Ord for FitRef {
     fn cmp(&self, other: &Self) -> cmp::Ordering {
-        self.partial_cmp(other).unwrap()
+        self.score.partial_cmp(&other.score).unwrap()
     }
 }
 
@@ -226,7 +226,7 @@ impl FitGraph {
                 }
             });
             cluster.dependencies = deps;
-            if nodes.len() > 0 {
+            if !nodes.is_empty() {
                 result.push((cluster, nodes))
             }
         });
@@ -248,7 +248,7 @@ impl FitGraph {
 
             let (solution, mut nodes) = subgraph.solve(method);
             // Prevent dependencies that are omitted from solution from being considered
-            cluster.dependencies = cluster.dependencies.into_iter().filter(|f| solution.contains(f)).collect();
+            cluster.dependencies.retain(|f| solution.contains(f));
             // Re-absorb solved sub-graph
             self.fit_nodes.extend(nodes.drain());
             solutions.push((cluster, solution));

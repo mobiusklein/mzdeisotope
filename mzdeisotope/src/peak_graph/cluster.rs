@@ -135,7 +135,7 @@ impl SubgraphSelection {
         (0..nodes.len()).into_iter().tuple_combinations().for_each(|(i, j)| {
             let mut it = nodes.iter_mut().skip(i);
             let node_i = it.next().unwrap();
-            let node_j = it.skip(j - (i + 1)).next().unwrap();
+            let node_j = it.nth(j - (i + 1)).unwrap();
             node_i.visit(node_j);
         });
     }

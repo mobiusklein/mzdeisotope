@@ -116,10 +116,10 @@ impl BuildFromArrayMap for DeconvolvedSolutionPeak {
 
         peaks.extend(
             multizip((
-                mz_array.into_iter(),
-                intensity_array.into_iter(),
-                charge_array.into_iter(),
-                score_array.into_iter(),
+                mz_array.iter(),
+                intensity_array.iter(),
+                charge_array.iter(),
+                score_array.iter(),
                 envelopes_acc.into_iter(),
             ))
             .map(|(neutral_mass, intensity, charge, score, envelope)| {

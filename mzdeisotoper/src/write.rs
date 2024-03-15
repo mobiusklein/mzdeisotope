@@ -102,7 +102,7 @@ pub fn write_output<S: ScanWriter<'static, CPeak, DPeak>>(
             .or_else(|| {
                 group
                     .products()
-                    .into_iter()
+                    .iter()
                     .min_by(|a, b| a.start_time().total_cmp(&b.start_time()))
             })
             .unwrap();

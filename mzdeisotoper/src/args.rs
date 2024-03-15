@@ -45,9 +45,9 @@ pub enum ArgIsotopicModels {
     HeparanSulfate,
 }
 
-impl Into<IsotopicModels> for ArgIsotopicModels {
-    fn into(self) -> IsotopicModels {
-        match self {
+impl From<ArgIsotopicModels> for IsotopicModels {
+    fn from(value: ArgIsotopicModels) -> Self {
+        match value {
             ArgIsotopicModels::Peptide => IsotopicModels::Peptide,
             ArgIsotopicModels::Glycan => IsotopicModels::Glycan,
             ArgIsotopicModels::Glycopeptide => IsotopicModels::Glycopeptide,
@@ -58,9 +58,9 @@ impl Into<IsotopicModels> for ArgIsotopicModels {
     }
 }
 
-impl Into<IsotopicModel<'static>> for ArgIsotopicModels {
-    fn into(self) -> IsotopicModel<'static> {
-        let m: IsotopicModels = self.into();
+impl From<ArgIsotopicModels> for IsotopicModel<'static> {
+    fn from(value: ArgIsotopicModels) -> Self {
+        let m: IsotopicModels = value.into();
         m.into()
     }
 }
@@ -123,21 +123,19 @@ impl FromStr for ArgChargeRange {
         };
         let r: Result<Vec<i32>, std::num::ParseIntError> = it.map(|t| t.parse()).collect();
         let r = r?;
-        if r.len() == 0 {
+        if r.is_empty() {
             Err(ChargeRangeParserError::EmptyRange)
-        } else {
-            if r.len() == 1 {
-                let val = r[0];
-                if val == 0 {
-                    Err(ChargeRangeParserError::ZeroCharge)
-                } else {
-                    return Ok(Self(val.signum(), val));
-                }
+        } else if r.len() == 1 {
+            let val = r[0];
+            if val == 0 {
+                Err(ChargeRangeParserError::ZeroCharge)
             } else {
-                let low = *r.iter().min_by_key(|i| i.abs()).unwrap();
-                let high = *r.iter().max_by_key(|i| i.abs()).unwrap();
-                Ok(Self(low, high))
+                Ok(Self(val.signum(), val))
             }
+        } else {
+            let low = *r.iter().min_by_key(|i| i.abs()).unwrap();
+            let high = *r.iter().max_by_key(|i| i.abs()).unwrap();
+            Ok(Self(low, high))
         }
     }
 }

@@ -22,7 +22,7 @@ impl Add for ProgressRecord {
     type Output = ProgressRecord;
 
     fn add(self, rhs: Self) -> Self::Output {
-        let mut dup = self.clone();
+        let mut dup = self;
         dup += rhs;
         dup
     }

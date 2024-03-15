@@ -35,9 +35,9 @@ impl PeakKey {
         matches!(self, Self::Placeholder(_))
     }
 
-    pub(crate) fn to_index_unchecked(&self) -> u32 {
+    pub(crate) fn to_index_unchecked(self) -> u32 {
         match self {
-            PeakKey::Matched(i) => *i,
+            PeakKey::Matched(i) => i,
             PeakKey::Placeholder(_) => panic!("PeakKey index requested, but found a placeholder"),
         }
     }
@@ -231,17 +231,14 @@ impl<C: PeakLike + IntensityMeasurementMut> WorkingPeakSet<C> {
 
     pub fn subtract_theoretical_intensity(&mut self, fit: &IsotopicFit) {
         fit.experimental.iter().zip(fit.theoretical.iter()).for_each(|(e, t)| {
-            match self.get_mut(e) {
-                Some(peak) => {
-                    let threshold = peak.intensity() * PEAK_ELIMINATION_FACTOR;
-                    let new = peak.intensity() - t.intensity();
-                    if (new - threshold).abs() < 1e-3 || new < 0.0 {
-                        *peak.intensity_mut() = 1.0;
-                    } else {
-                        *peak.intensity_mut() = new;
-                    }
-                },
-                None => {},
+            if let Some(peak) = self.get_mut(e) {
+                let threshold = peak.intensity() * PEAK_ELIMINATION_FACTOR;
+                let new = peak.intensity() - t.intensity();
+                if (new - threshold).abs() < 1e-3 || new < 0.0 {
+                    *peak.intensity_mut() = 1.0;
+                } else {
+                    *peak.intensity_mut() = new;
+                }
             }
         });
     }

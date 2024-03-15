@@ -51,7 +51,7 @@ impl PeakDependenceGraph {
         }
     }
 
-    pub fn select_best_exact_fits(&mut self) {
+    fn select_best_exact_fits(&mut self) {
         let mut by_peaks: HashMap<Vec<PeakKey>, Vec<FitRef>> = HashMap::new();
         let ordering = self.score_ordering;
         self.fit_nodes.values().for_each(|fit_node| {
@@ -99,7 +99,7 @@ impl PeakDependenceGraph {
         }
     }
 
-    pub fn drop_superceded_fits(&mut self) {
+    fn drop_superceded_fits(&mut self) {
         let mut suppressed: HashSet<FitKey> = HashSet::new();
         let score_ordering = self.score_ordering;
         for (key, fit) in self.fit_nodes.dependencies.iter() {
@@ -117,12 +117,12 @@ impl PeakDependenceGraph {
             for (candidate_key, score) in mono_peak_node.links.iter() {
                 if self.fit_nodes.dependencies[candidate_key].charge == fit.charge {
                     // Is this search really necessary?
-                    match self.fit_nodes.dependencies[candidate_key]
+                    if self.fit_nodes.dependencies[candidate_key]
                         .experimental
                         .iter()
-                        .position(|k| k == mono)
+                        .position(|k| k == mono).is_some()
                     {
-                        Some(_) => match score_ordering {
+                        match score_ordering {
                             ScoreInterpretation::HigherIsBetter => {
                                 if fit.score < *score {
                                     suppress = true;
@@ -135,8 +135,7 @@ impl PeakDependenceGraph {
                                     break;
                                 }
                             }
-                        },
-                        None => {}
+                        }
                     }
                 }
             }
@@ -224,8 +223,7 @@ impl PeakDependenceGraph {
         self.find_non_overlapping_intervals();
         let clusters = mem::take(&mut self.clusters);
         let solutions = self.fit_nodes.solve_subgraphs(clusters, method);
-        // let total_size: usize = solutions.iter().map(|(_, f)| f.len()).sum();
-        // let mut accepted_fits = Vec::with_capacity(total_size);
+
         let accepted_fits: Vec<(DependenceCluster, Vec<(FitRef, IsotopicFit)>)> = solutions.into_iter().map(|(cluster, sols)| {
 
             let fits_of: Vec<(FitRef, IsotopicFit)> = sols.into_iter().map(|fit_ref| {

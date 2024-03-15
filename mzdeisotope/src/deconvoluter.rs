@@ -242,8 +242,7 @@ impl<
         let exp = self.peaks.collect_for(&keys);
         self.scaling_method.scale(&exp, &mut tid);
         let score = self.score_isotopic_fit(exp.as_slice(), &tid);
-        let fit = IsotopicFit::new(keys, peak, tid, charge, score, missed_peaks as u16);
-        fit
+        IsotopicFit::new(keys, peak, tid, charge, score, missed_peaks as u16)
     }
 
     fn has_peak(&mut self, mz: f64, error_tolerance: Tolerance) -> PeakKey {
@@ -282,14 +281,13 @@ impl<
         charge: i32,
         params: IsotopicPatternParams,
     ) -> TheoreticalIsotopicPattern {
-        let tid = self.isotopic_model.isotopic_cluster(
+        self.isotopic_model.isotopic_cluster(
             mz,
             charge,
             params.charge_carrier,
             params.truncate_after,
             params.ignore_below,
-        );
-        tid
+        )
     }
 
     fn score_isotopic_fit(
@@ -395,8 +393,7 @@ impl<
             solution
                 .all_peaks_for(target.neutral_mass, Tolerance::PPM(1.0))
                 .into_iter()
-                .filter(|p| *p == target)
-                .next()
+                .find(|p| *p == target)
         } else {
             None
         }
@@ -450,11 +447,10 @@ impl<
             .for_each(|p| {
                 self.targets
                     .iter_mut()
-                    .filter(|t| {
+                    .find(|t| {
                         let k = t.query.to_index_unchecked();
                         k == 0 && p.index == u32::MAX || p.index == k
                     })
-                    .next()
                     .and_then(|t| -> Option<i8> {
                         t.link = Some(p.clone());
                         None
@@ -552,7 +548,7 @@ impl<
                 Ok(())
             }
             else {
-                Err(DeconvolutionError::FailedToResolveFit(best_fit_key.clone()))
+                Err(DeconvolutionError::FailedToResolveFit(*best_fit_key))
             }
         } else {
             Ok(())
@@ -749,8 +745,7 @@ impl<
                 solution
                     .all_peaks_for(target.neutral_mass, Tolerance::PPM(1.0))
                     .into_iter()
-                    .filter(|p| *p == target)
-                    .next()
+                    .find(|p| *p == target)
             } else {
                 None
             }

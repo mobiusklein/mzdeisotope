@@ -86,7 +86,7 @@ impl PrecursorPurityEstimator {
                 isolation_window.contains(&p.mz())
                     && p.intensity > intensity_threshold
                     && !precursor_peak.eq(p)
-                    && (!ignore_singly_charged || (p.charge.abs() > 1 && ignore_singly_charged))
+                    && (!ignore_singly_charged || (p.charge.abs() > 1))
             })
             .map(|p| Coisolation::new(p.neutral_mass, p.intensity, Some(p.charge)))
             .collect();

@@ -66,25 +66,25 @@ pub fn purities_of(
             if let Some(prec) = scan.precursor() {
                 if is_dia {
                     let coisolations = purity_estimator.coisolation(
-                        &precursor_scan.deconvoluted_peaks.as_ref().unwrap(),
-                        &DeconvolvedSolutionPeak::new(prec.ion().mz, 0.0, 1, 0, 0.0, Box::new(Vec::new())),
+                        precursor_scan.deconvoluted_peaks.as_ref().unwrap(),
+                        &DeconvolvedSolutionPeak::new(prec.ion().mz, 0.0, 1, 0, 0.0, Box::default()),
                         Some(&prec.isolation_window),
                         0.1,
                         true,
                     );
                     purities.insert(i, (0.0, coisolations));
                 } else {
-                    targets.find_peak_for_mz(prec.ion().mz).and_then(|peak| {
+                    targets.find_peak_for_mz(prec.ion().mz).map(|peak| {
                         if is_dia {
                             // For DIA mode, purity isn't meaningful
                         } else {
                             let purity = purity_estimator.precursor_purity(
-                                &precursor_scan.peaks.as_ref().unwrap(),
+                                precursor_scan.peaks.as_ref().unwrap(),
                                 peak,
                                 Some(&prec.isolation_window),
                             );
                             let coisolations = purity_estimator.coisolation(
-                                &precursor_scan.deconvoluted_peaks.as_ref().unwrap(),
+                                precursor_scan.deconvoluted_peaks.as_ref().unwrap(),
                                 peak,
                                 Some(&prec.isolation_window),
                                 0.1,
@@ -92,7 +92,7 @@ pub fn purities_of(
                             );
                             purities.insert(i, (purity, coisolations));
                         }
-                        Some(())
+                        ()
                     });
                 }
             }
@@ -119,8 +119,7 @@ pub fn pick_ms1_peaks(
                 let peaks = scan.try_build_centroids().unwrap();
                 let peaks = selected_mz_ranges
                     .iter()
-                    .map(|(low, high)| peaks.between(*low, *high, Tolerance::PPM(5.0)))
-                    .flatten()
+                    .flat_map(|(low, high)| peaks.between(*low, *high, Tolerance::PPM(5.0)))
                     .cloned()
                     .collect();
 
@@ -195,8 +194,8 @@ pub fn deconvolution_transform<
     } else {
         group
         .products()
-        .into_iter()
-        .flat_map(|s| s.precursor().and_then(|prec| Some(prec.ion().mz)))
+        .iter()
+        .flat_map(|s| s.precursor().map(|prec| prec.ion().mz))
         .collect()
     };
 
@@ -272,7 +271,7 @@ pub fn deconvolution_transform<
             let precursor_charge = scan
                 .precursor()
                 .and_then(|prec| prec.charge())
-                .unwrap_or_else(|| msn_deconv_params.charge_range.1);
+                .unwrap_or(msn_deconv_params.charge_range.1);
 
             let mut msn_charge_range = msn_deconv_params.charge_range;
             msn_charge_range.1 = msn_charge_range.1.max(precursor_charge);
@@ -291,20 +290,20 @@ pub fn deconvolution_transform<
             prog.msn_spectra += 1;
             scan.deconvoluted_peaks = Some(deconvoluted_peaks);
             if is_dia {
-                scan.precursor_mut().and_then(|prec| {
+                scan.precursor_mut().map(|prec| {
                     let (_, coisolated) = purities.remove(&scan_i).unwrap_or_default();
                     coisolated.iter().for_each(|c| {
                         prec.ion_mut().params_mut().push(coisolation_to_param(c));
                     });
-                    Some(())
+                    ()
                 });
             }
             else {
-                scan.precursor_mut().and_then(|prec| {
+                scan.precursor_mut().map(|prec| {
                     let target_mz = prec.mz();
                     let _ = precursor_map
                         .find_mz(target_mz)
-                        .and_then(|i| {
+                        .map(|i| {
                             if let Some(peak) = &targets[i] {
                                 let orig_charge = prec.ion().charge;
                                 let update_ion = if let Some(orig_z) = orig_charge {
@@ -347,7 +346,7 @@ pub fn deconvolution_transform<
                                     prog.precursors_defaulted += 1;
                                 }
                             }
-                            Some(())
+                            ()
                         })
                         .or_else(|| {
                             let prec_ion = prec.ion_mut();
@@ -363,7 +362,7 @@ pub fn deconvolution_transform<
                             None
                         });
 
-                    Some(())
+                    ()
                 });
             }
         });
