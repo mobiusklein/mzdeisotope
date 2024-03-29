@@ -18,6 +18,8 @@ use tracing::{debug, info, warn};
 
 #[cfg(feature = "mzmlb")]
 use mzdata::io::mzmlb::{MzMLbReaderType, MzMLbWriterBuilder};
+#[cfg(feature = "thermo")]
+use mzdata::io::thermo::ThermoRawReaderType;
 use mzdata::io::{
     infer_format, infer_from_path, infer_from_stream,
     mgf::{MGFReaderType, MGFWriterType},
@@ -208,43 +210,43 @@ impl MZDeiosotoper {
                 .into(),
         );
         processing.add_param(Param::new_key_value(
-            "ms1_averaging_range".into(),
+            "ms1_averaging_range",
             self.ms1_averaging_range.to_string(),
         ));
         processing.add_param(Param::new_key_value(
-            "ms1_denoising".into(),
+            "ms1_denoising",
             self.ms1_denoising.to_string(),
         ));
         processing.add_param(Param::new_key_value(
-            "ms1_isotopic_model".into(),
+            "ms1_isotopic_model",
             self.ms1_isotopic_model.to_string(),
         ));
         processing.add_param(Param::new_key_value(
-            "msn_isotopic_model".into(),
+            "msn_isotopic_model",
             self.msn_isotopic_model.to_string(),
         ));
         processing.add_param(Param::new_key_value(
-            "ms1_score_threshold".into(),
+            "ms1_score_threshold",
             self.ms1_score_threshold.to_string(),
         ));
         processing.add_param(Param::new_key_value(
-            "msn_score_threshold".into(),
+            "msn_score_threshold",
             self.msn_score_threshold.to_string(),
         ));
         processing.add_param(Param::new_key_value(
-            "precursor_processing".into(),
+            "precursor_processing",
             self.precursor_processing.to_string(),
         ));
         processing.add_param(Param::new_key_value(
-            "charge_range".into(),
+            "charge_range",
             self.charge_range.to_string(),
         ));
         processing.add_param(Param::new_key_value(
-            "ms1_missed_peaks".into(),
+            "ms1_missed_peaks",
             self.ms1_missed_peaks.to_string(),
         ));
         processing.add_param(Param::new_key_value(
-            "msn_missed_peaks".into(),
+            "msn_missed_peaks",
             self.msn_missed_peaks.to_string(),
         ));
         processing.order = i8::MAX;
@@ -365,6 +367,12 @@ impl MZDeiosotoper {
                     let spectrum_count = Some(reader.len() as u64);
                     self.writer_then(reader, spectrum_count)?;
                 }
+                #[cfg(feature = "thermo")]
+                MassSpectrometryFormat::ThermoRaw => {
+                    let reader = ThermoRawReaderType::open_path(self.input_file.clone())?;
+                    let spectrum_count = Some(reader.len() as u64);
+                    self.writer_then(reader, spectrum_count)?;
+                }
                 _ => {
                     return Err(MZDeisotoperError::FormatUnknownOrNotSupportedError(
                         self.input_file.clone(),
@@ -465,7 +473,7 @@ impl MZDeiosotoper {
             + MSDataFileMetadata
             + Send
             + 'static,
-        W: ScanWriter<'static, CPeak, DPeak> + Send + 'static,
+        W: SpectrumWriter<CPeak, DPeak> + Send + 'static,
     >(
         &self,
         reader: R,

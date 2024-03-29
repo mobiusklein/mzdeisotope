@@ -88,7 +88,7 @@ pub fn collate_results_spectra(
 }
 
 #[tracing::instrument(skip_all, level="trace")]
-pub fn write_output<S: ScanWriter<'static, CPeak, DPeak>>(
+pub fn write_output<S: SpectrumWriter<CPeak, DPeak>>(
     mut writer: S,
     receiver: Receiver<(usize, SpectrumGroupType)>,
 ) -> io::Result<()> {
@@ -125,7 +125,7 @@ pub fn write_output<S: ScanWriter<'static, CPeak, DPeak>>(
 }
 
 #[tracing::instrument(skip_all, level="trace")]
-pub fn write_output_spectra<S: ScanWriter<'static, CPeak, DPeak>>(
+pub fn write_output_spectra<S: SpectrumWriter<CPeak, DPeak>>(
     mut writer: S,
     receiver: Receiver<(usize, SpectrumType)>,
 ) -> io::Result<()> {

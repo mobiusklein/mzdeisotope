@@ -201,6 +201,10 @@ impl<
     fn highest_ms_level(&self) -> Option<u8> {
         <G as SpectrumGrouping<C, D, MultiLayerSpectrum<C, D>>>::highest_ms_level(&self.group)
     }
+
+    fn into_parts(self) -> (Option<MultiLayerSpectrum<C, D>>, Vec<MultiLayerSpectrum<C, D>>) {
+        <G as SpectrumGrouping<C, D, MultiLayerSpectrum<C, D>>>::into_parts(self.group)
+    }
 }
 
 pub struct MSnTargetTrackingIterator<

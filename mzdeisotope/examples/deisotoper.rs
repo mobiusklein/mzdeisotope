@@ -13,7 +13,7 @@ use chemical_elements::PROTON;
 use itertools::Itertools;
 use mzdata::io::{
     mzml::{MzMLReaderType, MzMLWriterType},
-    ScanWriter,
+    SpectrumWriter,
 };
 #[allow(unused)]
 use mzdata::prelude::*;
@@ -113,7 +113,7 @@ fn run_deconvolution(
                             }
                             SignalContinuity::Centroid => scan.try_build_centroids().unwrap(),
                             SignalContinuity::Profile => {
-                                scan.pick_peaks(1.0, Default::default()).unwrap();
+                                scan.pick_peaks(1.0).unwrap();
                                 scan.description_mut().signal_continuity =
                                     SignalContinuity::Centroid;
                                 scan.peaks.as_ref().unwrap()
@@ -153,7 +153,7 @@ fn run_deconvolution(
                         }
                         SignalContinuity::Centroid => scan.try_build_centroids().unwrap(),
                         SignalContinuity::Profile => {
-                            scan.pick_peaks(1.0, Default::default()).unwrap();
+                            scan.pick_peaks(1.0).unwrap();
                             scan.description_mut().signal_continuity = SignalContinuity::Centroid;
                             scan.peaks.as_ref().unwrap()
                         }
@@ -175,19 +175,19 @@ fn run_deconvolution(
                             .and_then(|(i, _)| {
                                 if let Some(peak) = &targets[i] {
                                     // let orig_mz = prec.ion.mz;
-                                    let orig_charge = prec.ion.charge;
+                                    let orig_charge = prec.ion().charge;
                                     let update_ion = if let Some(orig_z) = orig_charge {
                                         orig_z == peak.charge
                                     } else {
                                         true
                                     };
                                     if update_ion {
-                                        prec.ion.mz = peak.mz();
-                                        prec.ion.charge = Some(peak.charge);
-                                        prec.ion.intensity = peak.intensity;
+                                        prec.ion_mut().mz = peak.mz();
+                                        prec.ion_mut().charge = Some(peak.charge);
+                                        prec.ion_mut().intensity = peak.intensity;
                                     } else {
                                         // tracing::warn!("Expected ion of charge state {} @ {orig_mz:0.3}, found {} @ {:0.3}", orig_charge.unwrap(), peak.charge, peak.mz());
-                                        prec.ion.params_mut().push(Param::new_key_value(
+                                        prec.ion_mut().params_mut().push(Param::new_key_value(
                                             "mzdeisotope:defaulted".to_string(),
                                             true.to_string(),
                                         ));
@@ -196,11 +196,11 @@ fn run_deconvolution(
                                 Some(())
                             })
                             .or_else(|| {
-                                prec.ion.params_mut().push(Param::new_key_value(
+                                prec.ion_mut().params_mut().push(Param::new_key_value(
                                     "mzdeisotope:defaulted".to_string(),
                                     true.to_string(),
                                 ));
-                                prec.ion.params_mut().push(Param::new_key_value(
+                                prec.ion_mut().params_mut().push(Param::new_key_value(
                                     "mzdeisotope:orphan".to_string(),
                                     true.to_string(),
                                 ));
@@ -299,7 +299,7 @@ fn write_output<W: io::Write + io::Seek>(
     match writer.close() {
         Ok(_) => {}
         Err(e) => match e {
-            mzdata::MzMLWriterError::IOError(o) => return Err(o),
+            mzdata::io::mzml::MzMLWriterError::IOError(o) => return Err(o),
             _ => Err(io::Error::new(io::ErrorKind::InvalidInput, e))?,
         },
     };

@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use itertools::Itertools;
 
 use mzdata::{prelude::*, spectrum::SignalContinuity, Param};
-use mzpeaks::{prelude::*, MZPeakSetType};
+use mzpeaks::MZPeakSetType;
 
 use mzdeisotope::{
     api::{DeconvolutionEngine, PeaksAndTargets},
@@ -136,13 +136,13 @@ pub fn pick_ms1_peaks(
             }
             match precursor_processing {
                 PrecursorProcessing::SelectedPrecursors => {
-                    scan.pick_peaks_in_intervals(1.0, Default::default(), &selected_mz_ranges)
+                    scan.pick_peaks_in_intervals(1.0, &selected_mz_ranges)
                         .unwrap();
                     scan.description_mut().signal_continuity = SignalContinuity::Centroid;
                     Some(scan.peaks.clone().unwrap())
                 }
                 PrecursorProcessing::Full | PrecursorProcessing::MS1Only | PrecursorProcessing::DIA => {
-                    scan.pick_peaks(1.0, Default::default()).unwrap();
+                    scan.pick_peaks(1.0).unwrap();
                     scan.description_mut().signal_continuity = SignalContinuity::Centroid;
                     Some(scan.peaks.clone().unwrap())
                 }
@@ -162,7 +162,7 @@ pub fn pick_msn_peaks(
         }
         SignalContinuity::Centroid => scan.try_build_centroids().unwrap().clone(),
         SignalContinuity::Profile => {
-            scan.pick_peaks(1.0, Default::default()).unwrap();
+            scan.pick_peaks(1.0).unwrap();
             scan.description_mut().signal_continuity = SignalContinuity::Centroid;
             scan.peaks.clone().unwrap()
         }
