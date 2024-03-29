@@ -17,9 +17,15 @@ keywords = ['mass-spectrometry', 'deisotoping', 'charge-deconvolution']
 categories = ["science", "data-processing"]
 
 [features]
+default = ["zlib-ng-compat", ]
 
 mzmlb = ["mzdata/mzmlb"]
 thermo = ["mzdata/thermo"]
+
+zlib = ["mzdata/zlib"]
+zlib-ng-compat = ["mzdata/zlib-ng-compat"]
+miniz_oxide = ["mzdata/miniz_oxide"]
+
 
 [dependencies]
 mzdeisotope = { path = "../mzdeisotope", version = "0.1.1" }
