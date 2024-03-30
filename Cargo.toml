@@ -12,6 +12,6 @@ members = [
 lto = true
 codegen-units = 1
 opt-level = 2
-
+debug = true
 
 [patch.crates-io]

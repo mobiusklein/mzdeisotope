@@ -10,7 +10,7 @@ use clap::Parser;
 use flate2::write::GzEncoder;
 use flate2::Compression;
 
-use mzdata::meta::{ProcessingMethod, Software};
+use mzdata::meta::{ProcessingMethod, Software, DataProcessing};
 use mzdata::params::{ControlledVocabulary, Param};
 use thiserror::Error;
 
@@ -69,7 +69,7 @@ pub enum MZDeisotoperError {
 
 /// Deisotoping and charge state deconvolution of mass spectrometry files.
 ///
-/// Read a file or stream, transform the spectra, and write out a processed mzML
+/// Read a file or stream, transform the spectra, and write out a processed mzML or MGF
 /// file or stream.
 #[derive(Parser, Debug)]
 #[command(author, version)]
@@ -267,16 +267,30 @@ impl MZDeiosotoper {
             source.softwares_mut().push(sw);
             query
         };
-        for dp in source.data_processings_mut().iter_mut() {
-            let last_step = dp
-                .iter()
-                .max_by(|a, b| a.order.cmp(&b.order))
-                .map(|m| m.order)
-                .unwrap_or(-1);
+        if source.data_processings_mut().len() == 0 {
             let mut method = self.make_processing_method();
-            method.order = last_step + 1;
+            method.order = 0;
             method.software_reference = sw_id.clone();
-            dp.push(method)
+            let mut dp = DataProcessing::default();
+            let dp_id = "DP1_mzdeisotoper".to_string();
+            dp.id = dp_id.clone();
+            dp.push(method);
+            source.data_processings_mut().push(dp);
+            if let Some(descr) = source.run_description_mut() {
+                descr.default_data_processing_id = Some(dp_id.clone());
+            }
+        } else {
+            for dp in source.data_processings_mut().iter_mut() {
+                let last_step = dp
+                    .iter()
+                    .max_by(|a, b| a.order.cmp(&b.order))
+                    .map(|m| m.order)
+                    .unwrap_or(-1);
+                let mut method = self.make_processing_method();
+                method.order = last_step + 1;
+                method.software_reference = sw_id.clone();
+                dp.push(method)
+            }
         }
     }
 
