@@ -1,6 +1,8 @@
 use std::collections::hash_map::{Iter, IterMut, Keys, Entry};
 use std::collections::HashMap;
 
+use fnv::FnvBuildHasher;
+
 use crate::peaks::PeakKey;
 use crate::scorer::ScoreType;
 
@@ -9,14 +11,14 @@ use super::fit::FitKey;
 #[derive(Debug)]
 pub struct PeakNode {
     pub key: PeakKey,
-    pub links: HashMap<FitKey, ScoreType>,
+    pub links: HashMap<FitKey, ScoreType, FnvBuildHasher>,
 }
 
 impl PeakNode {
     pub fn new(key: PeakKey) -> Self {
         Self {
             key,
-            links: HashMap::new(),
+            links: HashMap::default(),
         }
     }
     pub fn contains(&self, fit: &FitKey) -> bool {

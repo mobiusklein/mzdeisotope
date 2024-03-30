@@ -2,11 +2,14 @@ use std::fs;
 use std::io;
 
 use clap::Parser;
+use figment::{
+    providers::{Env, Serialized, Toml, Format},
+    Figment,
+};
 
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 use mzdeisotoper::{MZDeiosotoper, MZDeisotoperError};
-
 
 pub fn main() -> Result<(), MZDeisotoperError> {
     let subscriber = tracing_subscriber::registry()
@@ -20,6 +23,12 @@ pub fn main() -> Result<(), MZDeisotoperError> {
         );
 
     let args = MZDeiosotoper::parse();
+    let args: MZDeiosotoper = Figment::new()
+        .merge(Toml::file_exact("mzdeisotoper.toml"))
+        .merge(Env::prefixed("MZDEISOTOPER_"))
+        .merge(Serialized::defaults(args))
+        .extract()
+        .unwrap();
 
     if let Some(log_path) = args.log_file.as_ref() {
         let log_file = fs::File::create(log_path)?;

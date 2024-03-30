@@ -12,7 +12,7 @@ use mzdeisotope::{
     solution::DeconvolvedSolutionPeak,
 };
 
-use tracing::{self, instrument};
+use tracing;
 
 use crate::{
     args::{DeconvolutionParams, PrecursorProcessing, SignalParams},
@@ -169,7 +169,6 @@ pub fn pick_msn_peaks(
     }
 }
 
-#[instrument(skip_all, fields(groupno=group_idx), level="trace")]
 pub fn deconvolution_transform<
     S: IsotopicPatternScorer + Send + 'static,
     F: IsotopicFitFilter + Send + 'static,

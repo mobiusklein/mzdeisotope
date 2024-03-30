@@ -1,9 +1,11 @@
 use std::{error::Error, str::FromStr, fmt::Display, num::ParseFloatError, ops::Range};
 
+use serde::{Deserialize, Serialize};
+
 use mzdeisotope::interval::Span1D;
 
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
 pub struct TimeRange {
     pub start: f64,
     pub end: f64,

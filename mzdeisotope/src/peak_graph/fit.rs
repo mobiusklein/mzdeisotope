@@ -4,6 +4,8 @@ use std::collections::hash_set::{HashSet, Iter};
 use std::fmt::Display;
 use std::hash::Hash;
 
+use fnv::FnvBuildHasher;
+
 use crate::isotopic_fit::IsotopicFit;
 use crate::peaks::PeakKey;
 use crate::scorer::ScoreType;
@@ -23,9 +25,9 @@ impl Display for FitKey {
 #[derive(Debug, Clone)]
 pub struct FitNode {
     pub key: FitKey,
-    pub edges: HashSet<FitKey>,
-    pub overlap_edges: HashSet<FitKey>,
-    pub peak_indices: HashSet<PeakKey>,
+    pub edges: HashSet<FitKey, FnvBuildHasher>,
+    pub overlap_edges: HashSet<FitKey, FnvBuildHasher>,
+    pub peak_indices: HashSet<PeakKey, FnvBuildHasher>,
     pub score: ScoreType,
     pub start: f64,
     pub end: f64,
@@ -33,13 +35,13 @@ pub struct FitNode {
 
 impl FitNode {
     pub fn from_fit(fit: &IsotopicFit, key: FitKey, start: f64, end: f64) -> Self {
-        let mut peak_indices = HashSet::new();
+        let mut peak_indices = HashSet::with_capacity_and_hasher(fit.experimental.len(), FnvBuildHasher::default());
         peak_indices.extend(fit.experimental.iter().copied());
         Self {
             key,
             score: fit.score,
-            overlap_edges: HashSet::new(),
-            edges: HashSet::new(),
+            overlap_edges: HashSet::default(),
+            edges: HashSet::default(),
             peak_indices,
             start,
             end,
@@ -149,7 +151,7 @@ impl Ord for FitRef {
     }
 }
 
-pub(crate) type FitNodeGraphInner = HashMap<FitKey, FitNode>;
+pub(crate) type FitNodeGraphInner = HashMap<FitKey, FitNode, FnvBuildHasher>;
 
 #[derive(Debug, Default)]
 pub struct FitGraph {
@@ -162,15 +164,18 @@ impl FitGraph {
         Self::default()
     }
 
+    #[inline(always)]
     pub fn reset(&mut self) {
         self.fit_nodes.clear();
         self.dependencies.clear();
     }
 
+    #[inline(always)]
     pub fn get(&self, key: &FitKey) -> Option<&FitNode> {
         self.fit_nodes.get(key)
     }
 
+    #[inline(always)]
     pub fn get_mut(&mut self, key: &FitKey) -> Option<&mut FitNode> {
         self.fit_nodes.get_mut(key)
     }
@@ -287,14 +292,14 @@ impl FitSubgraph {
 #[derive(Debug, Clone)]
 pub struct SolvedSubgraph {
     pub cluster: DependenceCluster,
-    pub fit_nodes: HashMap<FitKey, FitNode>,
+    pub fit_nodes: HashMap<FitKey, FitNode, FnvBuildHasher>,
     pub solution: Vec<FitRef>,
 }
 
 impl SolvedSubgraph {
     pub fn new(
         cluster: DependenceCluster,
-        fit_nodes: HashMap<FitKey, FitNode>,
+        fit_nodes: HashMap<FitKey, FitNode, FnvBuildHasher>,
         solution: Vec<FitRef>,
     ) -> Self {
         Self {

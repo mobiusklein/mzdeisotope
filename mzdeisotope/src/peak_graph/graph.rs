@@ -1,6 +1,8 @@
 use std::collections::{HashMap, HashSet};
 use std::mem;
 
+use fnv::FnvBuildHasher;
+
 use crate::isotopic_fit::IsotopicFit;
 use crate::peaks::PeakKey;
 use crate::scorer::ScoreInterpretation;
@@ -20,7 +22,7 @@ pub struct PeakDependenceGraph {
 #[derive(Debug, Clone, Copy)]
 pub enum FitEvictionReason {
     Superceded(FitKey),
-    NotBestFit(FitKey)
+    NotBestFit(FitKey),
 }
 
 impl PeakDependenceGraph {
@@ -90,8 +92,7 @@ impl PeakDependenceGraph {
                     let rest = &bucket[1..];
                     for f in rest {
                         let fit = &self.fit_nodes[&f.key];
-                        self.peak_nodes
-                            .drop_fit_dependence(fit.peak_iter(), &f.key);
+                        self.peak_nodes.drop_fit_dependence(fit.peak_iter(), &f.key);
                         self.fit_nodes.remove(FitEvictionReason::NotBestFit(f.key));
                     }
                 }
@@ -120,7 +121,8 @@ impl PeakDependenceGraph {
                     if self.fit_nodes.dependencies[candidate_key]
                         .experimental
                         .iter()
-                        .position(|k| k == mono).is_some()
+                        .position(|k| k == mono)
+                        .is_some()
                     {
                         match score_ordering {
                             ScoreInterpretation::HigherIsBetter => {
@@ -145,32 +147,43 @@ impl PeakDependenceGraph {
         }
 
         for drop in suppressed {
-            let fit_node = self.fit_nodes.remove(FitEvictionReason::Superceded(drop)).unwrap();
+            let fit_node = self
+                .fit_nodes
+                .remove(FitEvictionReason::Superceded(drop))
+                .unwrap();
             self.peak_nodes
                 .drop_fit_dependence(fit_node.peak_iter(), &fit_node.key);
         }
     }
 
-    fn gather_independent_clusters(&mut self) -> Vec<HashSet<FitKey>> {
+    fn gather_independent_clusters(&mut self) -> Vec<HashSet<FitKey, FnvBuildHasher>> {
         // Map peak key to the set of other keys that share fits over them, indirectly
         // pointing into `dependency_history`.
-        let mut clusters: HashMap<PeakKey, usize> = HashMap::new();
+        let mut clusters: HashMap<PeakKey, usize, FnvBuildHasher> =
+            HashMap::with_capacity_and_hasher(self.peak_nodes.len() / 4, Default::default());
 
         // A running log of previous dependency sets.
-        let mut dependency_history: HashMap<usize, HashSet<FitKey>> = HashMap::new();
+        let mut dependency_history: HashMap<
+            usize,
+            HashSet<FitKey, FnvBuildHasher>,
+            FnvBuildHasher,
+        > = HashMap::default();
 
         for (_peak_key, seed_node) in self.peak_nodes.iter() {
-            let mut dependencies: HashSet<FitKey> = HashSet::new();
-            dependencies.extend(seed_node.links.keys().copied());
-
-            if dependencies.is_empty() {
+            if seed_node.links.is_empty() {
                 continue;
             }
 
+            let mut dependencies: HashSet<FitKey, FnvBuildHasher> =
+                HashSet::with_capacity_and_hasher(
+                    seed_node.links.len() * 2,
+                    FnvBuildHasher::default(),
+                );
+            dependencies.extend(seed_node.links.keys().copied());
+
             // Get all the `FitKey` referenced by this cluster of dependencies
-            let deps: Vec<FitKey> = dependencies.iter().copied().collect();
-            for dep_key in deps {
-                let fit_node = self.fit_nodes.get(&dep_key).unwrap();
+            for dep_key in seed_node.links.keys() {
+                let fit_node = self.fit_nodes.get(dep_key).unwrap();
                 for peak_key in fit_node.peak_iter().filter(|p| p.is_matched()) {
                     if let Some(key) = clusters.get(peak_key) {
                         let members = dependency_history.get(key).unwrap();
@@ -190,8 +203,9 @@ impl PeakDependenceGraph {
                 }
             }
         }
-        let mut result = Vec::new();
-        let mut seen: HashSet<usize> = HashSet::new();
+        let mut result = Vec::with_capacity(clusters.len() / 3);
+        let mut seen: HashSet<usize, FnvBuildHasher> =
+            HashSet::with_capacity_and_hasher(clusters.len(), Default::default());
         for val in clusters.into_values() {
             if seen.contains(&val) {
                 continue;
@@ -208,7 +222,7 @@ impl PeakDependenceGraph {
         self.drop_superceded_fits();
         let clusters = self.gather_independent_clusters();
         for keys in clusters {
-            let mut fits = Vec::new();
+            let mut fits = Vec::with_capacity(keys.len());
             for k in keys {
                 fits.push(self.fit_nodes[&k].create_ref());
             }
@@ -219,26 +233,34 @@ impl PeakDependenceGraph {
             .sort_by(|a, b| a.start.partial_cmp(&b.start).unwrap());
     }
 
-    pub fn solutions(&mut self, method: SubgraphSolverMethod) -> Vec<(DependenceCluster, Vec<(FitRef, IsotopicFit)>)> {
+    pub fn solutions(
+        &mut self,
+        method: SubgraphSolverMethod,
+    ) -> Vec<(DependenceCluster, Vec<(FitRef, IsotopicFit)>)> {
         self.find_non_overlapping_intervals();
         let clusters = mem::take(&mut self.clusters);
         let solutions = self.fit_nodes.solve_subgraphs(clusters, method);
 
-        let accepted_fits: Vec<(DependenceCluster, Vec<(FitRef, IsotopicFit)>)> = solutions.into_iter().map(|(cluster, sols)| {
-
-            let fits_of: Vec<(FitRef, IsotopicFit)> = sols.into_iter().map(|fit_ref| {
-                match self.fit_nodes.dependencies.remove(&fit_ref.key) {
-                    Some(fit) => {
-                        debug_assert!((fit_ref.score - fit.score).abs() < 1e-6);
-                        (fit_ref, fit)
-                    },
-                    None => {
-                        panic!("Failed to locate fit for {:?}", fit_ref);
-                    }
-                }
-            }).collect();
-            (cluster, fits_of)
-        }).collect();
+        let accepted_fits: Vec<(DependenceCluster, Vec<(FitRef, IsotopicFit)>)> = solutions
+            .into_iter()
+            .map(|(cluster, sols)| {
+                let fits_of: Vec<(FitRef, IsotopicFit)> = sols
+                    .into_iter()
+                    .map(
+                        |fit_ref| match self.fit_nodes.dependencies.remove(&fit_ref.key) {
+                            Some(fit) => {
+                                debug_assert!((fit_ref.score - fit.score).abs() < 1e-6);
+                                (fit_ref, fit)
+                            }
+                            None => {
+                                panic!("Failed to locate fit for {:?}", fit_ref);
+                            }
+                        },
+                    )
+                    .collect();
+                (cluster, fits_of)
+            })
+            .collect();
         accepted_fits
     }
 }

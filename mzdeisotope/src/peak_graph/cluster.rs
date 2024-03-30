@@ -1,3 +1,4 @@
+use fnv::FnvBuildHasher;
 use itertools::Itertools;
 use crate::scorer::ScoreInterpretation;
 
@@ -115,7 +116,7 @@ pub struct SubgraphSelection {
 
 impl SubgraphSelection {
     pub fn from_nodes(nodes: Vec<FitNode>, score_ordering: ScoreInterpretation) -> Self {
-        let mut node_map = FitNodeGraphInner::with_capacity(nodes.len());
+        let mut node_map = FitNodeGraphInner::with_capacity_and_hasher(nodes.len(), FnvBuildHasher::default());
         for node in nodes {
             node_map.insert(node.key, node);
         }

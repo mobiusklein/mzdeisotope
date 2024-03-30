@@ -33,6 +33,7 @@ chemical_elements = { version = "0.3.0", features = ['mzpeaks'] }
 tracing = { version = "0.1.40" }
 itertools = "0.12.0"
 thiserror = "1.0.56"
+fnv = "1.0.7"
 
 [dev-dependencies]
 flate2 = "1.0.28"

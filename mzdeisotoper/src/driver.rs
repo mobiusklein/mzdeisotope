@@ -7,12 +7,15 @@ use std::thread;
 use std::time::Instant;
 
 use clap::Parser;
+use serde::{Deserialize, Serialize};
+
 use flate2::write::GzEncoder;
 use flate2::Compression;
 
+use thiserror::Error;
+
 use mzdata::meta::{ProcessingMethod, Software, DataProcessing};
 use mzdata::params::{ControlledVocabulary, Param};
-use thiserror::Error;
 
 use tracing::{debug, info, warn};
 
@@ -71,7 +74,7 @@ pub enum MZDeisotoperError {
 ///
 /// Read a file or stream, transform the spectra, and write out a processed mzML or MGF
 /// file or stream.
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Deserialize, Serialize)]
 #[command(author, version)]
 pub struct MZDeiosotoper {
     /// The path to read the input spectra from, or if '-' is passed, read from STDIN

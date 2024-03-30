@@ -2,6 +2,7 @@ use std::{fmt::Display, str::FromStr};
 
 use clap::ValueEnum;
 use thiserror::Error;
+use serde::{Deserialize, Serialize};
 
 use mzdeisotope::{
     api::DeconvolutionEngine,
@@ -14,7 +15,7 @@ use mzdeisotope::{
 };
 use mzpeaks::CentroidPeak;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, Default, Deserialize, Serialize)]
 pub enum PrecursorProcessing {
     #[default]
     /// Process the entire MS1 mass range and all MSn spectra
@@ -35,7 +36,7 @@ impl Display for PrecursorProcessing {
     }
 }
 
-#[derive(Debug, Clone, Copy, ValueEnum, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, ValueEnum, PartialEq, Eq, Deserialize, Serialize)]
 pub enum ArgIsotopicModels {
     Peptide,
     Glycan,
@@ -71,7 +72,7 @@ impl Display for ArgIsotopicModels {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
 pub struct ArgChargeRange(pub i32, pub i32);
 
 impl Display for ArgChargeRange {
@@ -140,7 +141,7 @@ impl FromStr for ArgChargeRange {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
 pub struct SignalParams {
     pub ms1_averaging: usize,
     pub mz_range: (f64, f64),
@@ -218,7 +219,7 @@ impl<'a, S: IsotopicPatternScorer, F: IsotopicFitFilter> DeconvolutionBuilderPar
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct DeconvolutionParams {
     pub charge_range: ChargeRange,
     pub max_missed_peaks: u16,
