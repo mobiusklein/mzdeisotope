@@ -1,5 +1,6 @@
 use std::fs;
 use std::io;
+use std::path::PathBuf;
 
 use clap::Parser;
 use figment::{
@@ -15,18 +16,29 @@ pub fn main() -> Result<(), MZDeisotoperError> {
     let subscriber = tracing_subscriber::registry()
         .with(EnvFilter::from_default_env().add_directive(tracing::Level::TRACE.into()))
         .with(
-            fmt::layer().compact().with_writer(io::stderr).with_filter(
+            fmt::layer().compact().with_timer(fmt::time::ChronoLocal::rfc_3339()).with_writer(io::stderr).with_filter(
                 EnvFilter::builder()
                     .with_default_directive(tracing::Level::INFO.into())
                     .from_env_lossy(),
             ),
         );
 
+    let mut config = Figment::new();
     let args = MZDeiosotoper::parse();
-    let args: MZDeiosotoper = Figment::new()
-        .merge(Toml::file_exact("mzdeisotoper.toml"))
+
+    if let Some(cpath) = args.config_file.clone() {
+        config = config.merge(Serialized::defaults(args));
+        config = config.merge(Toml::file_exact(cpath));
+    } else {
+        config = config.merge(Serialized::defaults(args));
+    }
+
+    if PathBuf::from("mzdeisotoper.toml").exists() {
+        config = config.merge(Toml::file_exact("mzdeisotoper.toml"));
+    }
+
+    let args: MZDeiosotoper = config
         .merge(Env::prefixed("MZDEISOTOPER_"))
-        .merge(Serialized::defaults(args))
         .extract()
         .unwrap();
 

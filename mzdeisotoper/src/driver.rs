@@ -91,6 +91,14 @@ pub struct MZDeiosotoper {
     #[arg(short = 'l', long = "log-file")]
     pub log_file: Option<PathBuf>,
 
+
+    /// A TOML configuration file to read additional parameters from.
+    ///
+    /// Configurations are also read from `mzdeisotoper.toml` in the working directory.
+    /// Environment variables prefixed with `MZDEISOTOPER_` will be read too.
+    #[arg(long = "config-file")]
+    pub config_file: Option<PathBuf>,
+
     /// The number of threads to use, passing a value < 1 to use all available threads
     #[arg(
         short='t',

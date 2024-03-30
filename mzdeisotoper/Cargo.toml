@@ -40,7 +40,7 @@ thiserror = "1.0.56"
 
 tracing = { version = "0.1.40" }
 tracing-log = { version = "0.2.0" }
-tracing-subscriber = { version = "0.3.18", features = ["env-filter", "fmt"]}
+tracing-subscriber = { version = "0.3.18", features = ["env-filter", "fmt", "chrono"]}
 tracing-appender = "0.2.3"
 serde = { version = "1.0.197", features = ["derive"] }
 figment = { version = "0.10.15", features = ["env", "toml"] }
