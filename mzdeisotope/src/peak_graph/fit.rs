@@ -10,7 +10,9 @@ use crate::isotopic_fit::IsotopicFit;
 use crate::peaks::PeakKey;
 use crate::scorer::ScoreType;
 
-use super::cluster::{DependenceCluster, SubgraphSelection, SubgraphSolverMethod, SubgraphSolution};
+use super::cluster::{
+    DependenceCluster, SubgraphSelection, SubgraphSolution, SubgraphSolverMethod,
+};
 use super::graph::FitEvictionReason;
 
 #[derive(Debug, Default, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
@@ -35,7 +37,8 @@ pub struct FitNode {
 
 impl FitNode {
     pub fn from_fit(fit: &IsotopicFit, key: FitKey, start: f64, end: f64) -> Self {
-        let mut peak_indices = HashSet::with_capacity_and_hasher(fit.experimental.len(), FnvBuildHasher::default());
+        let mut peak_indices =
+            HashSet::with_capacity_and_hasher(fit.experimental.len(), FnvBuildHasher::default());
         peak_indices.extend(fit.experimental.iter().copied());
         Self {
             key,
@@ -98,12 +101,13 @@ impl Ord for FitNode {
         match self.score.partial_cmp(&other.score) {
             Some(ord) => match ord {
                 cmp::Ordering::Less => ord,
-                cmp::Ordering::Equal => {
-                    self.peak_indices.len().cmp(&other.peak_indices.len())
-                }
+                cmp::Ordering::Equal => self.peak_indices.len().cmp(&other.peak_indices.len()),
                 cmp::Ordering::Greater => ord,
             },
-            None => panic!("FitNode scores were not compare-able: {} <=> {}", self.score, other.score),
+            None => panic!(
+                "FitNode scores were not compare-able: {} <=> {}",
+                self.score, other.score
+            ),
         }
     }
 }

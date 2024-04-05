@@ -1,5 +1,7 @@
-use std::{ops::{Add, AddAssign}, iter::Sum};
-
+use std::{
+    iter::Sum,
+    ops::{Add, AddAssign},
+};
 
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub struct ProgressRecord {

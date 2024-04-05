@@ -3,19 +3,19 @@ use std::collections::VecDeque;
 use std::marker::PhantomData;
 
 use mzdata::prelude::*;
-use mzdata::spectrum::{MultiLayerSpectrum, SpectrumGroup, SpectrumGroupIter, SpectrumGroupIntoIter};
+use mzdata::spectrum::{
+    MultiLayerSpectrum, SpectrumGroup, SpectrumGroupIntoIter, SpectrumGroupIter,
+};
 use mzdeisotope::interval::{SimpleInterval, Span1D};
 use mzpeaks::{CentroidLike, DeconvolutedCentroidLike, Tolerance};
 
 use crate::time_range::TimeRange;
 use crate::types::{CPeak, DPeak};
 
-
 pub trait SpectrumGroupTiming {
     fn earliest_time(&self) -> Option<f64>;
     fn latest_time(&self) -> Option<f64>;
 }
-
 
 #[derive(Default, Debug, Clone, Copy, PartialEq)]
 pub struct SelectionTargetSpecification {
@@ -80,7 +80,10 @@ pub struct TargetTrackingSpectrumGroup<
     _d: PhantomData<D>,
 }
 
-impl<T> SpectrumGroupTiming for T where T: SpectrumGrouping<CPeak, DPeak, MultiLayerSpectrum<CPeak, DPeak>> {
+impl<T> SpectrumGroupTiming for T
+where
+    T: SpectrumGrouping<CPeak, DPeak, MultiLayerSpectrum<CPeak, DPeak>>,
+{
     fn earliest_time(&self) -> Option<f64> {
         self.earliest_spectrum().map(|s| s.start_time())
     }
@@ -97,9 +100,7 @@ impl<
     > TargetTrackingSpectrumGroup<C, D, G>
 {
     pub fn new(group: G, mut targets: Vec<SelectedTarget>) -> Self {
-        targets.sort_by(|a, b| {
-            a.mz.partial_cmp(&b.mz).unwrap()
-        });
+        targets.sort_by(|a, b| a.mz.partial_cmp(&b.mz).unwrap());
         Self {
             group,
             targets,
@@ -117,24 +118,25 @@ impl<
     }
 
     pub fn selected_intervals(&self, mz_before: f64, mz_after: f64) -> Vec<(f64, f64)> {
-        self.targets.iter().map(|t| {
-            (t.mz - mz_before, t.mz + mz_after)
-        }).fold(Vec::new(), |mut acc, iv| {
-            match acc.last_mut() {
-                Some(tail) => {
-                    if SimpleInterval::from(*tail).overlaps(&SimpleInterval::from(iv)) {
-                        tail.1 = iv.1;
-                    } else {
+        self.targets
+            .iter()
+            .map(|t| (t.mz - mz_before, t.mz + mz_after))
+            .fold(Vec::new(), |mut acc, iv| {
+                match acc.last_mut() {
+                    Some(tail) => {
+                        if SimpleInterval::from(*tail).overlaps(&SimpleInterval::from(iv)) {
+                            tail.1 = iv.1;
+                        } else {
+                            acc.push(iv);
+                        }
+                    }
+                    None => {
                         acc.push(iv);
                     }
                 }
-                None => {
-                    acc.push(iv);
-                }
-            }
 
-            acc
-        })
+                acc
+            })
     }
 }
 
@@ -202,10 +204,17 @@ impl<
         <G as SpectrumGrouping<C, D, MultiLayerSpectrum<C, D>>>::highest_ms_level(&self.group)
     }
 
-    fn into_parts(self) -> (Option<MultiLayerSpectrum<C, D>>, Vec<MultiLayerSpectrum<C, D>>) {
+    fn into_parts(
+        self,
+    ) -> (
+        Option<MultiLayerSpectrum<C, D>>,
+        Vec<MultiLayerSpectrum<C, D>>,
+    ) {
         <G as SpectrumGrouping<C, D, MultiLayerSpectrum<C, D>>>::into_parts(self.group)
     }
 }
+
+type SpectrumGroupWithStartTime<C, D> = (SpectrumGroup<C, D, MultiLayerSpectrum<C, D>>, f64);
 
 pub struct MSnTargetTrackingIterator<
     C: CentroidLike + Default,
@@ -215,8 +224,8 @@ pub struct MSnTargetTrackingIterator<
     source: R,
     time_width: f64,
     error_tolerance: Tolerance,
-    buffer: VecDeque<(SpectrumGroup<C, D, MultiLayerSpectrum<C, D>>, f64)>,
-    pushback_buffer: Option<(SpectrumGroup<C, D, MultiLayerSpectrum<C, D>>, f64)>,
+    buffer: VecDeque<SpectrumGroupWithStartTime<C, D>>,
+    pushback_buffer: Option<SpectrumGroupWithStartTime<C, D>>,
     targets: VecDeque<SelectionTargetSpecification>,
 }
 

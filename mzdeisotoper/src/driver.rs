@@ -14,7 +14,7 @@ use flate2::Compression;
 
 use thiserror::Error;
 
-use mzdata::meta::{ProcessingMethod, Software, DataProcessing};
+use mzdata::meta::{DataProcessing, ProcessingMethod, Software};
 use mzdata::params::{ControlledVocabulary, Param};
 
 use tracing::{debug, info, warn};
@@ -90,7 +90,6 @@ pub struct MZDeiosotoper {
     /// The path to write a log file to, in addition to STDERR
     #[arg(short = 'l', long = "log-file")]
     pub log_file: Option<PathBuf>,
-
 
     /// A TOML configuration file to read additional parameters from.
     ///
@@ -270,7 +269,7 @@ impl MZDeiosotoper {
             let stem = sw.id.clone();
             let mut i = 0;
             let mut query = stem.clone();
-            while source.softwares().iter().find(|s| s.id == query).is_some() {
+            while source.softwares().iter().any(|s| s.id == query) {
                 i += 1;
                 query = format!("{stem}_{i}");
             }
@@ -278,7 +277,7 @@ impl MZDeiosotoper {
             source.softwares_mut().push(sw);
             query
         };
-        if source.data_processings_mut().len() == 0 {
+        if source.data_processings().is_empty() {
             let mut method = self.make_processing_method();
             method.order = 0;
             method.software_reference = sw_id.clone();

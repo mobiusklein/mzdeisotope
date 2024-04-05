@@ -5,9 +5,7 @@ use std::{
 
 use mzdata::prelude::*;
 
-use crate::types::{
-    CPeak, DPeak, SpectrumCollator, SpectrumGroupType, SpectrumType,
-};
+use crate::types::{CPeak, DPeak, SpectrumCollator, SpectrumGroupType, SpectrumType};
 
 pub fn collate_results_spectra(
     receiver: Receiver<(usize, SpectrumGroupType)>,
@@ -40,7 +38,11 @@ pub fn collate_results_spectra(
 
         let n = collator.waiting.len();
         if i % 1000000 == 0 && i > 0 && n > 0 {
-            tracing::debug!("Collator holding {n} entries at tick {i}, next key {} ({})", collator.next_key, collator.has_next())
+            tracing::debug!(
+                "Collator holding {n} entries at tick {i}, next key {} ({})",
+                collator.next_key,
+                collator.has_next()
+            )
         }
 
         while let Some((group_idx, group)) = collator.try_next() {
@@ -69,7 +71,10 @@ pub fn write_output_spectra<S: SpectrumWriter<CPeak, DPeak>>(
             || (scan_time - time_checkpoint) > 1.0
         {
             if group_idx + 1 != scan_counter {
-                tracing::info!("Completed Scan {} | Scans={scan_counter} Time={scan_time:0.3}", group_idx + 1);
+                tracing::info!(
+                    "Completed Scan {} | Scans={scan_counter} Time={scan_time:0.3}",
+                    group_idx + 1
+                );
             } else {
                 tracing::info!("Completed Scan {} | Time={scan_time:0.3}", group_idx + 1);
             }

@@ -91,6 +91,10 @@ impl<'a> FractionalComposition<'a> {
         self.0.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
     pub fn contains_key<Q: ?Sized>(&self, k: &Q) -> bool
     where
         ElementSpecification<'a>: std::borrow::Borrow<Q>,
@@ -104,10 +108,8 @@ impl<'a> FractionalComposition<'a> {
     }
 }
 
-
 /// The capability to generate theoretical isotopic patterns from a given mass
 pub trait IsotopicPatternGenerator {
-
     /// Generate a theoretical isotopic pattern for a given m/z and charge
     ///
     /// # Arguments
@@ -149,7 +151,6 @@ pub trait IsotopicPatternGenerator {
     }
 }
 
-
 /// The mass difference between isotopes C[13] and C[12]. Not precisely universal, but the
 /// majority of expected applications are carbon-based
 pub const NEUTRON_SHIFT: f64 = 1.0033548378;
@@ -166,7 +167,6 @@ const ISOTOPIC_SHIFT: [f64; 10] = [
     NEUTRON_SHIFT / 9.0,
     NEUTRON_SHIFT / 10.0,
 ];
-
 
 /// Get the m/z difference between isotopic peaks at a given charge state
 #[inline(always)]
@@ -544,6 +544,10 @@ impl<'lifespan: 'transient, 'transient> CachingIsotopicModel<'lifespan> {
         self.cache.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.cache.is_empty()
+    }
+
     pub fn iter(&self) -> btree_map::Iter<IsotopicPatternSpec, TheoreticalIsotopicPattern> {
         self.cache.iter()
     }
@@ -772,7 +776,7 @@ impl TheoreticalIsotopicDistributionScalingMethod {
                     .iter()
                     .enumerate()
                     .max_by(|a, b| a.1.intensity().total_cmp(&b.1.intensity()))
-                    .and_then(|(i, p)| Some((i, p.intensity())))
+                    .map(|(i, p)| (i, p.intensity()))
                     .unwrap();
                 // let (index, peak) = experimental
                 //     .iter()

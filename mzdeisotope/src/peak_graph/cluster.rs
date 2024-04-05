@@ -1,6 +1,6 @@
+use crate::scorer::ScoreInterpretation;
 use fnv::FnvBuildHasher;
 use itertools::Itertools;
-use crate::scorer::ScoreInterpretation;
 
 use super::fit::{FitNode, FitNodeGraphInner, FitRef};
 
@@ -116,7 +116,8 @@ pub struct SubgraphSelection {
 
 impl SubgraphSelection {
     pub fn from_nodes(nodes: Vec<FitNode>, score_ordering: ScoreInterpretation) -> Self {
-        let mut node_map = FitNodeGraphInner::with_capacity_and_hasher(nodes.len(), FnvBuildHasher::default());
+        let mut node_map =
+            FitNodeGraphInner::with_capacity_and_hasher(nodes.len(), FnvBuildHasher::default());
         for node in nodes {
             node_map.insert(node.key, node);
         }
@@ -133,7 +134,7 @@ impl SubgraphSelection {
     pub fn build_edges(&mut self) {
         let mut nodes: Vec<&mut FitNode> = self.nodes.values_mut().collect();
 
-        (0..nodes.len()).into_iter().tuple_combinations().for_each(|(i, j)| {
+        (0..nodes.len()).tuple_combinations().for_each(|(i, j)| {
             let mut it = nodes.iter_mut().skip(i);
             let node_i = it.next().unwrap();
             let node_j = it.nth(j - (i + 1)).unwrap();

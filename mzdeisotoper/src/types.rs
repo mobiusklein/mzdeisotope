@@ -1,5 +1,5 @@
+use mzdata::spectrum::{utils::Collator, MultiLayerSpectrum, SpectrumGroup};
 use mzpeaks::CentroidPeak;
-use mzdata::spectrum::{MultiLayerSpectrum, SpectrumGroup, utils::Collator};
 
 use mzdeisotope::solution::DeconvolvedSolutionPeak;
 

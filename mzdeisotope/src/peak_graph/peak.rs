@@ -1,4 +1,4 @@
-use std::collections::hash_map::{Iter, IterMut, Keys, Entry};
+use std::collections::hash_map::{Entry, Iter, IterMut, Keys};
 use std::collections::HashMap;
 
 use fnv::FnvBuildHasher;
@@ -72,12 +72,8 @@ impl PeakGraph {
 
     pub fn get_or_create_mute(&mut self, key: PeakKey) -> &mut PeakNode {
         match self.peak_nodes.entry(key) {
-            Entry::Occupied(o) => {
-                o.into_mut()
-            },
-            Entry::Vacant(v) => {
-                v.insert(PeakNode::new(key))
-            },
+            Entry::Occupied(o) => o.into_mut(),
+            Entry::Vacant(v) => v.insert(PeakNode::new(key)),
         }
     }
 

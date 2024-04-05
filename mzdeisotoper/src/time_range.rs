@@ -1,9 +1,8 @@
-use std::{error::Error, str::FromStr, fmt::Display, num::ParseFloatError, ops::Range};
+use std::{error::Error, fmt::Display, num::ParseFloatError, ops::Range, str::FromStr};
 
 use serde::{Deserialize, Serialize};
 
 use mzdeisotope::interval::Span1D;
-
 
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
 pub struct TimeRange {
@@ -12,7 +11,9 @@ pub struct TimeRange {
 }
 
 impl TimeRange {
-    pub fn new(start: f64, end: f64) -> Self { Self { start, end } }
+    pub fn new(start: f64, end: f64) -> Self {
+        Self { start, end }
+    }
 }
 
 impl Span1D for TimeRange {
@@ -137,15 +138,11 @@ mod test {
         match "a-".parse::<TimeRange>() {
             Ok(_) => {
                 panic!("Can't happen")
-            },
-            Err(e) => {
-                match e {
-                    TimeRangeParseError::MalformedStart(_) => {
-
-                    },
-                    TimeRangeParseError::MalformedEnd(_) => {
-                        panic!("The problem is at the start")
-                    },
+            }
+            Err(e) => match e {
+                TimeRangeParseError::MalformedStart(_) => {}
+                TimeRangeParseError::MalformedEnd(_) => {
+                    panic!("The problem is at the start")
                 }
             },
         }
@@ -153,34 +150,27 @@ mod test {
         match "-b".parse::<TimeRange>() {
             Ok(_) => {
                 panic!("Can't happen")
-            },
-            Err(e) => {
-                match e {
-                    TimeRangeParseError::MalformedStart(_) => {
-                        panic!("The problem is at the end")
-                    },
-                    TimeRangeParseError::MalformedEnd(_) => {
-                    },
+            }
+            Err(e) => match e {
+                TimeRangeParseError::MalformedStart(_) => {
+                    panic!("The problem is at the end")
                 }
+                TimeRangeParseError::MalformedEnd(_) => {}
             },
         }
 
         match "a-b".parse::<TimeRange>() {
             Ok(_) => {
                 panic!("Can't happen")
-            },
-            Err(e) => {
-                match e {
-                    TimeRangeParseError::MalformedStart(_) => {
-                    },
-                    TimeRangeParseError::MalformedEnd(_) => {
-                        panic!("The problem is at both ends, but err on the start first")
-                    },
+            }
+            Err(e) => match e {
+                TimeRangeParseError::MalformedStart(_) => {}
+                TimeRangeParseError::MalformedEnd(_) => {
+                    panic!("The problem is at both ends, but err on the start first")
                 }
             },
         }
 
         Ok(())
     }
-
 }

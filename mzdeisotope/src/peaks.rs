@@ -4,21 +4,18 @@ use mzpeaks::{CentroidPeak, IndexType, MZPeakSetType};
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::hash;
-use std::ops::{Range, Index};
+use std::ops::{Index, Range};
 
 use crate::charge::{quick_charge_w, ChargeListIter, ChargeRange};
 use crate::isotopic_fit::IsotopicFit;
-
 
 const PEAK_ELIMINATION_FACTOR: f32 = 0.7;
 
 type Placeholder = i64;
 
-pub trait PeakLike : CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut {}
+pub trait PeakLike: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut {}
 
 impl<T> PeakLike for T where T: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut {}
-
-
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum PeakKey {
@@ -67,7 +64,6 @@ impl<C: PeakLike> Default for PlaceholderCache<C> {
 
 pub trait MZCaching {
     fn key_for(&self, mz: f64) -> Placeholder {
-
         (mz * 1000.0).round() as Placeholder
     }
 }
@@ -180,11 +176,7 @@ impl<C: PeakLike + IntensityMeasurementMut> WorkingPeakSet<C> {
         (peaks, missed)
     }
 
-    pub fn has_peak(
-        &mut self,
-        mz: f64,
-        error_tolerance: Tolerance,
-    ) -> (PeakKey, bool) {
+    pub fn has_peak(&mut self, mz: f64, error_tolerance: Tolerance) -> (PeakKey, bool) {
         match self.peaks.has_peak(mz, error_tolerance) {
             Some(peak) => (PeakKey::Matched(peak.get_index()), false),
             None => (PeakKey::Placeholder(self.placeholders.create(mz)), true),
@@ -230,17 +222,20 @@ impl<C: PeakLike + IntensityMeasurementMut> WorkingPeakSet<C> {
     }
 
     pub fn subtract_theoretical_intensity(&mut self, fit: &IsotopicFit) {
-        fit.experimental.iter().zip(fit.theoretical.iter()).for_each(|(e, t)| {
-            if let Some(peak) = self.get_mut(e) {
-                let threshold = peak.intensity() * PEAK_ELIMINATION_FACTOR;
-                let new = peak.intensity() - t.intensity();
-                if (new - threshold).abs() < 1e-3 || new < 0.0 {
-                    *peak.intensity_mut() = 1.0;
-                } else {
-                    *peak.intensity_mut() = new;
+        fit.experimental
+            .iter()
+            .zip(fit.theoretical.iter())
+            .for_each(|(e, t)| {
+                if let Some(peak) = self.get_mut(e) {
+                    let threshold = peak.intensity() * PEAK_ELIMINATION_FACTOR;
+                    let new = peak.intensity() - t.intensity();
+                    if (new - threshold).abs() < 1e-3 || new < 0.0 {
+                        *peak.intensity_mut() = 1.0;
+                    } else {
+                        *peak.intensity_mut() = new;
+                    }
                 }
-            }
-        });
+            });
     }
 
     pub fn quick_charge(&self, position: usize, charge_range: ChargeRange) -> ChargeListIter {

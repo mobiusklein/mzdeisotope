@@ -4,27 +4,24 @@ use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 
 use crate::charge::ChargeRangeIter;
-use crate::deconvoluter::{TrivialTargetLink, PeakDepenceGraphTargetLink};
+use crate::deconvoluter::{PeakDepenceGraphTargetLink, TrivialTargetLink};
 use crate::isotopic_fit::IsotopicFit;
 use crate::isotopic_model::{
     IsotopicPatternGenerator, IsotopicPatternParams, TheoreticalIsotopicDistributionScalingMethod,
 };
 use crate::peak_graph::{DependenceCluster, FitRef, PeakDependenceGraph, SubgraphSolverMethod};
 use crate::peaks::{PeakKey, WorkingPeakSet};
-use crate::scorer::{
-    IsotopicFitFilter, IsotopicPatternScorer, ScoreType,
-};
+use crate::scorer::{IsotopicFitFilter, IsotopicPatternScorer, ScoreType};
 
 use crate::deconv_traits::{
-    ExhaustivePeakSearch, GraphDependentSearch, IsotopicDeconvolutionAlgorithm,
-    IsotopicPatternFitter, RelativePeakSearch, TargetedDeconvolution, QuerySet, DeconvolutionError,
+    DeconvolutionError, ExhaustivePeakSearch, GraphDependentSearch, IsotopicDeconvolutionAlgorithm,
+    IsotopicPatternFitter, QuerySet, RelativePeakSearch, TargetedDeconvolution,
 };
 use crate::solution::DeconvolvedSolutionPeak;
 
 use chemical_elements::isotopic_pattern::TheoreticalIsotopicPattern;
 use mzpeaks::{prelude::*, IntensityMeasurementMut, MassPeakSetType};
 use mzpeaks::{CentroidPeak, Tolerance};
-
 
 #[derive(Debug)]
 pub struct MultiDeconvoluterType<
@@ -157,7 +154,6 @@ impl<
     }
 }
 
-
 impl<
         C: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut,
         I: IsotopicPatternGenerator,
@@ -204,8 +200,9 @@ impl<
                             &fit,
                             &experimental,
                             isotopic_params,
-                            incremental_truncation
-                        ).into_iter()
+                            incremental_truncation,
+                        )
+                        .into_iter(),
                     )
                 }
                 if self.check_isotopic_fit(&fit) {
@@ -217,7 +214,11 @@ impl<
         solutions
     }
 
-    fn quick_charge(&self, index: usize, charge_range: crate::charge::ChargeRange) -> crate::charge::ChargeListIter {
+    fn quick_charge(
+        &self,
+        index: usize,
+        charge_range: crate::charge::ChargeRange,
+    ) -> crate::charge::ChargeListIter {
         self.peaks.quick_charge(index, charge_range)
     }
 
@@ -344,7 +345,6 @@ impl<
     }
 }
 
-
 #[derive(Debug)]
 pub struct GraphMultiDeconvoluterType<
     C: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut,
@@ -371,13 +371,10 @@ impl<
         peak_accumulator: &mut Vec<IsotopicFit>,
     ) -> Result<(), DeconvolutionError> {
         if let Some(best_fit_key) = cluster.best_fit() {
-            if let Some((_, fit)) = fits
-                .into_iter()
-                .find(|(k, _)| k.key == best_fit_key.key) {
-                    peak_accumulator.push(fit);
+            if let Some((_, fit)) = fits.into_iter().find(|(k, _)| k.key == best_fit_key.key) {
+                peak_accumulator.push(fit);
                 Ok(())
-            }
-            else {
+            } else {
                 Err(DeconvolutionError::FailedToResolveFit(*best_fit_key))
             }
         } else {
@@ -494,7 +491,11 @@ impl<
         self.inner.check_isotopic_fit(fit)
     }
 
-    fn quick_charge(&self, index: usize, charge_range: crate::charge::ChargeRange) -> crate::charge::ChargeListIter {
+    fn quick_charge(
+        &self,
+        index: usize,
+        charge_range: crate::charge::ChargeRange,
+    ) -> crate::charge::ChargeListIter {
         self.inner.quick_charge(index, charge_range)
     }
 
@@ -519,11 +520,14 @@ impl<
         self.peak_graph.add_fit(fit, start, end)
     }
 
-    fn select_best_disjoint_subgraphs(&mut self, fit_accumulator: &mut Vec<IsotopicFit>) -> Result<(), DeconvolutionError> {
+    fn select_best_disjoint_subgraphs(
+        &mut self,
+        fit_accumulator: &mut Vec<IsotopicFit>,
+    ) -> Result<(), DeconvolutionError> {
         let solutions = self.peak_graph.solutions(SubgraphSolverMethod::Greedy);
-        solutions.into_iter().try_for_each(|(cluster, fits)| {
-            self.solve_subgraph_top(cluster, fits, fit_accumulator)
-        })
+        solutions
+            .into_iter()
+            .try_for_each(|(cluster, fits)| self.solve_subgraph_top(cluster, fits, fit_accumulator))
     }
 }
 

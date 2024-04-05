@@ -6,7 +6,7 @@ use mzdata::spectrum::{BinaryArrayMap, BinaryDataArrayType, DataArray};
 use mzpeaks;
 use mzpeaks::peak::MZPoint;
 use mzpeaks::prelude::*;
-use mzpeaks::{IntensityMeasurement, KnownCharge, CoordinateLike, MZ, Mass};
+use mzpeaks::{CoordinateLike, IntensityMeasurement, KnownCharge, Mass, MZ};
 
 use mzdata::spectrum::bindata::{
     ArrayRetrievalError, ArrayType, BinaryCompressionType, BuildArrayMapFrom, BuildFromArrayMap,
@@ -61,8 +61,8 @@ impl CoordinateLike<MZ> for DeconvolvedSolutionPeak {
     }
 }
 
-const DECONVOLUTION_SCORE_ARRAY_NAME: &'static str = "deconvolution score array";
-const ISOTOPIC_ENVELOPE_ARRAY_NAME: &'static str = "isotopic envelopes array";
+const DECONVOLUTION_SCORE_ARRAY_NAME: &str = "deconvolution score array";
+const ISOTOPIC_ENVELOPE_ARRAY_NAME: &str = "isotopic envelopes array";
 
 impl BuildFromArrayMap for DeconvolvedSolutionPeak {
     fn try_from_arrays(arrays: &BinaryArrayMap) -> Result<Vec<Self>, ArrayRetrievalError> {

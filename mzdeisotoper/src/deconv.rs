@@ -12,8 +12,6 @@ use mzdeisotope::{
     solution::DeconvolvedSolutionPeak,
 };
 
-use tracing;
-
 use crate::{
     args::{DeconvolutionParams, PrecursorProcessing, SignalParams},
     progress::ProgressRecord,
@@ -58,7 +56,7 @@ pub fn purities_of(
     purity_estimator: &PrecursorPurityEstimator,
     group: &SpectrumGroupType,
     targets: &PrecursorPeakMapper,
-    is_dia: bool
+    is_dia: bool,
 ) -> HashMap<usize, (f32, Vec<Coisolation>)> {
     let mut purities = HashMap::new();
     if let Some(precursor_scan) = group.precursor() {
@@ -67,14 +65,21 @@ pub fn purities_of(
                 if is_dia {
                     let coisolations = purity_estimator.coisolation(
                         precursor_scan.deconvoluted_peaks.as_ref().unwrap(),
-                        &DeconvolvedSolutionPeak::new(prec.ion().mz, 0.0, 1, 0, 0.0, Box::default()),
+                        &DeconvolvedSolutionPeak::new(
+                            prec.ion().mz,
+                            0.0,
+                            1,
+                            0,
+                            0.0,
+                            Box::default(),
+                        ),
                         Some(&prec.isolation_window),
                         0.1,
                         true,
                     );
                     purities.insert(i, (0.0, coisolations));
                 } else {
-                    targets.find_peak_for_mz(prec.ion().mz).map(|peak| {
+                    if let Some(peak) = targets.find_peak_for_mz(prec.ion().mz) {
                         if is_dia {
                             // For DIA mode, purity isn't meaningful
                         } else {
@@ -92,8 +97,7 @@ pub fn purities_of(
                             );
                             purities.insert(i, (purity, coisolations));
                         }
-                        ()
-                    });
+                    }
                 }
             }
         });
@@ -136,12 +140,14 @@ pub fn pick_ms1_peaks(
             }
             match precursor_processing {
                 PrecursorProcessing::SelectedPrecursors => {
-                    scan.pick_peaks_in_intervals(1.0, &selected_mz_ranges)
+                    scan.pick_peaks_in_intervals(1.0, selected_mz_ranges)
                         .unwrap();
                     scan.description_mut().signal_continuity = SignalContinuity::Centroid;
                     Some(scan.peaks.clone().unwrap())
                 }
-                PrecursorProcessing::Full | PrecursorProcessing::MS1Only | PrecursorProcessing::DIA => {
+                PrecursorProcessing::Full
+                | PrecursorProcessing::MS1Only
+                | PrecursorProcessing::DIA => {
                     scan.pick_peaks(1.0).unwrap();
                     scan.description_mut().signal_continuity = SignalContinuity::Centroid;
                     Some(scan.peaks.clone().unwrap())
@@ -192,10 +198,10 @@ pub fn deconvolution_transform<
         vec![]
     } else {
         group
-        .products()
-        .iter()
-        .flat_map(|s| s.precursor().map(|prec| prec.ion().mz))
-        .collect()
+            .products()
+            .iter()
+            .flat_map(|s| s.precursor().map(|prec| prec.ion().mz))
+            .collect()
     };
 
     let purity_estimator = PrecursorPurityEstimator::default();
@@ -275,7 +281,7 @@ pub fn deconvolution_transform<
             let mut msn_charge_range = msn_deconv_params.charge_range;
             msn_charge_range.1 = msn_charge_range.1.max(precursor_charge);
 
-            let peaks = pick_msn_peaks(scan, &signal_processing_params);
+            let peaks = pick_msn_peaks(scan, signal_processing_params);
 
             let deconvoluted_peaks = msn_engine
                 .deconvolute_peaks(
@@ -289,16 +295,14 @@ pub fn deconvolution_transform<
             prog.msn_spectra += 1;
             scan.deconvoluted_peaks = Some(deconvoluted_peaks);
             if is_dia {
-                scan.precursor_mut().map(|prec| {
+                if let Some(prec) = scan.precursor_mut() {
                     let (_, coisolated) = purities.remove(&scan_i).unwrap_or_default();
                     coisolated.iter().for_each(|c| {
                         prec.ion_mut().params_mut().push(coisolation_to_param(c));
                     });
-                    ()
-                });
-            }
-            else {
-                scan.precursor_mut().map(|prec| {
+                }
+            } else {
+                if let Some(prec) = scan.precursor_mut() {
                     let target_mz = prec.mz();
                     let _ = precursor_map
                         .find_mz(target_mz)
@@ -345,7 +349,6 @@ pub fn deconvolution_transform<
                                     prog.precursors_defaulted += 1;
                                 }
                             }
-                            ()
                         })
                         .or_else(|| {
                             let prec_ion = prec.ion_mut();
@@ -360,9 +363,7 @@ pub fn deconvolution_transform<
                             prog.precursors_defaulted += 1;
                             None
                         });
-
-                    ()
-                });
+                }
             }
         });
     (group_idx, group, prog)

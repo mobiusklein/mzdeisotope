@@ -25,7 +25,7 @@ pub enum DeconvolutionError {
     #[error("Failed to resolve a deconvolution solution")]
     FailedToResolveSolution,
     #[error("Failed to resolve a fit reference {0:?}")]
-    FailedToResolveFit(FitRef)
+    FailedToResolveFit(FitRef),
 }
 
 pub trait IsotopicPatternFitter<C: CentroidLike> {
@@ -118,13 +118,13 @@ pub trait IsotopicPatternFitter<C: CentroidLike> {
     fn create_key(&mut self, mz: f64) -> PeakKey;
     fn peak_count(&self) -> usize;
 
-    #[tracing::instrument(skip_all, level="trace")]
+    #[tracing::instrument(skip_all, level = "trace")]
     fn merge_isobaric_peaks(
         &self,
         mut peaks: Vec<DeconvolvedSolutionPeak>,
     ) -> Vec<DeconvolvedSolutionPeak> {
         let mut acc = Vec::with_capacity(peaks.len());
-        if peaks.len() == 0 {
+        if peaks.is_empty() {
             return acc;
         }
         peaks.sort_by(|a, b| match a.charge.cmp(&b.charge) {
@@ -435,7 +435,10 @@ pub trait ExhaustivePeakSearch<C: CentroidLike>:
 pub trait GraphDependentSearch<C: CentroidLike>: ExhaustivePeakSearch<C> {
     fn add_fit_dependence(&mut self, fit: IsotopicFit);
 
-    fn select_best_disjoint_subgraphs(&mut self, fit_accumulator: &mut Vec<IsotopicFit>) -> Result<(), DeconvolutionError>;
+    fn select_best_disjoint_subgraphs(
+        &mut self,
+        fit_accumulator: &mut Vec<IsotopicFit>,
+    ) -> Result<(), DeconvolutionError>;
 
     fn _explore_local<I: ChargeIterator>(
         &mut self,

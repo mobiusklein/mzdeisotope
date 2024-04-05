@@ -5,17 +5,18 @@ use std::ops::Range;
 use crate::charge::ChargeRangeIter;
 use crate::isotopic_fit::IsotopicFit;
 use crate::isotopic_model::{
-    CachingIsotopicModel, IsotopicPatternGenerator, IsotopicPatternParams, TheoreticalIsotopicDistributionScalingMethod,
+    CachingIsotopicModel, IsotopicPatternGenerator, IsotopicPatternParams,
+    TheoreticalIsotopicDistributionScalingMethod,
 };
 use crate::peak_graph::{DependenceCluster, FitRef, PeakDependenceGraph, SubgraphSolverMethod};
-use crate::peaks::{PeakKey, WorkingPeakSet, PeakLike};
+use crate::peaks::{PeakKey, PeakLike, WorkingPeakSet};
 use crate::scorer::{
     IsotopicFitFilter, IsotopicPatternScorer, MSDeconvScorer, MaximizingFitFilter, ScoreType,
 };
 
 use crate::deconv_traits::{
-    ExhaustivePeakSearch, GraphDependentSearch, IsotopicDeconvolutionAlgorithm,
-    IsotopicPatternFitter, RelativePeakSearch, TargetedDeconvolution, DeconvolutionError
+    DeconvolutionError, ExhaustivePeakSearch, GraphDependentSearch, IsotopicDeconvolutionAlgorithm,
+    IsotopicPatternFitter, RelativePeakSearch, TargetedDeconvolution,
 };
 use crate::solution::DeconvolvedSolutionPeak;
 
@@ -47,15 +48,11 @@ pub struct DeconvoluterBuilder<
     scorer: Option<S>,
     isotopic_model: Option<I>,
     peaks: Option<MZPeakSetType<C>>,
-    use_quick_charge: bool
+    use_quick_charge: bool,
 }
 
-impl<
-        C: PeakLike,
-        I: IsotopicPatternGenerator,
-        S: IsotopicPatternScorer,
-        F: IsotopicFitFilter,
-    > DeconvoluterBuilder<C, I, S, F>
+impl<C: PeakLike, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: IsotopicFitFilter>
+    DeconvoluterBuilder<C, I, S, F>
 {
     pub fn new() -> Self {
         Self {
@@ -105,7 +102,7 @@ impl<
             self.scorer.unwrap(),
             self.fit_filter.unwrap(),
             self.max_missed_peaks.unwrap(),
-            self.use_quick_charge
+            self.use_quick_charge,
         )
     }
 
@@ -116,7 +113,7 @@ impl<
             self.scorer.unwrap(),
             self.fit_filter.unwrap(),
             self.max_missed_peaks.unwrap(),
-            self.use_quick_charge
+            self.use_quick_charge,
         )
     }
 }
@@ -135,24 +132,16 @@ pub struct DeconvoluterType<
     pub scaling_method: TheoreticalIsotopicDistributionScalingMethod,
     pub max_missed_peaks: u16,
     pub use_quick_charge: bool,
-    targets: Vec<TrivialTargetLink>
+    targets: Vec<TrivialTargetLink>,
 }
 
-impl<
-        C: PeakLike,
-        I: IsotopicPatternGenerator,
-        S: IsotopicPatternScorer,
-        F: IsotopicFitFilter,
-    > RelativePeakSearch<C> for DeconvoluterType<C, I, S, F>
+impl<C: PeakLike, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: IsotopicFitFilter>
+    RelativePeakSearch<C> for DeconvoluterType<C, I, S, F>
 {
 }
 
-impl<
-        C: PeakLike,
-        I: IsotopicPatternGenerator,
-        S: IsotopicPatternScorer,
-        F: IsotopicFitFilter,
-    > ExhaustivePeakSearch<C> for DeconvoluterType<C, I, S, F>
+impl<C: PeakLike, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: IsotopicFitFilter>
+    ExhaustivePeakSearch<C> for DeconvoluterType<C, I, S, F>
 {
     fn check_isotopic_fit(&self, fit: &IsotopicFit) -> bool {
         if fit.missed_peaks > self.max_missed_peaks {
@@ -161,7 +150,11 @@ impl<
         self.fit_filter.test(fit)
     }
 
-    fn quick_charge(&self, index: usize, charge_range: crate::charge::ChargeRange) -> crate::charge::ChargeListIter {
+    fn quick_charge(
+        &self,
+        index: usize,
+        charge_range: crate::charge::ChargeRange,
+    ) -> crate::charge::ChargeListIter {
         self.peaks.quick_charge(index, charge_range)
     }
 
@@ -169,16 +162,10 @@ impl<
     fn use_quick_charge(&self) -> bool {
         self.use_quick_charge
     }
-
-
 }
 
-impl<
-        C: PeakLike,
-        I: IsotopicPatternGenerator,
-        S: IsotopicPatternScorer,
-        F: IsotopicFitFilter,
-    > DeconvoluterType<C, I, S, F>
+impl<C: PeakLike, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: IsotopicFitFilter>
+    DeconvoluterType<C, I, S, F>
 {
     pub fn new(
         peaks: MZPeakSetType<C>,
@@ -186,7 +173,7 @@ impl<
         scorer: S,
         fit_filter: F,
         max_missed_peaks: u16,
-        use_quick_charge: bool
+        use_quick_charge: bool,
     ) -> Self {
         Self {
             peaks: WorkingPeakSet::new(peaks),
@@ -196,7 +183,7 @@ impl<
             scaling_method: TheoreticalIsotopicDistributionScalingMethod::default(),
             max_missed_peaks,
             targets: Vec::new(),
-            use_quick_charge
+            use_quick_charge,
         }
     }
 
@@ -222,12 +209,8 @@ impl<
     }
 }
 
-impl<
-        C: PeakLike,
-        I: IsotopicPatternGenerator,
-        S: IsotopicPatternScorer,
-        F: IsotopicFitFilter,
-    > IsotopicPatternFitter<C> for DeconvoluterType<C, I, S, F>
+impl<C: PeakLike, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: IsotopicFitFilter>
+    IsotopicPatternFitter<C> for DeconvoluterType<C, I, S, F>
 {
     fn fit_theoretical_isotopic_pattern_with_params(
         &mut self,
@@ -342,12 +325,8 @@ pub type AveragineDeconvoluter<'lifespan> = DeconvoluterType<
     MaximizingFitFilter,
 >;
 
-impl<
-        C: PeakLike,
-        I: IsotopicPatternGenerator,
-        S: IsotopicPatternScorer,
-        F: IsotopicFitFilter,
-    > TargetedDeconvolution<C> for DeconvoluterType<C, I, S, F>
+impl<C: PeakLike, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: IsotopicFitFilter>
+    TargetedDeconvolution<C> for DeconvoluterType<C, I, S, F>
 {
     type TargetSolution = TrivialTargetLink;
 
@@ -392,7 +371,7 @@ impl<
         if let Some(target) = target.link.as_ref() {
             solution
                 .all_peaks_for(target.neutral_mass, Tolerance::PPM(1.0))
-                .into_iter()
+                .iter()
                 .find(|p| *p == target)
         } else {
             None
@@ -400,12 +379,8 @@ impl<
     }
 }
 
-impl<
-        C: PeakLike,
-        I: IsotopicPatternGenerator,
-        S: IsotopicPatternScorer,
-        F: IsotopicFitFilter,
-    > IsotopicDeconvolutionAlgorithm<C> for DeconvoluterType<C, I, S, F>
+impl<C: PeakLike, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: IsotopicFitFilter>
+    IsotopicDeconvolutionAlgorithm<C> for DeconvoluterType<C, I, S, F>
 {
     fn deconvolve(
         &mut self,
@@ -479,12 +454,8 @@ pub struct GraphDeconvoluterType<
     solutions: Vec<PeakDepenceGraphTargetLink>,
 }
 
-impl<
-        C: PeakLike,
-        I: IsotopicPatternGenerator,
-        S: IsotopicPatternScorer,
-        F: IsotopicFitFilter,
-    > GraphDeconvoluterType<C, I, S, F>
+impl<C: PeakLike, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: IsotopicFitFilter>
+    GraphDeconvoluterType<C, I, S, F>
 {
     pub fn new(
         peaks: MZPeakSetType<C>,
@@ -492,10 +463,16 @@ impl<
         scorer: S,
         fit_filter: F,
         max_missed_peaks: u16,
-        use_quick_charge: bool
+        use_quick_charge: bool,
     ) -> Self {
-        let inner =
-            DeconvoluterType::new(peaks, isotopic_model, scorer, fit_filter, max_missed_peaks, use_quick_charge);
+        let inner = DeconvoluterType::new(
+            peaks,
+            isotopic_model,
+            scorer,
+            fit_filter,
+            max_missed_peaks,
+            use_quick_charge,
+        );
         let peak_graph = PeakDependenceGraph::new(inner.scorer.interpretation());
 
         Self {
@@ -527,12 +504,8 @@ impl<
     }
 }
 
-impl<
-        C: PeakLike,
-        I: IsotopicPatternGenerator,
-        S: IsotopicPatternScorer,
-        F: IsotopicFitFilter,
-    > GraphDeconvoluterType<C, I, S, F>
+impl<C: PeakLike, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: IsotopicFitFilter>
+    GraphDeconvoluterType<C, I, S, F>
 {
     fn solve_subgraph_top(
         &mut self,
@@ -541,13 +514,10 @@ impl<
         peak_accumulator: &mut Vec<IsotopicFit>,
     ) -> Result<(), DeconvolutionError> {
         if let Some(best_fit_key) = cluster.best_fit() {
-            if let Some((_, fit)) = fits
-                .into_iter()
-                .find(|(k, _)| k.key == best_fit_key.key) {
-                    peak_accumulator.push(fit);
+            if let Some((_, fit)) = fits.into_iter().find(|(k, _)| k.key == best_fit_key.key) {
+                peak_accumulator.push(fit);
                 Ok(())
-            }
-            else {
+            } else {
                 Err(DeconvolutionError::FailedToResolveFit(*best_fit_key))
             }
         } else {
@@ -556,12 +526,8 @@ impl<
     }
 }
 
-impl<
-        C: PeakLike,
-        I: IsotopicPatternGenerator,
-        S: IsotopicPatternScorer,
-        F: IsotopicFitFilter,
-    > IsotopicPatternFitter<C> for GraphDeconvoluterType<C, I, S, F>
+impl<C: PeakLike, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: IsotopicFitFilter>
+    IsotopicPatternFitter<C> for GraphDeconvoluterType<C, I, S, F>
 {
     fn fit_theoretical_isotopic_pattern_with_params(
         &mut self,
@@ -644,27 +610,23 @@ impl<
     }
 }
 
-impl<
-        C: PeakLike,
-        I: IsotopicPatternGenerator,
-        S: IsotopicPatternScorer,
-        F: IsotopicFitFilter,
-    > RelativePeakSearch<C> for GraphDeconvoluterType<C, I, S, F>
+impl<C: PeakLike, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: IsotopicFitFilter>
+    RelativePeakSearch<C> for GraphDeconvoluterType<C, I, S, F>
 {
 }
 
-impl<
-        C: PeakLike,
-        I: IsotopicPatternGenerator,
-        S: IsotopicPatternScorer,
-        F: IsotopicFitFilter,
-    > ExhaustivePeakSearch<C> for GraphDeconvoluterType<C, I, S, F>
+impl<C: PeakLike, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: IsotopicFitFilter>
+    ExhaustivePeakSearch<C> for GraphDeconvoluterType<C, I, S, F>
 {
     fn check_isotopic_fit(&self, fit: &IsotopicFit) -> bool {
         self.inner.check_isotopic_fit(fit)
     }
 
-    fn quick_charge(&self, index: usize, charge_range: crate::charge::ChargeRange) -> crate::charge::ChargeListIter {
+    fn quick_charge(
+        &self,
+        index: usize,
+        charge_range: crate::charge::ChargeRange,
+    ) -> crate::charge::ChargeListIter {
         self.inner.quick_charge(index, charge_range)
     }
 
@@ -674,12 +636,8 @@ impl<
     }
 }
 
-impl<
-        C: PeakLike,
-        I: IsotopicPatternGenerator,
-        S: IsotopicPatternScorer,
-        F: IsotopicFitFilter,
-    > GraphDependentSearch<C> for GraphDeconvoluterType<C, I, S, F>
+impl<C: PeakLike, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: IsotopicFitFilter>
+    GraphDependentSearch<C> for GraphDeconvoluterType<C, I, S, F>
 {
     fn add_fit_dependence(&mut self, fit: IsotopicFit) {
         if fit.experimental.is_empty() || !self.check_isotopic_fit(&fit) {
@@ -690,21 +648,21 @@ impl<
         self.peak_graph.add_fit(fit, start, end)
     }
 
-    fn select_best_disjoint_subgraphs(&mut self, fit_accumulator: &mut Vec<IsotopicFit>) -> Result<(), DeconvolutionError> {
+    fn select_best_disjoint_subgraphs(
+        &mut self,
+        fit_accumulator: &mut Vec<IsotopicFit>,
+    ) -> Result<(), DeconvolutionError> {
         let solutions = self.peak_graph.solutions(SubgraphSolverMethod::Greedy);
-        let res: Result<(), DeconvolutionError> = solutions.into_iter().map(|(cluster, fits)| {
-            self.solve_subgraph_top(cluster, fits, fit_accumulator)
-        }).collect();
+        let res: Result<(), DeconvolutionError> =
+            solutions.into_iter().try_for_each(|(cluster, fits)| {
+                self.solve_subgraph_top(cluster, fits, fit_accumulator)
+            });
         res
     }
 }
 
-impl<
-        C: PeakLike,
-        I: IsotopicPatternGenerator,
-        S: IsotopicPatternScorer,
-        F: IsotopicFitFilter,
-    > TargetedDeconvolution<C> for GraphDeconvoluterType<C, I, S, F>
+impl<C: PeakLike, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: IsotopicFitFilter>
+    TargetedDeconvolution<C> for GraphDeconvoluterType<C, I, S, F>
 {
     type TargetSolution = PeakDepenceGraphTargetLink;
 
@@ -744,7 +702,7 @@ impl<
             if let Some(target) = target.link.as_ref() {
                 solution
                     .all_peaks_for(target.neutral_mass, Tolerance::PPM(1.0))
-                    .into_iter()
+                    .iter()
                     .find(|p| *p == target)
             } else {
                 None
@@ -755,12 +713,8 @@ impl<
     }
 }
 
-impl<
-        C: PeakLike,
-        I: IsotopicPatternGenerator,
-        S: IsotopicPatternScorer,
-        F: IsotopicFitFilter,
-    > IsotopicDeconvolutionAlgorithm<C> for GraphDeconvoluterType<C, I, S, F>
+impl<C: PeakLike, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: IsotopicFitFilter>
+    IsotopicDeconvolutionAlgorithm<C> for GraphDeconvoluterType<C, I, S, F>
 {
     fn deconvolve(
         &mut self,
@@ -854,7 +808,7 @@ impl<
             .for_each(|p| {
                 self.solutions
                     .iter_mut()
-                    .filter(|t| match t.query {
+                    .find(|t| match t.query {
                         PeakKey::Matched(k) => k == 0 && p.index == u32::MAX || p.index == k,
                         PeakKey::Placeholder(j) => {
                             if !mask.contains(&j) {
@@ -865,7 +819,6 @@ impl<
                             false
                         }
                     })
-                    .next()
                     .and_then(|t| -> Option<i8> {
                         t.link = Some(p.clone());
                         None
@@ -930,10 +883,16 @@ mod test {
             MSDeconvScorer::default(),
             MaximizingFitFilter::default(),
             1,
-            false
+            false,
         );
-        let solution_space =
-            task.find_all_peak_charge_pairs::<ChargeRangeIter>(300.0, Tolerance::PPM(10.0), (1, 8).into(), 1, 1, true);
+        let solution_space = task.find_all_peak_charge_pairs::<ChargeRangeIter>(
+            300.0,
+            Tolerance::PPM(10.0),
+            (1, 8).into(),
+            1,
+            1,
+            true,
+        );
         assert_eq!(solution_space.len(), 8);
         let n_matched = solution_space
             .iter()
@@ -962,16 +921,18 @@ mod test {
             MSDeconvScorer::default(),
             MaximizingFitFilter::new(10.0),
             3,
-            false
+            false,
         );
 
-        let fits = deconvoluter.graph_step_deconvolve(
-            Tolerance::PPM(10.0),
-            (1, 8),
-            1,
-            1,
-            IsotopicPatternParams::default(),
-        ).unwrap();
+        let fits = deconvoluter
+            .graph_step_deconvolve(
+                Tolerance::PPM(10.0),
+                (1, 8),
+                1,
+                1,
+                IsotopicPatternParams::default(),
+            )
+            .unwrap();
 
         let best_fit = fits.iter().max().unwrap();
         assert_eq!(best_fit.charge, 4);
@@ -1001,19 +962,21 @@ mod test {
             MSDeconvScorer::default(),
             MaximizingFitFilter::new(10.0),
             3,
-            false
+            false,
         );
 
         let isotopic_params = IsotopicPatternParams::default();
-        let dpeaks = deconvoluter.deconvolve(
-            Tolerance::PPM(10.0),
-            (1, 8),
-            1,
-            1,
-            isotopic_params,
-            1e-3,
-            10,
-        ).unwrap();
+        let dpeaks = deconvoluter
+            .deconvolve(
+                Tolerance::PPM(10.0),
+                (1, 8),
+                1,
+                1,
+                isotopic_params,
+                1e-3,
+                10,
+            )
+            .unwrap();
 
         assert_eq!(dpeaks.len(), 558);
         let best_fit = dpeaks
@@ -1054,22 +1017,24 @@ mod test {
             MSDeconvScorer::default(),
             MaximizingFitFilter::new(10.0),
             3,
-            true
+            true,
         );
 
         // If the cache is not populated, this test is not stable
         deconvoluter.populate_isotopic_model_cache(80.0, 3000.0, 1, 8, PROTON, 0.95, 0.001);
 
         let isotopic_params = IsotopicPatternParams::default();
-        let dpeaks = deconvoluter.deconvolve(
-            Tolerance::PPM(10.0),
-            (1, 8),
-            1,
-            1,
-            isotopic_params,
-            1e-3,
-            10,
-        ).unwrap();
+        let dpeaks = deconvoluter
+            .deconvolve(
+                Tolerance::PPM(10.0),
+                (1, 8),
+                1,
+                1,
+                isotopic_params,
+                1e-3,
+                10,
+            )
+            .unwrap();
 
         let best_fit = dpeaks
             .iter()
@@ -1110,7 +1075,7 @@ mod test {
             MSDeconvScorer::default(),
             MaximizingFitFilter::new(0.0),
             3,
-            false
+            false,
         );
         let isotopic_params = IsotopicPatternParams::default();
         deconvoluter.isotopic_model.populate_cache(

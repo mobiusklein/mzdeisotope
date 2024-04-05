@@ -2,8 +2,8 @@ use std::env;
 use std::fmt::Display;
 use std::io;
 
-use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 use itertools::Itertools;
+use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 use mzdata::io::mzml::MzMLReaderType;
 use mzdata::prelude::*;
@@ -32,13 +32,14 @@ pub fn isclose<T: Float>(a: T, b: T, delta: T) -> bool {
 
 fn main() -> io::Result<()> {
     tracing_subscriber::registry()
-    .with(
-        fmt::layer().compact().with_writer(io::stderr).with_filter(
-            EnvFilter::builder()
-                .with_default_directive(tracing::Level::INFO.into())
-                .from_env_lossy(),
-        ),
-    ).init();
+        .with(
+            fmt::layer().compact().with_writer(io::stderr).with_filter(
+                EnvFilter::builder()
+                    .with_default_directive(tracing::Level::INFO.into())
+                    .from_env_lossy(),
+            ),
+        )
+        .init();
     let mut args = env::args().skip(1);
 
     let path1 = args.next().unwrap_or_else(|| panic!("Missing first file"));
@@ -85,7 +86,8 @@ fn main() -> io::Result<()> {
                                 p1.neutral_mass,
                                 p1.intensity - p2.intensity,
                                 (p1.intensity - p2.intensity) / p1.intensity,
-                                p1.score - p2.score, (p1.score - p2.score) / p1.score
+                                p1.score - p2.score,
+                                (p1.score - p2.score) / p1.score,
                             ));
                         } else if !isclose(p1.score, p2.score, 1e-3) {
                             mismatched_scores += 1;
@@ -93,7 +95,8 @@ fn main() -> io::Result<()> {
                                 p1.neutral_mass,
                                 p1.intensity - p2.intensity,
                                 (p1.intensity - p2.intensity) / p1.intensity,
-                                p1.score - p2.score, (p1.score - p2.score) / p1.score
+                                p1.score - p2.score,
+                                (p1.score - p2.score) / p1.score,
                             ));
                         }
 

@@ -7,7 +7,6 @@ use crate::isotopic_fit::IsotopicFit;
 
 pub type ScoreType = f32;
 
-
 #[derive(Debug, Clone, Copy)]
 pub enum ScoreInterpretation {
     HigherIsBetter,
@@ -94,10 +93,8 @@ impl IsotopicPatternScorer for MSDeconvScorer {
     }
 }
 
-
 #[derive(Default, Debug, Clone, Copy)]
 pub struct GTestScorer {}
-
 
 impl GTestScorer {
     pub fn score<C: CentroidLike>(
@@ -105,14 +102,17 @@ impl GTestScorer {
         experimental: &[C],
         theoretical: &TheoreticalIsotopicPattern,
     ) -> ScoreType {
-        2.0 * experimental.iter().zip(theoretical.iter()).map(|(o, e)| {
-            let oi = o.intensity();
-            let ei = e.intensity();
-            (oi * (oi.ln() - ei.ln())) as ScoreType
-        }).sum::<ScoreType>()
+        2.0 * experimental
+            .iter()
+            .zip(theoretical.iter())
+            .map(|(o, e)| {
+                let oi = o.intensity();
+                let ei = e.intensity();
+                (oi * (oi.ln() - ei.ln())) as ScoreType
+            })
+            .sum::<ScoreType>()
     }
 }
-
 
 impl IsotopicPatternScorer for GTestScorer {
     fn score<C: CentroidLike>(
@@ -128,10 +128,8 @@ impl IsotopicPatternScorer for GTestScorer {
     }
 }
 
-
 #[derive(Default, Debug, Clone, Copy)]
 pub struct ScaledGTestScorer {}
-
 
 impl ScaledGTestScorer {
     pub fn score<C: CentroidLike>(
@@ -141,14 +139,17 @@ impl ScaledGTestScorer {
     ) -> ScoreType {
         let total_o: f32 = experimental.iter().map(|p| p.intensity()).sum();
         let total_e: f32 = theoretical.iter().map(|p| p.intensity()).sum();
-        2.0 * experimental.iter().zip(theoretical.iter()).map(|(o, e)| {
-            let oi = o.intensity() / total_o;
-            let ei = e.intensity() / total_e;
-            (oi * (oi.ln() - ei.ln())) as ScoreType
-        }).sum::<ScoreType>()
+        2.0 * experimental
+            .iter()
+            .zip(theoretical.iter())
+            .map(|(o, e)| {
+                let oi = o.intensity() / total_o;
+                let ei = e.intensity() / total_e;
+                (oi * (oi.ln() - ei.ln())) as ScoreType
+            })
+            .sum::<ScoreType>()
     }
 }
-
 
 impl IsotopicPatternScorer for ScaledGTestScorer {
     fn score<C: CentroidLike>(
@@ -164,12 +165,11 @@ impl IsotopicPatternScorer for ScaledGTestScorer {
     }
 }
 
-
 #[derive(Debug, Clone, Copy)]
 pub struct PenalizedMSDeconvScorer {
     msdeconv: MSDeconvScorer,
     penalizer: ScaledGTestScorer,
-    penalty_factor: ScoreType
+    penalty_factor: ScoreType,
 }
 
 impl IsotopicPatternScorer for PenalizedMSDeconvScorer {
@@ -184,7 +184,11 @@ impl IsotopicPatternScorer for PenalizedMSDeconvScorer {
 
 impl Default for PenalizedMSDeconvScorer {
     fn default() -> Self {
-        Self { msdeconv: Default::default(), penalizer: Default::default(), penalty_factor: 2.0 }
+        Self {
+            msdeconv: Default::default(),
+            penalizer: Default::default(),
+            penalty_factor: 2.0,
+        }
     }
 }
 
@@ -193,7 +197,7 @@ impl PenalizedMSDeconvScorer {
         Self {
             msdeconv: MSDeconvScorer::new(error_tolerance),
             penalizer: ScaledGTestScorer::default(),
-            penalty_factor
+            penalty_factor,
         }
     }
 
@@ -214,7 +218,7 @@ pub trait IsotopicFitFilter {
         fits
     }
 
-    fn select<I: Iterator<Item=IsotopicFit>>(&self, fits: I) -> Option<IsotopicFit>;
+    fn select<I: Iterator<Item = IsotopicFit>>(&self, fits: I) -> Option<IsotopicFit>;
 
     fn test(&self, fit: &IsotopicFit) -> bool;
 }
@@ -235,16 +239,9 @@ impl IsotopicFitFilter for MaximizingFitFilter {
         fit.score >= self.threshold
     }
 
-    fn select<I: Iterator<Item=IsotopicFit>>(&self, fits: I) -> Option<IsotopicFit> {
-        fits.max_by(|a, b| {
-            a.score.partial_cmp(&b.score).unwrap()
-        }).and_then(|f| {
-            if self.test(&f) {
-                Some(f)
-            } else {
-                None
-            }
-        })
+    fn select<I: Iterator<Item = IsotopicFit>>(&self, fits: I) -> Option<IsotopicFit> {
+        fits.max_by(|a, b| a.score.partial_cmp(&b.score).unwrap())
+            .and_then(|f| if self.test(&f) { Some(f) } else { None })
     }
 }
 
@@ -270,27 +267,19 @@ impl IsotopicFitFilter for MinimizingFitFilter {
         self.threshold >= fit.score
     }
 
-    fn select<I: Iterator<Item=IsotopicFit>>(&self, fits: I) -> Option<IsotopicFit> {
-        fits.min_by(|a, b| {
-            a.score.partial_cmp(&b.score).unwrap()
-        }).and_then(|f| {
-            if self.test(&f) {
-                Some(f)
-            } else {
-                None
-            }
-        })
+    fn select<I: Iterator<Item = IsotopicFit>>(&self, fits: I) -> Option<IsotopicFit> {
+        fits.min_by(|a, b| a.score.partial_cmp(&b.score).unwrap())
+            .and_then(|f| if self.test(&f) { Some(f) } else { None })
     }
 }
-
 
 #[cfg(test)]
 mod test {
 
-    use mzpeaks::CentroidPeak;
     use chemical_elements::isotopic_pattern::{Peak, TheoreticalIsotopicPattern};
+    use mzpeaks::CentroidPeak;
 
-    use super::{MSDeconvScorer, GTestScorer, ScaledGTestScorer};
+    use super::{GTestScorer, MSDeconvScorer, ScaledGTestScorer};
 
     fn make_experimental_peaks() -> Vec<CentroidPeak> {
         vec![
@@ -302,24 +291,31 @@ mod test {
     }
 
     fn make_theoretical() -> TheoreticalIsotopicPattern {
-        TheoreticalIsotopicPattern::new(vec![
-            Peak { mz: 739.920306, intensity: 8310.933747, charge: -3 },
-            Peak {
-                mz: 740.254733,
-                intensity: 8061.025466,
-                charge: -3
-            },
-            Peak {
-                mz: 740.588994,
-                intensity: 4926.998052,
-                charge: -3
-            },
-            Peak {
-                mz: 740.923235,
-                intensity: 2250.893651,
-                charge: -3
-            },
-        ], 739.920306)
+        TheoreticalIsotopicPattern::new(
+            vec![
+                Peak {
+                    mz: 739.920306,
+                    intensity: 8310.933747,
+                    charge: -3,
+                },
+                Peak {
+                    mz: 740.254733,
+                    intensity: 8061.025466,
+                    charge: -3,
+                },
+                Peak {
+                    mz: 740.588994,
+                    intensity: 4926.998052,
+                    charge: -3,
+                },
+                Peak {
+                    mz: 740.923235,
+                    intensity: 2250.893651,
+                    charge: -3,
+                },
+            ],
+            739.920306,
+        )
     }
 
     #[test]

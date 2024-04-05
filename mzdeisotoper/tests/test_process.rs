@@ -8,9 +8,9 @@ fn test_file_missing() -> Result<(), Box<dyn Error>> {
     let mut cmd = Command::cargo_bin("mzdeisotoper")?;
 
     cmd.arg("not_real.mzML").arg("-o").arg("-");
-    cmd.assert().failure().stderr(predicate::str::contains(
-        "NotFound",
-    ));
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("NotFound"));
     Ok(())
 }
 
@@ -55,9 +55,9 @@ fn test_run_subset_stdin() -> Result<(), Box<dyn Error>> {
     let mut buf = Vec::new();
     source.read_to_end(&mut buf)?;
     cmd.env("RUST_LOG", "info");
-    cmd.pipe_stdin("./tests/data/batching_test.mzML.gz").unwrap();
-    cmd.arg("-")
-        .args(["-o", "-", "-r", "120-120.1"]);
+    cmd.pipe_stdin("./tests/data/batching_test.mzML.gz")
+        .unwrap();
+    cmd.arg("-").args(["-o", "-", "-r", "120-120.1"]);
     let result = cmd.assert().success();
     result
         .stderr(predicate::str::contains("MS1 Spectra: 1"))

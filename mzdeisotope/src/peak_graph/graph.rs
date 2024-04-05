@@ -121,8 +121,7 @@ impl PeakDependenceGraph {
                     if self.fit_nodes.dependencies[candidate_key]
                         .experimental
                         .iter()
-                        .position(|k| k == mono)
-                        .is_some()
+                        .any(|k| k == mono)
                     {
                         match score_ordering {
                             ScoreInterpretation::HigherIsBetter => {

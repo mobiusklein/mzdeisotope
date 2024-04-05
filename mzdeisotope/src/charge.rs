@@ -5,7 +5,6 @@ use thiserror::Error;
 
 use mzpeaks::prelude::*;
 
-
 /// A charge range is just a pair of integers
 pub type ChargeRange = (i32, i32);
 
@@ -37,12 +36,10 @@ impl TryFrom<(i32, i32)> for ChargeRangeV2 {
             Err(ChargeRangeError::SignsMustMatch)
         } else if a == 0 || b == 0 {
             Err(ChargeRangeError::ChargeCannotBeZero)
+        } else if a.abs() < b.abs() {
+            Ok(ChargeRangeV2(a, b))
         } else {
-            if a.abs() < b.abs() {
-                Ok(ChargeRangeV2(a, b))
-            } else {
-                Ok(ChargeRangeV2(b, a))
-            }
+            Ok(ChargeRangeV2(b, a))
         }
     }
 }

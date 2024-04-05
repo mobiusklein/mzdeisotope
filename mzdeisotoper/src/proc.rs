@@ -17,14 +17,12 @@ use mzpeaks::Tolerance;
 
 use mzdeisotope::scorer::{IsotopicFitFilter, IsotopicPatternScorer};
 
+use crate::args::{DeconvolutionBuilderParams, PrecursorProcessing, SignalParams};
 use crate::deconv::deconvolution_transform;
 use crate::progress::ProgressRecord;
-use crate::time_range::TimeRange;
 use crate::selection_targets::{MSnTargetTracking, SpectrumGroupTiming};
+use crate::time_range::TimeRange;
 use crate::types::{CPeak, DPeak, SpectrumGroupType, SpectrumType};
-use crate::args::{
-    DeconvolutionBuilderParams, PrecursorProcessing, SignalParams,
-};
 
 pub fn prepare_procesing<
     R: RandomAccessSpectrumIterator<CPeak, DPeak, SpectrumType> + Send + MSDataFileMetadata,
@@ -77,11 +75,10 @@ pub fn prepare_procesing<
                 || (averager.clone(), reprofiler.clone()),
                 |(averager, reprofiler), (i, g)| {
                     let (mut g, arrays) = g.reprofile_with_average_with(averager, reprofiler);
-                    g.precursor_mut().map(|p| {
+                    if let Some(p) = g.precursor_mut() {
                         p.arrays = Some(arrays.into());
                         p.description_mut().signal_continuity = SignalContinuity::Profile;
-                        ()
-                    });
+                    }
                     (i, g)
                 },
             )

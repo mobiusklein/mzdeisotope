@@ -12,13 +12,15 @@ use mzpeaks::{
 
 use crate::{
     charge::ChargeRange,
-    deconv_traits::{IsotopicDeconvolutionAlgorithm, IsotopicPatternFitter, TargetedDeconvolution, DeconvolutionError},
+    deconv_traits::{
+        DeconvolutionError, IsotopicDeconvolutionAlgorithm, IsotopicPatternFitter,
+        TargetedDeconvolution,
+    },
     deconvoluter::GraphDeconvoluterType,
     isotopic_model::{CachingIsotopicModel, IsotopicPatternParams},
     scorer::{IsotopicFitFilter, IsotopicPatternScorer},
     solution::DeconvolvedSolutionPeak,
 };
-
 
 /// A single-shot deconvolution operation on the provided peak list
 ///
@@ -47,14 +49,14 @@ pub fn deconvolute_peaks<
     fit_filter: F,
     max_missed_peaks: u16,
     isotopic_params: IsotopicPatternParams,
-    use_quick_charge: bool
+    use_quick_charge: bool,
 ) -> Result<PeakSetVec<DeconvolvedSolutionPeak, mzpeaks::Mass>, DeconvolutionError> {
     let mut engine: DeconvolutionEngine<'_, C, S, F> = DeconvolutionEngine::new(
         isotopic_params,
         isotopic_model.into(),
         scorer,
         fit_filter,
-        use_quick_charge
+        use_quick_charge,
     );
 
     engine.deconvolute_peaks(peaks, error_tolerance, charge_range, max_missed_peaks)
@@ -114,10 +116,16 @@ pub fn deconvolute_peaks_with_targets<
         isotopic_model.into(),
         scorer,
         fit_filter,
-        use_quick_charge
+        use_quick_charge,
     );
 
-    engine.deconvolute_peaks_with_targets(peaks, error_tolerance, charge_range, max_missed_peaks, targets)
+    engine.deconvolute_peaks_with_targets(
+        peaks,
+        error_tolerance,
+        charge_range,
+        max_missed_peaks,
+        targets,
+    )
 }
 
 #[derive(Debug, Clone)]
@@ -145,7 +153,7 @@ pub struct DeconvolutionEngine<
     scorer: Option<S>,
     /// The strategy for filtering out isotopic pattern fits that are too poor to consider
     fit_filter: Option<F>,
-    peak_type: PhantomData<C>
+    peak_type: PhantomData<C>,
 }
 
 impl<
@@ -155,7 +163,6 @@ impl<
         F: IsotopicFitFilter,
     > DeconvolutionEngine<'lifespan, C, S, F>
 {
-
     /// Create a new [`DeconvolutionEngine`] with the associated strategies
     /// # Arguments
     /// - `isotopic_params`: The set of parameters to use for `isotopic_model` when generating an isotopic pattern for a given m/z
@@ -168,7 +175,7 @@ impl<
         isotopic_model: CachingIsotopicModel<'lifespan>,
         scorer: S,
         fit_filter: F,
-        use_quick_charge: bool
+        use_quick_charge: bool,
     ) -> Self {
         Self {
             isotopic_params,
@@ -220,7 +227,7 @@ impl<
                 mem::take(&mut self.scorer).unwrap(),
                 mem::take(&mut self.fit_filter).unwrap(),
                 max_missed_peaks,
-                self.use_quick_charge
+                self.use_quick_charge,
             );
         let output = deconvoluter.deconvolve(
             error_tolerance,
@@ -261,7 +268,7 @@ impl<
                 mem::take(&mut self.scorer).unwrap(),
                 mem::take(&mut self.fit_filter).unwrap(),
                 max_missed_peaks,
-                self.use_quick_charge
+                self.use_quick_charge,
             );
         let links: Vec<_> = targets
             .iter()

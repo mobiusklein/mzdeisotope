@@ -1,8 +1,8 @@
 use std::{fmt::Display, str::FromStr};
 
 use clap::ValueEnum;
-use thiserror::Error;
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 use mzdeisotope::{
     api::DeconvolutionEngine,
@@ -27,7 +27,7 @@ pub enum PrecursorProcessing {
     /// Process only the MS1 spectra without examining MSn spectra
     MS1Only,
     /// Process all data as `full`, but ignore selected ion information
-    DIA
+    DIA,
 }
 
 impl Display for PrecursorProcessing {

@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use clap::Parser;
 use figment::{
-    providers::{Env, Serialized, Toml, Format},
+    providers::{Env, Format, Serialized, Toml},
     Figment,
 };
 
@@ -16,11 +16,15 @@ pub fn main() -> Result<(), MZDeisotoperError> {
     let subscriber = tracing_subscriber::registry()
         .with(EnvFilter::from_default_env().add_directive(tracing::Level::TRACE.into()))
         .with(
-            fmt::layer().compact().with_timer(fmt::time::ChronoLocal::rfc_3339()).with_writer(io::stderr).with_filter(
-                EnvFilter::builder()
-                    .with_default_directive(tracing::Level::INFO.into())
-                    .from_env_lossy(),
-            ),
+            fmt::layer()
+                .compact()
+                .with_timer(fmt::time::ChronoLocal::rfc_3339())
+                .with_writer(io::stderr)
+                .with_filter(
+                    EnvFilter::builder()
+                        .with_default_directive(tracing::Level::INFO.into())
+                        .from_env_lossy(),
+                ),
         );
 
     let mut config = Figment::new();

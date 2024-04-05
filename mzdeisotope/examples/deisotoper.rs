@@ -60,7 +60,7 @@ fn run_deconvolution(
         model.into(),
         MSDeconvScorer::default(),
         MaximizingFitFilter::new(2.0),
-        true
+        true,
     );
 
     let populate_msn_cache = thread::spawn(move || {
@@ -71,7 +71,8 @@ fn run_deconvolution(
     ms1_engine = populate_ms1_cache.join().unwrap();
     msn_engine = populate_msn_cache.join().unwrap();
 
-    let (grouper, averager, reprofiler) = reader.groups().averaging_deferred(1, 120.0, 2000.1, 0.005);
+    let (grouper, averager, reprofiler) =
+        reader.groups().averaging_deferred(1, 120.0, 2000.1, 0.005);
 
     let (n_ms1_peaks, n_msn_peaks) = grouper
         .enumerate()
@@ -123,13 +124,15 @@ fn run_deconvolution(
                         let PeaksAndTargets {
                             deconvoluted_peaks,
                             targets,
-                        } = ms1_engine.deconvolute_peaks_with_targets(
-                            peaks.clone(),
-                            Tolerance::PPM(20.0),
-                            (1, 8),
-                            1,
-                            &precursor_mz,
-                        ).unwrap();
+                        } = ms1_engine
+                            .deconvolute_peaks_with_targets(
+                                peaks.clone(),
+                                Tolerance::PPM(20.0),
+                                (1, 8),
+                                1,
+                                &precursor_mz,
+                            )
+                            .unwrap();
                         n_ms1_peaks = deconvoluted_peaks.len();
                         scan.deconvoluted_peaks = Some(deconvoluted_peaks);
                         targets
@@ -159,12 +162,9 @@ fn run_deconvolution(
                         }
                     };
 
-                    let deconvoluted_peaks = msn_engine.deconvolute_peaks(
-                        peaks.clone(),
-                        Tolerance::PPM(20.0),
-                        (1, 8),
-                        1,
-                    ).unwrap();
+                    let deconvoluted_peaks = msn_engine
+                        .deconvolute_peaks(peaks.clone(), Tolerance::PPM(20.0), (1, 8), 1)
+                        .unwrap();
                     n_msn_peaks += deconvoluted_peaks.len();
                     scan.deconvoluted_peaks = Some(deconvoluted_peaks);
                     scan.precursor_mut().and_then(|prec| {
@@ -290,7 +290,9 @@ fn write_output<W: io::Write + io::Seek>(
         if ((group_idx - checkpoint) % 100 == 0 && group_idx != 0)
             || (scan_time - time_checkpoint) > 1.0
         {
-            tracing::info!("Completed Group {group_idx} | Scans={scan_counter} Time={scan_time:0.3}");
+            tracing::info!(
+                "Completed Group {group_idx} | Scans={scan_counter} Time={scan_time:0.3}"
+            );
             checkpoint = group_idx;
             time_checkpoint = scan_time;
         }
@@ -308,13 +310,14 @@ fn write_output<W: io::Write + io::Seek>(
 
 fn main() -> io::Result<()> {
     tracing_subscriber::registry()
-    .with(
-        fmt::layer().compact().with_writer(io::stderr).with_filter(
-            EnvFilter::builder()
-                .with_default_directive(tracing::Level::INFO.into())
-                .from_env_lossy(),
-        ),
-    ).init();
+        .with(
+            fmt::layer().compact().with_writer(io::stderr).with_filter(
+                EnvFilter::builder()
+                    .with_default_directive(tracing::Level::INFO.into())
+                    .from_env_lossy(),
+            ),
+        )
+        .init();
 
     let mut args = env::args().skip(1);
     let inpath = path::PathBuf::from(args.next().unwrap());
