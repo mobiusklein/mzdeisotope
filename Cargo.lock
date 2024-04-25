@@ -195,6 +195,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
 
 [[package]]
+name = "bitflags"
+version = "2.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cf4b9d6a944f767f8e5e0db018570623c85f3d925ac718db4e06d0187adb21c1"
+
+[[package]]
 name = "block-buffer"
 version = "0.10.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -317,7 +323,9 @@ checksum = "8a0d04d43504c61aa6c7531f1871dd0d418d91130162063b789da00fd7057a5e"
 dependencies = [
  "android-tzdata",
  "iana-time-zone",
+ "js-sys",
  "num-traits",
+ "wasm-bindgen",
  "windows-targets 0.52.4",
 ]
 
@@ -583,9 +591,9 @@ checksum = "fea41bba32d969b513997752735605054bc0dfa92b4c56bf1189f2e174be7a10"
 
 [[package]]
 name = "dotnetrawfilereader-sys"
-version = "0.2.0"
+version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dd12a9bb793958bd943e0def75cd87c3375504852d67b4368c361001fde67f81"
+checksum = "1a3d5d67c674b220726cace70beda69efe00a6c8b0c8510ede4ac6e45652c972"
 dependencies = [
  "include_dir",
  "netcorehost",
@@ -699,7 +707,7 @@ version = "23.5.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4dac53e22462d78c16d64a1cd22371b54cc3fe94aa15e7886a2fa6e5d1ab8640"
 dependencies = [
- "bitflags",
+ "bitflags 1.3.2",
  "rustc_version",
 ]
 
@@ -850,7 +858,7 @@ version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bdcd9b131fd67bb827b386d0dc63d3e74196a14616ef800acf87ca5fef741a10"
 dependencies = [
- "bitflags",
+ "bitflags 1.3.2",
  "blosc-src",
  "cfg-if",
  "errno",
@@ -1246,13 +1254,15 @@ dependencies = [
 
 [[package]]
 name = "mzdata"
-version = "0.13.0"
+version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8b8ef5fb8bb45280ca77f1bda2e1102f5a27c7add2377c9ca111c358a9ebd620"
+checksum = "ccb2ee05536527a75cb76fb1bc1f17c0cd48f413ad4c79d77bfda726d563370c"
 dependencies = [
  "base16ct",
  "base64-simd",
+ "bitflags 2.5.0",
  "bytemuck",
+ "chrono",
  "flate2",
  "hdf5",
  "hdf5-sys",
@@ -1775,7 +1785,7 @@ version = "0.2.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fb5a58c1855b4b6819d59012155603f0b22ad30cad752600aadfcb695265519a"
 dependencies = [
- "bitflags",
+ "bitflags 1.3.2",
 ]
 
 [[package]]
@@ -2143,7 +2153,7 @@ version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ba3a3adc5c275d719af8cb4272ea1c4a6d668a777f37e115f6d11ddbc1c8e0e7"
 dependencies = [
- "bitflags",
+ "bitflags 1.3.2",
  "core-foundation",
  "system-configuration-sys",
 ]
@@ -2197,9 +2207,9 @@ dependencies = [
 
 [[package]]
 name = "thermorawfilereader"
-version = "0.2.1"
+version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fa9e3eb9a3a551f9a06fe07b69ddef074ded8e96fc27b6856a55128cb9bec0c6"
+checksum = "79f3c1e6c9b1a455194a95559755b891903a11b2aaaa1cca8bd10a457294bece"
 dependencies = [
  "bytemuck",
  "dotnetrawfilereader-sys",

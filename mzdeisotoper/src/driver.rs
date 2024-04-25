@@ -14,8 +14,10 @@ use flate2::Compression;
 
 use thiserror::Error;
 
-use mzdata::meta::{DataProcessing, ProcessingMethod, Software};
-use mzdata::params::{ControlledVocabulary, Param};
+use mzdata::meta::{
+    custom_software_name, DataProcessing, DataProcessingAction, ProcessingMethod, Software,
+};
+use mzdata::params::Param;
 
 use tracing::{debug, info, warn};
 
@@ -195,11 +197,7 @@ impl MZDeiosotoper {
 
     fn make_software(&self) -> Software {
         let mut sw = Software::default();
-        let mut name = Param::new();
-        name.accession = Some(1000799);
-        name.controlled_vocabulary = Some(ControlledVocabulary::MS);
-        name.name = "custom unreleased software tool".to_string();
-        name.value = "mzdeisotoper".to_string();
+        let name = custom_software_name("mzdeisotoper");
         sw.add_param(name);
         sw.id = "mzdeisotoper".to_string();
         sw.version = option_env!("CARGO_PKG_VERSION")
@@ -210,13 +208,17 @@ impl MZDeiosotoper {
 
     fn make_processing_method(&self) -> ProcessingMethod {
         let mut processing = ProcessingMethod::default();
-        let cv = ControlledVocabulary::MS;
         processing.software_reference = "mzdeisotoper".to_string();
-        processing.add_param(cv.const_param_ident("deisotoping", 1000033).into());
-        processing.add_param(cv.const_param_ident("charge deconvolution", 1000034).into());
-        processing.add_param(cv.const_param_ident("peak picking", 1000035).into());
+        processing.add_param(DataProcessingAction::Deisotoping.as_param_const().into());
         processing.add_param(
-            cv.const_param_ident("charge state calculation", 1000778)
+            DataProcessingAction::ChargeDeconvolution
+                .as_param_const()
+                .into(),
+        );
+        processing.add_param(DataProcessingAction::PeakPicking.as_param_const().into());
+        processing.add_param(
+            DataProcessingAction::ChargeStateCalculation
+                .as_param_const()
                 .into(),
         );
         processing.add_param(Param::new_key_value(

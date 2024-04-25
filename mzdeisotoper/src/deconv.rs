@@ -78,25 +78,23 @@ pub fn purities_of(
                         true,
                     );
                     purities.insert(i, (0.0, coisolations));
-                } else {
-                    if let Some(peak) = targets.find_peak_for_mz(prec.ion().mz) {
-                        if is_dia {
-                            // For DIA mode, purity isn't meaningful
-                        } else {
-                            let purity = purity_estimator.precursor_purity(
-                                precursor_scan.peaks.as_ref().unwrap(),
-                                peak,
-                                Some(&prec.isolation_window),
-                            );
-                            let coisolations = purity_estimator.coisolation(
-                                precursor_scan.deconvoluted_peaks.as_ref().unwrap(),
-                                peak,
-                                Some(&prec.isolation_window),
-                                0.1,
-                                true,
-                            );
-                            purities.insert(i, (purity, coisolations));
-                        }
+                } else if let Some(peak) = targets.find_peak_for_mz(prec.ion().mz) {
+                    if is_dia {
+                        // For DIA mode, purity isn't meaningful
+                    } else {
+                        let purity = purity_estimator.precursor_purity(
+                            precursor_scan.peaks.as_ref().unwrap(),
+                            peak,
+                            Some(&prec.isolation_window),
+                        );
+                        let coisolations = purity_estimator.coisolation(
+                            precursor_scan.deconvoluted_peaks.as_ref().unwrap(),
+                            peak,
+                            Some(&prec.isolation_window),
+                            0.1,
+                            true,
+                        );
+                        purities.insert(i, (purity, coisolations));
                     }
                 }
             }
@@ -301,69 +299,67 @@ pub fn deconvolution_transform<
                         prec.ion_mut().params_mut().push(coisolation_to_param(c));
                     });
                 }
-            } else {
-                if let Some(prec) = scan.precursor_mut() {
-                    let target_mz = prec.mz();
-                    let _ = precursor_map
-                        .find_mz(target_mz)
-                        .map(|i| {
-                            if let Some(peak) = &targets[i] {
-                                let orig_charge = prec.ion().charge;
-                                let update_ion = if let Some(orig_z) = orig_charge {
-                                    let t = orig_z == peak.charge;
-                                    if !t {
-                                        prog.precursor_charge_state_mismatch += 1;
-                                    }
-                                    t
-                                } else {
-                                    true
-                                };
-                                let prec_ion = prec.ion_mut();
-                                if update_ion {
-                                    prec_ion.mz = peak.mz();
-                                    prec_ion.charge = Some(peak.charge);
-                                    prec_ion.intensity = peak.intensity;
-                                    let (purity, coisolated) =
-                                        purities.remove(&scan_i).unwrap_or_default();
-                                    prec_ion.params_mut().push(Param::new_key_value(
-                                        "mzdeisotope:isolation purity".to_string(),
-                                        purity.to_string(),
-                                    ));
-                                    coisolated.iter().for_each(|c| {
-                                        prec_ion.params_mut().push(coisolation_to_param(c));
-                                    });
-                                } else {
-                                    prec_ion.params_mut().push(Param::new_key_value(
-                                        "mzdeisotope:defaulted".to_string(),
-                                        true.to_string(),
-                                    ));
-                                    let (purity, coisolated) =
-                                        purities.remove(&scan_i).unwrap_or_default();
-                                    prec_ion.params_mut().push(Param::new_key_value(
-                                        "mzdeisotope:isolation purity".to_string(),
-                                        purity.to_string(),
-                                    ));
-                                    coisolated.iter().for_each(|c| {
-                                        prec_ion.params_mut().push(coisolation_to_param(c));
-                                    });
-                                    prog.precursors_defaulted += 1;
+            } else if let Some(prec) = scan.precursor_mut() {
+                let target_mz = prec.mz();
+                let _ = precursor_map
+                    .find_mz(target_mz)
+                    .map(|i| {
+                        if let Some(peak) = &targets[i] {
+                            let orig_charge = prec.ion().charge;
+                            let update_ion = if let Some(orig_z) = orig_charge {
+                                let t = orig_z == peak.charge;
+                                if !t {
+                                    prog.precursor_charge_state_mismatch += 1;
                                 }
-                            }
-                        })
-                        .or_else(|| {
+                                t
+                            } else {
+                                true
+                            };
                             let prec_ion = prec.ion_mut();
-                            prec_ion.params_mut().push(Param::new_key_value(
-                                "mzdeisotope:defaulted".to_string(),
-                                true.to_string(),
-                            ));
-                            prec_ion.params_mut().push(Param::new_key_value(
-                                "mzdeisotope:orphan".to_string(),
-                                true.to_string(),
-                            ));
-                            prog.precursors_defaulted += 1;
-                            None
-                        });
-                }
+                            if update_ion {
+                                prec_ion.mz = peak.mz();
+                                prec_ion.charge = Some(peak.charge);
+                                prec_ion.intensity = peak.intensity;
+                                let (purity, coisolated) =
+                                    purities.remove(&scan_i).unwrap_or_default();
+                                prec_ion.params_mut().push(Param::new_key_value(
+                                    "mzdeisotope:isolation purity".to_string(),
+                                    purity.to_string(),
+                                ));
+                                coisolated.iter().for_each(|c| {
+                                    prec_ion.params_mut().push(coisolation_to_param(c));
+                                });
+                            } else {
+                                prec_ion.params_mut().push(Param::new_key_value(
+                                    "mzdeisotope:defaulted".to_string(),
+                                    true.to_string(),
+                                ));
+                                let (purity, coisolated) =
+                                    purities.remove(&scan_i).unwrap_or_default();
+                                prec_ion.params_mut().push(Param::new_key_value(
+                                    "mzdeisotope:isolation purity".to_string(),
+                                    purity.to_string(),
+                                ));
+                                coisolated.iter().for_each(|c| {
+                                    prec_ion.params_mut().push(coisolation_to_param(c));
+                                });
+                                prog.precursors_defaulted += 1;
+                            }
+                        }
+                    })
+                    .or_else(|| {
+                        let prec_ion = prec.ion_mut();
+                        prec_ion.params_mut().push(Param::new_key_value(
+                            "mzdeisotope:defaulted".to_string(),
+                            true.to_string(),
+                        ));
+                        prec_ion.params_mut().push(Param::new_key_value(
+                            "mzdeisotope:orphan".to_string(),
+                            true.to_string(),
+                        ));
+                        prog.precursors_defaulted += 1;
+                        None
+                    });
             }
         });
     (group_idx, group, prog)

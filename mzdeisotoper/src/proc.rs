@@ -69,7 +69,7 @@ pub fn prepare_procesing<
             );
         grouper
             .enumerate()
-            .take_while(|(_, g)| !(g.earliest_time().unwrap_or_default() > end_time))
+            .take_while(|(_, g)| (g.earliest_time().unwrap_or_default() <= end_time))
             .par_bridge()
             .map_init(
                 || (averager.clone(), reprofiler.clone()),

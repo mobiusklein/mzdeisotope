@@ -215,6 +215,7 @@ impl<
 }
 
 type SpectrumGroupWithStartTime<C, D> = (SpectrumGroup<C, D, MultiLayerSpectrum<C, D>>, f64);
+type SpectrumGroupWithTargets<C, D> = (SpectrumGroup<C, D, MultiLayerSpectrum<C, D>>, Vec<SelectedTarget>);
 
 pub struct MSnTargetTrackingIterator<
     C: CentroidLike + Default,
@@ -374,10 +375,7 @@ impl<
 
     fn step(
         &mut self,
-    ) -> Option<(
-        SpectrumGroup<C, D, MultiLayerSpectrum<C, D>>,
-        Vec<SelectedTarget>,
-    )> {
+    ) -> Option<SpectrumGroupWithTargets<C, D>> {
         if let Some((group, t)) = self.buffer.pop_front() {
             let targets: Vec<_> = self
                 .targets
