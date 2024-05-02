@@ -157,7 +157,7 @@ impl Default for SignalParams {
 
 pub struct DeconvolutionBuilderParams<'a, S: IsotopicPatternScorer, F: IsotopicFitFilter> {
     pub scorer: S,
-    pub isotopic_model: IsotopicModel<'a>,
+    pub isotopic_model: Vec<IsotopicModel<'a>>,
     pub fit_filter: F,
     pub isotopic_params: IsotopicPatternParams,
     pub charge_range: ChargeRange,
@@ -168,7 +168,7 @@ pub struct DeconvolutionBuilderParams<'a, S: IsotopicPatternScorer, F: IsotopicF
 impl<'a, S: IsotopicPatternScorer, F: IsotopicFitFilter> DeconvolutionBuilderParams<'a, S, F> {
     pub fn new(
         scorer: S,
-        isotopic_model: IsotopicModel<'a>,
+        isotopic_model: Vec<IsotopicModel<'a>>,
         fit_filter: F,
         isotopic_params: IsotopicPatternParams,
         charge_range: ChargeRange,
@@ -193,7 +193,7 @@ impl<'a, S: IsotopicPatternScorer, F: IsotopicFitFilter> DeconvolutionBuilderPar
     pub fn build_engine(self) -> DeconvolutionEngine<'a, CentroidPeak, S, F> {
         let mut engine = DeconvolutionEngine::new(
             self.isotopic_params,
-            self.isotopic_model.into(),
+            self.isotopic_model,
             self.scorer,
             self.fit_filter,
             true,
@@ -238,7 +238,7 @@ pub fn make_default_ms1_deconvolution_params(
 ) -> DeconvolutionBuilderParams<'static, PenalizedMSDeconvScorer, MaximizingFitFilter> {
     DeconvolutionBuilderParams::new(
         PenalizedMSDeconvScorer::new(0.02, 2.0),
-        IsotopicModels::Peptide.into(),
+        vec![IsotopicModels::Peptide.into()],
         MaximizingFitFilter::new(20.0),
         Default::default(),
         (1, 8),
@@ -251,7 +251,7 @@ pub fn make_default_msn_deconvolution_params(
 ) -> DeconvolutionBuilderParams<'static, MSDeconvScorer, MaximizingFitFilter> {
     DeconvolutionBuilderParams::new(
         MSDeconvScorer::default(),
-        IsotopicModels::Peptide.into(),
+        vec![IsotopicModels::Peptide.into()],
         MaximizingFitFilter::new(5.0),
         IsotopicPatternParams::new(0.8, 0.001, None, PROTON),
         (1, 8),

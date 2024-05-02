@@ -142,7 +142,7 @@ If a stop is not specified, processing stops at the end of the run.
 
     /// The isotopic model to use for MS1 spectra
     #[arg(short = 'a', long = "ms1-isotopic-model", default_value = "peptide")]
-    pub ms1_isotopic_model: ArgIsotopicModels,
+    pub ms1_isotopic_model: Vec<ArgIsotopicModels>,
 
     /// The minimum isotopic pattern fit score for MS1 spectra
     #[arg(short = 's', long = "ms1-score-threshold", default_value_t = 20.0)]
@@ -150,7 +150,7 @@ If a stop is not specified, processing stops at the end of the run.
 
     /// The isotopic model to use for MSn spectra
     #[arg(short = 'A', long = "msn-isotopic-model", default_value = "peptide")]
-    pub msn_isotopic_model: ArgIsotopicModels,
+    pub msn_isotopic_model: Vec<ArgIsotopicModels>,
 
     /// The minimum isotopic pattern fit score for MSn spectra
     #[arg(short = 'S', long = "msn-score-threshold", default_value_t = 10.0)]
@@ -229,14 +229,18 @@ impl MZDeiosotoper {
             "ms1_denoising",
             self.ms1_denoising.to_string(),
         ));
-        processing.add_param(Param::new_key_value(
-            "ms1_isotopic_model",
-            self.ms1_isotopic_model.to_string(),
-        ));
-        processing.add_param(Param::new_key_value(
-            "msn_isotopic_model",
-            self.msn_isotopic_model.to_string(),
-        ));
+        for m in self.ms1_isotopic_model.iter() {
+            processing.add_param(Param::new_key_value(
+                "ms1_isotopic_model",
+                m.to_string(),
+            ));
+        }
+        for m in self.msn_isotopic_model.iter() {
+            processing.add_param(Param::new_key_value(
+                "msn_isotopic_model",
+                m.to_string(),
+            ));
+        }
         processing.add_param(Param::new_key_value(
             "ms1_score_threshold",
             self.ms1_score_threshold.to_string(),
@@ -428,7 +432,7 @@ impl MZDeiosotoper {
             if let Some(spectrum_count) = spectrum_count {
                 writer.set_spectrum_count(spectrum_count);
             }
-            self.run_workflow(reader, writer)?;
+            self.run_workflow(reader, writer, MassSpectrometryFormat::MzML)?;
         } else {
             let (ms_format, compressed) = infer_from_path(&self.output_file);
             match ms_format {
@@ -437,10 +441,10 @@ impl MZDeiosotoper {
                     if compressed {
                         let encoder = GzEncoder::new(handle, Compression::best());
                         let writer = MGFWriterType::new(encoder);
-                        self.run_workflow(reader, writer)?
+                        self.run_workflow(reader, writer, MassSpectrometryFormat::MGF)?
                     } else {
                         let writer = MGFWriterType::new(handle);
-                        self.run_workflow(reader, writer)?
+                        self.run_workflow(reader, writer, MassSpectrometryFormat::MGF)?
                     }
                 }
                 MassSpectrometryFormat::MzML => {
@@ -453,7 +457,7 @@ impl MZDeiosotoper {
                         if let Some(spectrum_count) = spectrum_count {
                             writer.set_spectrum_count(spectrum_count);
                         }
-                        self.run_workflow(reader, writer)?;
+                        self.run_workflow(reader, writer, MassSpectrometryFormat::MzML)?;
                     } else {
                         let mut writer = MzMLWriterType::new(handle);
                         writer.copy_metadata_from(&reader);
@@ -461,7 +465,7 @@ impl MZDeiosotoper {
                         if let Some(spectrum_count) = spectrum_count {
                             writer.set_spectrum_count(spectrum_count);
                         }
-                        self.run_workflow(reader, writer)?;
+                        self.run_workflow(reader, writer, MassSpectrometryFormat::MzML)?;
                     }
                 }
                 #[cfg(feature = "mzmlb")]
@@ -481,7 +485,7 @@ impl MZDeiosotoper {
                     if let Some(spectrum_count) = spectrum_count {
                         writer.set_spectrum_count(spectrum_count);
                     }
-                    self.run_workflow(reader, writer)?;
+                    self.run_workflow(reader, writer, MassSpectrometryFormat::MzMLb)?;
                 }
                 _ => {
                     return Err(MZDeisotoperError::OutputFormatUnknownOrNotSupportedError(
@@ -504,6 +508,7 @@ impl MZDeiosotoper {
         &self,
         reader: R,
         writer: W,
+        writer_format: MassSpectrometryFormat
     ) -> io::Result<()> {
         let buffer_size = 2000;
         let (send_solved, recv_solved) = sync_channel(buffer_size);
@@ -514,12 +519,12 @@ impl MZDeiosotoper {
         let mut msn_args = make_default_msn_deconvolution_params();
 
         ms1_args.fit_filter.threshold = self.ms1_score_threshold;
-        ms1_args.isotopic_model = self.ms1_isotopic_model.into();
+        ms1_args.isotopic_model = self.ms1_isotopic_model.iter().map(|it| it.clone().into()).collect();
         ms1_args.charge_range = self.charge_range.into();
         ms1_args.max_missed_peaks = self.ms1_missed_peaks;
 
         msn_args.fit_filter.threshold = self.msn_score_threshold;
-        msn_args.isotopic_model = self.msn_isotopic_model.into();
+        msn_args.isotopic_model = self.msn_isotopic_model.iter().map(|it| it.clone().into()).collect();
         msn_args.charge_range = self.charge_range.into();
         msn_args.max_missed_peaks = self.msn_missed_peaks;
 
@@ -539,6 +544,7 @@ impl MZDeiosotoper {
                 send_solved,
                 rt_range,
                 Some(precursor_processing),
+                writer_format,
             )
         });
 

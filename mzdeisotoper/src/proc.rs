@@ -4,6 +4,7 @@ use std::sync::mpsc::SyncSender;
 use std::thread;
 use std::time::Instant;
 
+use mzdata::io::MassSpectrometryFormat;
 use rayon::prelude::*;
 
 use tracing::{debug, info, warn};
@@ -38,6 +39,7 @@ pub fn prepare_procesing<
     sender: SyncSender<(usize, SpectrumGroupType)>,
     time_range: Option<TimeRange>,
     precursor_processing: Option<PrecursorProcessing>,
+    writer_format: MassSpectrometryFormat
 ) -> io::Result<ProgressRecord> {
     let init_counter = AtomicU16::new(0);
     let started = Instant::now();
@@ -97,6 +99,7 @@ pub fn prepare_procesing<
                         group_idx,
                         group,
                         precursor_processing,
+                        writer_format,
                     )
                 },
             )
@@ -130,6 +133,7 @@ pub fn prepare_procesing<
                         group_idx,
                         group,
                         precursor_processing,
+                        writer_format,
                     )
                 },
             )

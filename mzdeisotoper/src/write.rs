@@ -1,22 +1,88 @@
 use std::{
     io,
+    mem::take,
     sync::mpsc::{Receiver, SyncSender, TryRecvError},
 };
 
-use mzdata::prelude::*;
+use itertools::Itertools;
+use mzdata::{io::MassSpectrometryFormat, prelude::*, spectrum::bindata::BinaryCompressionType};
+use std::time::Instant;
 
 use crate::types::{CPeak, DPeak, SpectrumCollator, SpectrumGroupType, SpectrumType};
+
+pub(crate) fn postprocess_spectra(
+    group_idx: usize,
+    mut group: SpectrumGroupType,
+    output_format: MassSpectrometryFormat,
+) -> (usize, SpectrumGroupType) {
+    if matches!(output_format, MassSpectrometryFormat::MzML) {
+        if let Some(precursor) = group.precursor_mut() {
+            if let Some(peaks) = precursor.deconvoluted_peaks.as_ref() {
+                // TODO Replace with encoding methods that encapsulate the whole process
+                let mut arrays = BuildArrayMapFrom::as_arrays(peaks);
+                arrays.iter_mut().for_each(|(_, a)| {
+                    a.data = a.encode_bytestring(BinaryCompressionType::Zlib);
+                    a.compression = BinaryCompressionType::Zlib;
+                });
+                precursor.arrays = Some(arrays);
+                precursor.deconvoluted_peaks = None;
+                precursor.peaks = None
+            }
+        }
+        for product in group.products_mut().iter_mut() {
+            if let Some(peaks) = product.deconvoluted_peaks.as_ref() {
+                // TODO Replace with encoding methods that encapsulate the whole process
+                let mut arrays = BuildArrayMapFrom::as_arrays(peaks);
+                arrays.iter_mut().for_each(|(_, a)| {
+                    a.data = a.encode_bytestring(BinaryCompressionType::Zlib);
+                    a.compression = BinaryCompressionType::Zlib;
+                });
+                product.arrays = Some(arrays);
+                product.deconvoluted_peaks = None;
+                product.peaks = None;
+            }
+        }
+        (group_idx, group)
+    } else if matches!(output_format, MassSpectrometryFormat::MzMLb) {
+        if let Some(precursor) = group.precursor_mut() {
+            if let Some(peaks) = precursor.deconvoluted_peaks.as_ref() {
+                let arrays = BuildArrayMapFrom::as_arrays(peaks);
+                precursor.arrays = Some(arrays);
+                precursor.deconvoluted_peaks = None;
+                precursor.peaks = None
+            }
+        }
+        for product in group.products_mut().iter_mut() {
+            if let Some(peaks) = product.deconvoluted_peaks.as_ref() {
+                let arrays = BuildArrayMapFrom::as_arrays(peaks);
+                product.arrays = Some(arrays);
+                product.deconvoluted_peaks = None;
+                product.peaks = None;
+            }
+        }
+        (group_idx, group)
+    } else {
+        (group_idx, group)
+    }
+}
 
 pub fn collate_results_spectra(
     receiver: Receiver<(usize, SpectrumGroupType)>,
     sender: SyncSender<(usize, SpectrumType)>,
 ) {
     let mut collator = SpectrumCollator::default();
-    let mut i = 0;
+    let mut i = 0usize;
+    let mut last_send = Instant::now();
+    let mut targets = Vec::new();
     loop {
         i += 1;
+        if i == usize::MAX {
+            tracing::info!("Collation counter rolling over");
+            i = 1;
+        }
         match receiver.try_recv() {
-            Ok((group_idx, group)) => {
+            Ok((group_idx, mut group)) => {
+                targets = take(&mut group.targets);
                 if group_idx == 0 {
                     if let Some(i) = group.iter().map(|s| s.index()).min() {
                         collator.next_key = i;
@@ -37,6 +103,19 @@ pub fn collate_results_spectra(
         }
 
         let n = collator.waiting.len();
+        if i % 10000 == 0 && i > 0 && n > 0 {
+            if (Instant::now() - last_send).as_secs_f64() > 5.0 {
+                let waiting_keys: Vec<_> =
+                    collator.waiting.keys().sorted().take(10).copied().collect();
+                tracing::info!(
+                   "Collator holding {n} entries at tick {i}, next key {} ({}), pending keys: {waiting_keys:?}",
+                    collator.next_key,
+                    collator.has_next()
+                );
+                targets.sort_by(|a, b| a.mz.total_cmp(&b.mz));
+                tracing::info!("Current m/z targets: {} {targets:?}", targets.len());
+            }
+        }
         if i % 1000000 == 0 && i > 0 && n > 0 {
             tracing::debug!(
                 "Collator holding {n} entries at tick {i}, next key {} ({})",
@@ -52,6 +131,9 @@ pub fn collate_results_spectra(
                     tracing::error!("Failed to send {group_idx} for writing: {e}")
                 }
             }
+        }
+        if collator.waiting.len() < n {
+            last_send = Instant::now();
         }
     }
 }

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use itertools::Itertools;
 
-use mzdata::{prelude::*, spectrum::SignalContinuity, Param};
+use mzdata::{io::MassSpectrometryFormat, prelude::*, spectrum::SignalContinuity, Param};
 use mzpeaks::MZPeakSetType;
 
 use mzdeisotope::{
@@ -16,6 +16,7 @@ use crate::{
     args::{DeconvolutionParams, PrecursorProcessing, SignalParams},
     progress::ProgressRecord,
     types::{CPeak, SpectrumGroupType, SpectrumType},
+    write::postprocess_spectra,
 };
 
 pub fn coisolation_to_param(c: &Coisolation) -> Param {
@@ -187,6 +188,7 @@ pub fn deconvolution_transform<
     group_idx: usize,
     mut group: SpectrumGroupType,
     precursor_processing: PrecursorProcessing,
+    writer_format: MassSpectrometryFormat,
 ) -> (usize, SpectrumGroupType, ProgressRecord) {
     let had_precursor = group.precursor().is_some();
     let mut prog = ProgressRecord::default();
@@ -362,5 +364,7 @@ pub fn deconvolution_transform<
                     });
             }
         });
+
+    let (group_idx, group) = postprocess_spectra(group_idx, group, writer_format);
     (group_idx, group, prog)
 }

@@ -44,7 +44,7 @@ fn run_deconvolution(
 
     let mut ms1_engine = DeconvolutionEngine::new(
         Default::default(),
-        model.clone().into(),
+        model.clone(),
         PenalizedMSDeconvScorer::new(0.02, 2.0),
         MaximizingFitFilter::new(10.0),
         true,
@@ -57,7 +57,7 @@ fn run_deconvolution(
 
     let mut msn_engine = DeconvolutionEngine::new(
         IsotopicPatternParams::new(0.8, 0.001, None, PROTON),
-        model.into(),
+        model.clone(),
         MSDeconvScorer::default(),
         MaximizingFitFilter::new(2.0),
         true,

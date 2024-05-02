@@ -7,11 +7,14 @@ use crate::charge::ChargeRangeIter;
 use crate::deconvoluter::{PeakDepenceGraphTargetLink, TrivialTargetLink};
 use crate::isotopic_fit::IsotopicFit;
 use crate::isotopic_model::{
-    IsotopicPatternGenerator, IsotopicPatternParams, TheoreticalIsotopicDistributionScalingMethod,
+    CachingIsotopicModel, IsotopicPatternGenerator, IsotopicPatternParams,
+    TheoreticalIsotopicDistributionScalingMethod,
 };
 use crate::peak_graph::{DependenceCluster, FitRef, PeakDependenceGraph, SubgraphSolverMethod};
 use crate::peaks::{PeakKey, WorkingPeakSet};
-use crate::scorer::{IsotopicFitFilter, IsotopicPatternScorer, ScoreType};
+use crate::scorer::{
+    IsotopicFitFilter, IsotopicPatternScorer, MSDeconvScorer, MaximizingFitFilter, ScoreType,
+};
 
 use crate::deconv_traits::{
     DeconvolutionError, ExhaustivePeakSearch, GraphDependentSearch, IsotopicDeconvolutionAlgorithm,
@@ -20,7 +23,7 @@ use crate::deconv_traits::{
 use crate::solution::DeconvolvedSolutionPeak;
 
 use chemical_elements::isotopic_pattern::TheoreticalIsotopicPattern;
-use mzpeaks::{prelude::*, IntensityMeasurementMut, MassPeakSetType};
+use mzpeaks::{prelude::*, IntensityMeasurementMut, MZPeakSetType, MassPeakSetType};
 use mzpeaks::{CentroidPeak, Tolerance};
 
 #[derive(Debug)]
@@ -39,6 +42,43 @@ pub struct MultiDeconvoluterType<
     pub use_quick_charge: bool,
     pub current_model_index: usize,
     targets: Vec<TrivialTargetLink>,
+}
+
+impl<
+        C: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut,
+        I: IsotopicPatternGenerator,
+        S: IsotopicPatternScorer,
+        F: IsotopicFitFilter,
+    > MultiDeconvoluterType<C, I, S, F>
+{
+    pub fn new(
+        peaks: MZPeakSetType<C>,
+        isotopic_models: Vec<I>,
+        scorer: S,
+        fit_filter: F,
+        max_missed_peaks: u16,
+        use_quick_charge: bool,
+    ) -> Self {
+        Self {
+            peaks: WorkingPeakSet::new(peaks),
+            isotopic_models,
+            scorer,
+            fit_filter,
+            scaling_method: Default::default(),
+            max_missed_peaks,
+            use_quick_charge,
+            current_model_index: 0 ,
+            targets: Default::default(),
+        }
+    }
+
+    pub fn iter_isotopic_models(&self) -> impl Iterator<Item=&I> {
+        self.isotopic_models.iter()
+    }
+
+    pub fn iter_mut_isotopic_models(&mut self) -> impl Iterator<Item=&mut I> {
+        self.isotopic_models.iter_mut()
+    }
 }
 
 impl<
@@ -364,6 +404,31 @@ impl<
         F: IsotopicFitFilter,
     > GraphMultiDeconvoluterType<C, I, S, F>
 {
+    pub fn new(
+        peaks: MZPeakSetType<C>,
+        isotopic_models: Vec<I>,
+        scorer: S,
+        fit_filter: F,
+        max_missed_peaks: u16,
+        use_quick_charge: bool,
+    ) -> Self {
+        let inner = MultiDeconvoluterType::new(
+            peaks,
+            isotopic_models,
+            scorer,
+            fit_filter,
+            max_missed_peaks,
+            use_quick_charge,
+        );
+        let peak_graph = PeakDependenceGraph::new(inner.scorer.interpretation());
+
+        Self {
+            inner,
+            peak_graph,
+            solutions: Vec::new(),
+        }
+    }
+
     fn solve_subgraph_top(
         &mut self,
         cluster: DependenceCluster,
@@ -380,6 +445,14 @@ impl<
         } else {
             Ok(())
         }
+    }
+
+    pub fn iter_isotopic_models(&self) -> impl Iterator<Item=&I> {
+        self.inner.iter_isotopic_models()
+    }
+
+    pub fn iter_mut_isotopic_models(&mut self) -> impl Iterator<Item=&mut I> {
+        self.inner.iter_mut_isotopic_models()
     }
 }
 
@@ -703,5 +776,136 @@ impl<
                     });
             });
         Ok(MassPeakSetType::new(deconvoluted_peaks))
+    }
+}
+
+
+pub type GraphMultiAveragineDeconvoluter<'lifespan, C> = GraphMultiDeconvoluterType<
+    C,
+    CachingIsotopicModel<'lifespan>,
+    MSDeconvScorer,
+    MaximizingFitFilter,
+>;
+
+#[cfg(test)]
+mod test {
+    use std::fs;
+    use std::io;
+
+    use flate2::bufread::GzDecoder;
+
+    use mzdata::MzMLReader;
+    use mzpeaks::prelude::*;
+
+    use crate::isotopic_model::IsotopicModels;
+    use crate::scorer::MSDeconvScorer;
+
+    use super::*;
+
+    #[test_log::test]
+    fn test_file_step() -> io::Result<()> {
+        let decoder = GzDecoder::new(io::BufReader::new(fs::File::open(
+            "./tests/data/20150710_3um_AGP_001_29_30.mzML.gz",
+        )?));
+        let mut reader = MzMLReader::new(decoder);
+        let scan = reader.next().unwrap();
+        let centroided = scan.into_centroid().unwrap();
+        let mzs: Vec<_> = centroided.peaks.iter().map(|p| p.mz).collect();
+
+        let mut deconvoluter = GraphMultiAveragineDeconvoluter::new(
+            centroided.peaks,
+            vec![IsotopicModels::Glycopeptide.into()],
+            MSDeconvScorer::default(),
+            MaximizingFitFilter::new(0.0),
+            3,
+            false,
+        );
+        let isotopic_params = IsotopicPatternParams::default();
+        deconvoluter.iter_mut_isotopic_models().for_each(|i| i.populate_cache(
+            *mzs.first().unwrap(),
+            *mzs.last().unwrap(),
+            1,
+            8,
+            isotopic_params.charge_carrier,
+            isotopic_params.truncate_after,
+            isotopic_params.ignore_below,
+        ));
+        let tol = Tolerance::PPM(10.0);
+        let (total_combos, total_fits, total_missed) = mzs
+            .iter()
+            .map(|mz| {
+                let combos = deconvoluter.find_all_peak_charge_pairs::<ChargeRangeIter>(
+                    *mz,
+                    Tolerance::PPM(10.0),
+                    (1, 8).into(),
+                    1,
+                    1,
+                    true,
+                );
+                let n_combos = combos.len();
+                let fits = deconvoluter.fit_peaks_at_charge(combos, tol, isotopic_params);
+                let n_missed_peaks: usize = fits.iter().map(|fit| fit.num_missed_peaks()).sum();
+                let n_fits = fits.len();
+                (n_combos, n_fits, n_missed_peaks)
+            })
+            .reduce(
+                |(combo_acc, fit_acc, missed_acc), (n_combos, n_fits, n_missed)| {
+                    (
+                        combo_acc + n_combos,
+                        fit_acc + n_fits,
+                        missed_acc + n_missed,
+                    )
+                },
+            )
+            .unwrap();
+
+        let (total_combos2, total_fits2, total_missed2) = mzs
+            .iter()
+            .map(|mz| {
+                let combos = deconvoluter.find_all_peak_charge_pairs::<ChargeRangeIter>(
+                    *mz,
+                    Tolerance::PPM(10.0),
+                    (1, 8).into(),
+                    1,
+                    1,
+                    true,
+                );
+                let n_combos = combos.len();
+                let fits = deconvoluter.fit_peaks_at_charge(combos, tol, isotopic_params);
+                let n_missed_peaks: usize = fits.iter().map(|fit| fit.num_missed_peaks()).sum();
+                let n_fits = fits.len();
+                (n_combos, n_fits, n_missed_peaks)
+            })
+            .reduce(
+                |(combo_acc, fit_acc, missed_acc), (n_combos, n_fits, n_missed)| {
+                    (
+                        combo_acc + n_combos,
+                        fit_acc + n_fits,
+                        missed_acc + n_missed,
+                    )
+                },
+            )
+            .unwrap();
+
+        assert_eq!(total_combos, total_combos2);
+        assert_eq!(total_missed, total_missed2);
+        assert_eq!(total_fits, total_fits2);
+        assert_eq!(total_combos, 19142);
+        assert_eq!(total_missed, 21125);
+        assert_eq!(total_fits, 10788);
+
+        let fits =
+            deconvoluter.step_deconvolve(Tolerance::PPM(10.0), (1, 8), 1, 1, isotopic_params);
+
+        let best_fit = fits.iter().max().unwrap();
+        assert_eq!(best_fit.charge, 4);
+        assert_eq!(best_fit.missed_peaks, 0);
+        assert!(
+            (best_fit.score - 3127.7483).abs() < 1e-3,
+            "{}",
+            best_fit.score
+        );
+        assert_eq!(fits.len(), 10281);
+        Ok(())
     }
 }

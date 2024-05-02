@@ -1,11 +1,12 @@
 use std::{cmp, mem};
 
+use chemical_elements::{mass_charge_ratio, PROTON};
 use itertools::multizip;
 
 use mzdata::spectrum::{BinaryArrayMap, BinaryDataArrayType, DataArray};
-use mzpeaks;
 use mzpeaks::peak::MZPoint;
 use mzpeaks::prelude::*;
+use mzpeaks::{self, CoordinateLikeMut};
 use mzpeaks::{CoordinateLike, IntensityMeasurement, KnownCharge, Mass, MZ};
 
 use mzdata::spectrum::bindata::{
@@ -217,4 +218,17 @@ impl BuildArrayMapFrom for DeconvolvedSolutionPeak {
         arrays.add(envelope_array);
         arrays
     }
+}
+
+pub fn decharge_peaks_in_place<
+    D: DeconvolutedCentroidLike + KnownChargeMut + CoordinateLikeMut<MZ>,
+>(
+    peaks: &mut [D],
+    new_charge: i32,
+) {
+    peaks.iter_mut().for_each(|p| {
+        let mass = p.neutral_mass();
+        *CoordinateLikeMut::<MZ>::coordinate_mut(p) = mass_charge_ratio(mass, new_charge, PROTON);
+        *p.charge_mut() = new_charge;
+    })
 }
