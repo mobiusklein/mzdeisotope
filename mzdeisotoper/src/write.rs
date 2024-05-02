@@ -20,8 +20,9 @@ pub(crate) fn postprocess_spectra(
             if let Some(peaks) = precursor.deconvoluted_peaks.as_ref() {
                 // TODO Replace with encoding methods that encapsulate the whole process
                 let mut arrays = BuildArrayMapFrom::as_arrays(peaks);
+
                 arrays.iter_mut().for_each(|(_, a)| {
-                    a.data = a.encode_bytestring(BinaryCompressionType::Zlib);
+                    a.store_compressed(BinaryCompressionType::Zlib).unwrap();
                     a.compression = BinaryCompressionType::Zlib;
                 });
                 precursor.arrays = Some(arrays);
@@ -34,7 +35,7 @@ pub(crate) fn postprocess_spectra(
                 // TODO Replace with encoding methods that encapsulate the whole process
                 let mut arrays = BuildArrayMapFrom::as_arrays(peaks);
                 arrays.iter_mut().for_each(|(_, a)| {
-                    a.data = a.encode_bytestring(BinaryCompressionType::Zlib);
+                    a.store_compressed(BinaryCompressionType::Zlib).unwrap();
                     a.compression = BinaryCompressionType::Zlib;
                 });
                 product.arrays = Some(arrays);
