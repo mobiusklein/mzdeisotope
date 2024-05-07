@@ -6,6 +6,7 @@ use std::{
 
 use itertools::Itertools;
 use mzdata::{io::MassSpectrometryFormat, prelude::*, spectrum::bindata::BinaryCompressionType};
+use tracing::info;
 use std::time::Instant;
 
 use crate::types::{CPeak, DPeak, SpectrumCollator, SpectrumGroupType, SpectrumType};
@@ -18,12 +19,9 @@ pub(crate) fn postprocess_spectra(
     if matches!(output_format, MassSpectrometryFormat::MzML) {
         if let Some(precursor) = group.precursor_mut() {
             if let Some(peaks) = precursor.deconvoluted_peaks.as_ref() {
-                // TODO Replace with encoding methods that encapsulate the whole process
                 let mut arrays = BuildArrayMapFrom::as_arrays(peaks);
-
-                arrays.iter_mut().for_each(|(_, a)| {
+                arrays.iter_mut().for_each(|(_k, a)| {
                     a.store_compressed(BinaryCompressionType::Zlib).unwrap();
-                    a.compression = BinaryCompressionType::Zlib;
                 });
                 precursor.arrays = Some(arrays);
                 precursor.deconvoluted_peaks = None;
@@ -32,11 +30,9 @@ pub(crate) fn postprocess_spectra(
         }
         for product in group.products_mut().iter_mut() {
             if let Some(peaks) = product.deconvoluted_peaks.as_ref() {
-                // TODO Replace with encoding methods that encapsulate the whole process
                 let mut arrays = BuildArrayMapFrom::as_arrays(peaks);
-                arrays.iter_mut().for_each(|(_, a)| {
+                arrays.iter_mut().for_each(|(_k, a)| {
                     a.store_compressed(BinaryCompressionType::Zlib).unwrap();
-                    a.compression = BinaryCompressionType::Zlib;
                 });
                 product.arrays = Some(arrays);
                 product.deconvoluted_peaks = None;
@@ -78,7 +74,7 @@ pub fn collate_results_spectra(
     loop {
         i += 1;
         if i == usize::MAX {
-            tracing::info!("Collation counter rolling over");
+            info!("Collation counter rolling over");
             i = 1;
         }
         match receiver.try_recv() {

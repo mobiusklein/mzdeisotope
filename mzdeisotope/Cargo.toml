@@ -27,7 +27,7 @@ name = "deisotoper"
 
 num-traits = "0.2"
 
-mzdata = { version = "0.15.0", default-features = false, features = ["mzsignal", "nalgebra"] }
+mzdata = { version = "0.16.0", default-features = false, features = ["mzsignal", "nalgebra"] }
 mzpeaks = { version = ">=0.11.0,<1.0.0" }
 chemical_elements = { version = "0.3.0", features = ['mzpeaks'] }
 tracing = { version = "0.1.40" }
