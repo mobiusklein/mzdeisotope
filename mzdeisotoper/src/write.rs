@@ -1,6 +1,5 @@
 use std::{
     io,
-    mem::take,
     sync::mpsc::{Receiver, SyncSender, TryRecvError},
 };
 
@@ -70,7 +69,6 @@ pub fn collate_results_spectra(
     let mut collator = SpectrumCollator::default();
     let mut i = 0usize;
     let mut last_send = Instant::now();
-    let mut targets = Vec::new();
     loop {
         i += 1;
         if i == usize::MAX {
@@ -78,8 +76,7 @@ pub fn collate_results_spectra(
             i = 1;
         }
         match receiver.try_recv() {
-            Ok((group_idx, mut group)) => {
-                targets = take(&mut group.targets);
+            Ok((group_idx, group)) => {
                 if group_idx == 0 {
                     if let Some(i) = group.iter().map(|s| s.index()).min() {
                         collator.next_key = i;
@@ -100,8 +97,8 @@ pub fn collate_results_spectra(
         }
 
         let n = collator.waiting.len();
-        if i % 10000 == 0 && i > 0 && n > 0 {
-            if (Instant::now() - last_send).as_secs_f64() > 5.0 {
+        if i % 1000000 == 0 && i > 0 && n > 0 {
+            if (Instant::now() - last_send).as_secs_f64() > 30.0 {
                 let waiting_keys: Vec<_> =
                     collator.waiting.keys().sorted().take(10).copied().collect();
                 tracing::info!(
@@ -109,8 +106,6 @@ pub fn collate_results_spectra(
                     collator.next_key,
                     collator.has_next()
                 );
-                targets.sort_by(|a, b| a.mz.total_cmp(&b.mz));
-                tracing::info!("Current m/z targets: {} {targets:?}", targets.len());
             }
         }
         if i % 1000000 == 0 && i > 0 && n > 0 {

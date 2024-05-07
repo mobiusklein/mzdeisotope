@@ -13,7 +13,7 @@ exclude = ["tests/"]
 
 keywords = ['mass-spectrometry', 'deisotoping', 'charge-deconvolution']
 
-categories = ["science", "data-processing"]
+categories = ["science", "science::bioinformatics::proteomics"]
 
 [[bin]]
 name = "mz-averagine"
