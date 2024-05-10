@@ -63,3 +63,5 @@ test-gzip-output:
 
 test-units:
     cargo test
+
+alias t := test-units

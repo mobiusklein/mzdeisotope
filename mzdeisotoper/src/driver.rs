@@ -43,7 +43,7 @@ use crate::args::make_default_signal_processing_params;
 use crate::args::{ArgChargeRange, ArgIsotopicModels, PrecursorProcessing};
 use crate::proc::prepare_procesing;
 use crate::time_range::TimeRange;
-use crate::types::{CPeak, DPeak, SpectrumType};
+use crate::types::{CPeak, DPeak, SpectrumType, BUFFER_SIZE};
 use crate::write::collate_results_spectra;
 use crate::write::write_output_spectra;
 
@@ -510,7 +510,7 @@ impl MZDeiosotoper {
         writer: W,
         writer_format: MassSpectrometryFormat
     ) -> io::Result<()> {
-        let buffer_size = 2000;
+        let buffer_size = BUFFER_SIZE;
         let (send_solved, recv_solved) = sync_channel(buffer_size);
         let (send_collated, recv_collated) = sync_channel(buffer_size);
 

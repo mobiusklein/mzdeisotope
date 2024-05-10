@@ -104,6 +104,11 @@ pub fn prepare_procesing<
                 },
             )
             .map(|(group_idx, group, prog)| {
+                if tracing::event_enabled!(tracing::Level::DEBUG) {
+                    let tid = thread::current().id();
+                    let v: Vec<_> = group.iter().map(|s| s.index()).collect();
+                    debug!("{tid:?}: Sending group {group_idx} containing {:?}", v);
+                }
                 if let Err(e) = sender.send((group_idx, group)) {
                     warn!("Failed to send group: {}", e);
                 }
@@ -138,6 +143,11 @@ pub fn prepare_procesing<
                 },
             )
             .map(|(group_idx, group, prog)| {
+                if tracing::event_enabled!(tracing::Level::DEBUG) {
+                    let tid = thread::current().id();
+                    let v: Vec<_> = group.iter().map(|s| s.index()).collect();
+                    debug!("{tid:?}: Sending group {group_idx} containing {:?}", v);
+                }
                 if let Err(e) = sender.send((group_idx, group)) {
                     warn!("Failed to send group: {}", e);
                 }

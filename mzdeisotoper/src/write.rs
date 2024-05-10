@@ -1,14 +1,14 @@
 use std::{
     io,
-    sync::mpsc::{Receiver, SyncSender, TryRecvError},
+    sync::mpsc::{Receiver, SyncSender, TryRecvError, TrySendError}
 };
 
 use itertools::Itertools;
 use mzdata::{io::MassSpectrometryFormat, prelude::*, spectrum::bindata::BinaryCompressionType};
-use tracing::info;
+use tracing::{debug, error, info};
 use std::time::Instant;
 
-use crate::types::{CPeak, DPeak, SpectrumCollator, SpectrumGroupType, SpectrumType};
+use crate::types::{CPeak, DPeak, SpectrumCollator, SpectrumGroupType, SpectrumType, BUFFER_SIZE};
 
 pub(crate) fn postprocess_spectra(
     group_idx: usize,
@@ -62,6 +62,31 @@ pub(crate) fn postprocess_spectra(
     }
 }
 
+fn drain_channel(collator: &mut SpectrumCollator, channel: &Receiver<(usize, SpectrumGroupType)>, batch_size: usize) -> bool {
+    for b in 0..batch_size {
+        match channel.try_recv() {
+            Ok((_, group)) => {
+                group
+                    .into_iter()
+                    .for_each(|s| collator.receive(s.index(), s));
+            }
+            Err(e) => match e {
+                TryRecvError::Empty => {
+                    if b > batch_size / 2 {
+                        info!("Drained {b} items from work queue");
+                    }
+                    break;
+                }
+                TryRecvError::Disconnected => {
+                    collator.done = true;
+                    break;
+                }
+            },
+        }
+    }
+    collator.done
+}
+
 pub fn collate_results_spectra(
     receiver: Receiver<(usize, SpectrumGroupType)>,
     sender: SyncSender<(usize, SpectrumType)>,
@@ -69,7 +94,8 @@ pub fn collate_results_spectra(
     let mut collator = SpectrumCollator::default();
     let mut i = 0usize;
     let mut last_send = Instant::now();
-    loop {
+    let mut has_work = true;
+    while has_work {
         i += 1;
         if i == usize::MAX {
             info!("Collation counter rolling over");
@@ -84,43 +110,88 @@ pub fn collate_results_spectra(
                 }
                 group
                     .into_iter()
-                    .for_each(|s| collator.receive(s.index(), s))
-                // collator.receive_from(&receiver, 100);
+                    .for_each(|s| collator.receive(s.index(), s));
+                if drain_channel(&mut collator, &receiver, 1000) {
+                    if collator.done && collator.waiting.is_empty() {
+                        debug!("Setting collator loop condition to false");
+                        has_work = false;
+                    }
+                }
             }
             Err(e) => match e {
                 TryRecvError::Empty => {}
                 TryRecvError::Disconnected => {
                     collator.done = true;
-                    break;
+                    if collator.done && collator.waiting.is_empty() {
+                        debug!("Setting collator loop condition to false");
+                        has_work = false;
+                    }
                 }
             },
         }
 
         let n = collator.waiting.len();
-        if i % 1000000 == 0 && i > 0 && n > 0 {
-            if (Instant::now() - last_send).as_secs_f64() > 30.0 {
-                let waiting_keys: Vec<_> =
-                    collator.waiting.keys().sorted().take(10).copied().collect();
-                tracing::info!(
-                   "Collator holding {n} entries at tick {i}, next key {} ({}), pending keys: {waiting_keys:?}",
-                    collator.next_key,
-                    collator.has_next()
-                );
+        if !collator.has_next() {
+            if i % 10000000 == 0 && i > 0 && n > 0 {
+                let t = Instant::now();
+                if (t - last_send).as_secs_f64() > 30.0 {
+                    let waiting_keys: Vec<_> =
+                        collator.waiting.keys().sorted().take(10).copied().collect();
+                    tracing::info!(
+                       "Collator holding {n} entries at tick {i}, next key {} ({}), pending keys: {waiting_keys:?}",
+                        collator.next_key,
+                        collator.has_next()
+                    );
+                    last_send = t;
+                }
             }
         }
-        if i % 1000000 == 0 && i > 0 && n > 0 {
-            tracing::debug!(
-                "Collator holding {n} entries at tick {i}, next key {} ({})",
-                collator.next_key,
-                collator.has_next()
-            )
-        }
 
-        while let Some((group_idx, group)) = collator.try_next() {
-            match sender.send((group_idx, group)) {
-                Ok(()) => {}
-                Err(e) => {
-                    tracing::error!("Failed to send {group_idx} for writing: {e}")
+        if collator.done && n > 0 {
+            debug!("Draining output queue, {n} items");
+            let mut waiting_items = std::mem::take(&mut collator.waiting).into_iter().collect_vec();
+            waiting_items.sort_by(|(i, _), (j, _)| i.cmp(j));
+            for (group_idx, group) in waiting_items {
+                match sender.send((group_idx, group)) {
+                    Ok(()) => {},
+                    Err(e) => {
+                        error!("Failed to send {group_idx} for writing: {e}");
+                        debug!("Setting collator loop condition to false");
+                        has_work = false;
+                        break;
+                    }
+                }
+            }
+        } else {
+            while let Some((group_idx, group)) = collator.try_next() {
+                if collator.waiting.len() >= BUFFER_SIZE {
+                    match sender.send((group_idx, group)) {
+                        Ok(()) => {},
+                        Err(e) => {
+                            error!("Failed to send {group_idx} for writing: {e}");
+                            debug!("Setting collator loop condition to false");
+                            has_work = false;
+                            break;
+                        }
+                    }
+                } else {
+                    match sender.try_send((group_idx, group)) {
+                        Ok(()) => {}
+                        Err(e) => {
+                            match e {
+                                TrySendError::Full((group_idx, group)) => {
+                                    collator.receive(group_idx, group);
+                                    collator.set_next_key(group_idx);
+                                },
+                                TrySendError::Disconnected(_) => {
+                                    error!("Failed to send {group_idx} for writing: {e}");
+                                    debug!("Setting collator loop condition to false");
+                                    has_work = false;
+                                    break;
+                                },
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -128,6 +199,7 @@ pub fn collate_results_spectra(
             last_send = Instant::now();
         }
     }
+    debug!("Spectrum collator done");
 }
 
 pub fn write_output_spectra<S: SpectrumWriter<CPeak, DPeak>>(

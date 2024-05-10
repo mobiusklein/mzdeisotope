@@ -36,7 +36,7 @@ fn test_malformed_time_range() -> Result<(), Box<dyn Error>> {
 #[test]
 fn test_run_subset() -> Result<(), Box<dyn Error>> {
     let mut cmd = Command::cargo_bin("mzdeisotoper")?;
-    cmd.env("RUST_LOG", "info");
+    cmd.env("RUST_LOG", "trace");
     cmd.arg("./tests/data/batching_test.mzML")
         .args(["-o", "-", "-r", "120-120.1"]);
     let result = cmd.assert().success();
@@ -54,7 +54,7 @@ fn test_run_subset_stdin() -> Result<(), Box<dyn Error>> {
     let mut source = BufReader::new(fs::File::open("./tests/data/batching_test.mzML.gz")?);
     let mut buf = Vec::new();
     source.read_to_end(&mut buf)?;
-    cmd.env("RUST_LOG", "info");
+    cmd.env("RUST_LOG", "trace");
     cmd.pipe_stdin("./tests/data/batching_test.mzML.gz")
         .unwrap();
     cmd.arg("-").args(["-o", "-", "-r", "120-120.1"]);
