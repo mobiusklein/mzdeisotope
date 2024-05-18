@@ -15,7 +15,7 @@ use mzdeisotope::{
 use crate::{
     args::{DeconvolutionParams, PrecursorProcessing, SignalParams},
     progress::ProgressRecord,
-    types::{CPeak, SpectrumGroupType, SpectrumType},
+    types::{CPeak, SpectrumGroupType, SpectrumType, PEAK_COUNT_THRESHOLD_WARNING},
     write::postprocess_spectra,
 };
 
@@ -228,6 +228,10 @@ pub fn deconvolution_transform<
             );
 
             if let Some(peaks) = peaks {
+                let has_too_many_peaks = peaks.len() >= PEAK_COUNT_THRESHOLD_WARNING;
+                if has_too_many_peaks {
+                    tracing::warn!("{} has {} centroids", scan.id(), peaks.len())
+                }
                 let PeaksAndTargets {
                     deconvoluted_peaks,
                     targets,
@@ -240,6 +244,9 @@ pub fn deconvolution_transform<
                         &precursor_mz,
                     )
                     .unwrap();
+                if has_too_many_peaks {
+                    tracing::warn!("{} has {} deconvolved centroids", scan.id(), deconvoluted_peaks.len())
+                }
                 prog.ms1_peaks = deconvoluted_peaks.len();
                 prog.ms1_spectra += 1;
                 scan.deconvoluted_peaks = Some(deconvoluted_peaks);

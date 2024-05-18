@@ -11,4 +11,5 @@ pub(crate) type SpectrumType = MultiLayerSpectrum<CPeak, DPeak>;
 pub(crate) type SpectrumGroupType =
     TargetTrackingSpectrumGroup<CPeak, DPeak, SpectrumGroup<CPeak, DPeak, SpectrumType>>;
 pub(crate) type SpectrumCollator = Collator<SpectrumType>;
-pub(crate) const BUFFER_SIZE: usize = 10000;
+pub(crate) const BUFFER_SIZE: usize = 10_000;
+pub(crate) const PEAK_COUNT_THRESHOLD_WARNING: usize = 10_000;
