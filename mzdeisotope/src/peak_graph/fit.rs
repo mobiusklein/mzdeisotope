@@ -159,7 +159,7 @@ pub(crate) type FitNodeGraphInner = HashMap<FitKey, FitNode, FnvBuildHasher>;
 
 #[derive(Debug, Default)]
 pub struct FitGraph {
-    pub fit_nodes: FitNodeGraphInner,
+    pub nodes: FitNodeGraphInner,
     pub dependencies: HashMap<FitKey, IsotopicFit>,
 }
 
@@ -170,26 +170,26 @@ impl FitGraph {
 
     #[inline(always)]
     pub fn reset(&mut self) {
-        self.fit_nodes.clear();
+        self.nodes.clear();
         self.dependencies.clear();
     }
 
     #[inline(always)]
     pub fn get(&self, key: &FitKey) -> Option<&FitNode> {
-        self.fit_nodes.get(key)
+        self.nodes.get(key)
     }
 
     #[inline(always)]
     pub fn get_mut(&mut self, key: &FitKey) -> Option<&mut FitNode> {
-        self.fit_nodes.get_mut(key)
+        self.nodes.get_mut(key)
     }
 
     pub fn add_fit(&mut self, fit: IsotopicFit, start: f64, end: f64) -> &FitNode {
-        let key = FitKey(self.fit_nodes.len() + 1);
+        let key = FitKey(self.nodes.len() + 1);
         let node = FitNode::from_fit(&fit, key, start, end);
-        self.fit_nodes.insert(key, node);
+        self.nodes.insert(key, node);
         self.dependencies.insert(key, fit);
-        self.fit_nodes.get(&key).unwrap()
+        self.nodes.get(&key).unwrap()
     }
 
     pub fn remove(&mut self, key: FitEvictionReason) -> Option<FitNode> {
@@ -197,7 +197,7 @@ impl FitGraph {
             FitEvictionReason::Superceded(k) => k,
             FitEvictionReason::NotBestFit(k) => k,
         };
-        let found = self.fit_nodes.remove(key);
+        let found = self.nodes.remove(key);
         if found.is_some() {
             self.dependencies.remove(key);
         }
@@ -205,15 +205,15 @@ impl FitGraph {
     }
 
     pub fn values(&self) -> Values<FitKey, FitNode> {
-        self.fit_nodes.values()
+        self.nodes.values()
     }
 
     pub fn len(&self) -> usize {
-        self.fit_nodes.len()
+        self.nodes.len()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.fit_nodes.is_empty()
+        self.nodes.is_empty()
     }
 
     /// Put [`DependenceCluster`] next to the [`FitNode`]s that references it
@@ -227,7 +227,7 @@ impl FitGraph {
             let mut deps = Vec::new();
             let mut nodes = Vec::new();
             cluster.dependencies.into_iter().for_each(|f| {
-                if let Some(node) = self.fit_nodes.remove(&f.key) {
+                if let Some(node) = self.nodes.remove(&f.key) {
                     deps.push(f);
                     nodes.push(node)
                 } else {
@@ -259,7 +259,7 @@ impl FitGraph {
             // Prevent dependencies that are omitted from solution from being considered
             cluster.dependencies.retain(|f| solution.contains(f));
             // Re-absorb solved sub-graph
-            self.fit_nodes.extend(nodes.drain());
+            self.nodes.extend(nodes.drain());
             solutions.push((cluster, solution));
         }
         solutions
@@ -270,7 +270,7 @@ impl std::ops::Index<&FitKey> for FitGraph {
     type Output = FitNode;
 
     fn index(&self, index: &FitKey) -> &Self::Output {
-        &self.fit_nodes[index]
+        &self.nodes[index]
     }
 }
 

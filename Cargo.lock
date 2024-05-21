@@ -1312,6 +1312,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "mzdeisotope-map"
+version = "0.1.7"
+dependencies = [
+ "chemical_elements",
+ "flate2",
+ "fnv",
+ "itertools",
+ "mzdata",
+ "mzdeisotope",
+ "mzpeaks 0.12.0",
+ "num-traits",
+ "rayon",
+ "test-log",
+ "thiserror",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "mzdeisotoper"
 version = "0.1.7"
 dependencies = [

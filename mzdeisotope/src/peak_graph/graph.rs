@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::mem;
 
 use fnv::FnvBuildHasher;
@@ -156,64 +156,8 @@ impl PeakDependenceGraph {
     }
 
     fn gather_independent_clusters(&mut self) -> Vec<HashSet<FitKey, FnvBuildHasher>> {
-        // Map peak key to the set of other keys that share fits over them, indirectly
-        // pointing into `dependency_history`.
-        let mut clusters: HashMap<PeakKey, usize, FnvBuildHasher> =
-            HashMap::with_capacity_and_hasher(self.peak_nodes.len() / 4, Default::default());
-
-        // A running log of previous dependency sets.
-        let mut dependency_history: HashMap<
-            usize,
-            HashSet<FitKey, FnvBuildHasher>,
-            FnvBuildHasher,
-        > = HashMap::default();
-
-        for (_peak_key, seed_node) in self.peak_nodes.iter() {
-            if seed_node.links.is_empty() {
-                continue;
-            }
-
-            let mut dependencies: HashSet<FitKey, FnvBuildHasher> =
-                HashSet::with_capacity_and_hasher(
-                    seed_node.links.len() * 2,
-                    FnvBuildHasher::default(),
-                );
-            dependencies.extend(seed_node.links.keys().copied());
-
-            // Get all the `FitKey` referenced by this cluster of dependencies
-            for dep_key in seed_node.links.keys() {
-                let fit_node = self.fit_nodes.get(dep_key).unwrap();
-                for peak_key in fit_node.peak_iter().filter(|p| p.is_matched()) {
-                    if let Some(key) = clusters.get(peak_key) {
-                        let members = dependency_history.get(key).unwrap();
-                        dependencies.extend(members.iter());
-                    }
-                }
-            }
-
-            // The generation that holds this revised dependency group
-            let key = dependency_history.len();
-            dependency_history.insert(key, dependencies);
-
-            for dep_key in dependency_history.get(&key).unwrap().iter() {
-                let fit_node = self.fit_nodes.get(dep_key).unwrap();
-                for peak_key in fit_node.peak_iter().filter(|p| p.is_matched()) {
-                    clusters.insert(*peak_key, key);
-                }
-            }
-        }
-        let mut result = Vec::with_capacity(clusters.len() / 3);
-        let mut seen: HashSet<usize, FnvBuildHasher> =
-            HashSet::with_capacity_and_hasher(clusters.len(), Default::default());
-        for val in clusters.into_values() {
-            if seen.contains(&val) {
-                continue;
-            } else {
-                seen.insert(val);
-                result.push(dependency_history.remove(&val).unwrap());
-            }
-        }
-        result
+        let traversal = BreadFirstTraversal::new(self);
+        traversal.collect()
     }
 
     pub fn find_non_overlapping_intervals(&mut self) {
@@ -261,5 +205,106 @@ impl PeakDependenceGraph {
             })
             .collect();
         accepted_fits
+    }
+}
+
+
+struct BreadFirstTraversal<'a> {
+    graph: &'a PeakDependenceGraph,
+    /// The fit node keys that have not yet been visited
+    nodes: HashSet<FitKey>,
+    /// A record of the peaks that have been visited already
+    peak_mask: Vec<bool>,
+}
+
+impl<'a> Iterator for BreadFirstTraversal<'a> {
+    type Item = HashSet<FitKey, FnvBuildHasher>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.next_component()
+    }
+}
+
+impl<'a> BreadFirstTraversal<'a> {
+    fn new(graph: &'a PeakDependenceGraph) -> Self {
+        let nodes = graph.fit_nodes.nodes.keys().copied().collect();
+
+        // Create a mask of equal length to the peak list initialized with false values
+        let peaks = if let Some(peak_count) = graph
+            .peak_nodes
+            .keys()
+            .filter(|p| p.is_matched())
+            .map(|p| p.to_index_unchecked() as usize)
+            .max()
+        {
+            let mut peaks: Vec<bool> = Vec::with_capacity(peak_count + 1);
+            peaks.resize(peak_count + 1, false);
+            peaks
+        } else {
+            Vec::new()
+        };
+        Self {
+            graph,
+            nodes,
+            peak_mask: peaks,
+        }
+    }
+
+    fn edges_from(&mut self, node: FitKey) -> HashSet<FitKey> {
+        let fit_node = self.graph.fit_nodes.get(&node).unwrap();
+        let mut next_keys = HashSet::new();
+        for peak in fit_node.peak_iter() {
+            match *peak {
+                // If the peak has already been visited, skip it, otherwise
+                // add it to the mask and traverse the peak node.
+                PeakKey::Matched(i) => {
+                    if self.peak_mask[i as usize] {
+                        continue;
+                    } else {
+                        self.peak_mask[i as usize] = true;
+                    }
+                }
+                PeakKey::Placeholder(_) => {
+                    continue;
+                }
+            }
+            let peak_node = self.graph.peak_nodes.get(peak).unwrap();
+            next_keys.extend(
+                peak_node
+                    .links
+                    .keys()
+                    // Skip fit nodes that we've already visited, which means that
+                    // they will have been removed from `self.nodes`.
+                    .filter(|i| self.nodes.contains(i))
+                    .copied(),
+            );
+        }
+        next_keys
+    }
+
+    fn visit(&mut self, node: FitKey) -> HashSet<FitKey, FnvBuildHasher> {
+        let mut component: HashSet<FitKey, FnvBuildHasher> = HashSet::default();
+
+        let mut nodes = VecDeque::from(vec![node]);
+
+        while !nodes.is_empty() {
+            let node = nodes.pop_front().unwrap();
+            // If we've already visited this node, it's not there to be removed
+            // so we can skip it.
+            if !self.nodes.remove(&node) {
+                continue;
+            }
+            component.insert(node);
+            nodes.extend(self.edges_from(node));
+        }
+        component
+    }
+
+    fn next_component(&mut self) -> Option<HashSet<FitKey, FnvBuildHasher>> {
+        if let Some(node) = self.nodes.iter().next().copied() {
+            Some(self.visit(node))
+        } else {
+            None
+        }
     }
 }

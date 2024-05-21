@@ -4,6 +4,7 @@ resolver = "2"
 
 members = [
     "mzdeisotope",
+    "mzdeisotope-map",
     "mzdeisotoper"
 ]
 

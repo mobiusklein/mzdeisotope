@@ -84,6 +84,7 @@ impl Default for MSDeconvScorer {
 }
 
 impl IsotopicPatternScorer for MSDeconvScorer {
+    #[inline]
     fn score<C: CentroidLike>(
         &self,
         experimental: &[C],
@@ -97,6 +98,7 @@ impl IsotopicPatternScorer for MSDeconvScorer {
 pub struct GTestScorer {}
 
 impl GTestScorer {
+    #[inline]
     pub fn score<C: CentroidLike>(
         &self,
         experimental: &[C],
@@ -132,6 +134,7 @@ impl IsotopicPatternScorer for GTestScorer {
 pub struct ScaledGTestScorer {}
 
 impl ScaledGTestScorer {
+    #[inline]
     pub fn score<C: CentroidLike>(
         &self,
         experimental: &[C],
@@ -152,6 +155,7 @@ impl ScaledGTestScorer {
 }
 
 impl IsotopicPatternScorer for ScaledGTestScorer {
+    #[inline]
     fn score<C: CentroidLike>(
         &self,
         experimental: &[C],
@@ -173,6 +177,7 @@ pub struct PenalizedMSDeconvScorer {
 }
 
 impl IsotopicPatternScorer for PenalizedMSDeconvScorer {
+    #[inline]
     fn score<C: CentroidLike>(
         &self,
         experimental: &[C],
@@ -201,6 +206,7 @@ impl PenalizedMSDeconvScorer {
         }
     }
 
+    #[inline]
     pub fn score<C: CentroidLike>(
         &self,
         experimental: &[C],
@@ -220,7 +226,11 @@ pub trait IsotopicFitFilter {
 
     fn select<I: Iterator<Item = IsotopicFit>>(&self, fits: I) -> Option<IsotopicFit>;
 
-    fn test(&self, fit: &IsotopicFit) -> bool;
+    fn test(&self, fit: &IsotopicFit) -> bool {
+        self.test_score(fit.score)
+    }
+
+    fn test_score(&self, fit: ScoreType) -> bool;
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -235,8 +245,14 @@ impl MaximizingFitFilter {
 }
 
 impl IsotopicFitFilter for MaximizingFitFilter {
+    #[inline]
     fn test(&self, fit: &IsotopicFit) -> bool {
         fit.score >= self.threshold
+    }
+
+    #[inline]
+    fn test_score(&self, fit: ScoreType) -> bool {
+        fit >= self.threshold
     }
 
     fn select<I: Iterator<Item = IsotopicFit>>(&self, fits: I) -> Option<IsotopicFit> {
@@ -263,8 +279,14 @@ impl Default for MinimizingFitFilter {
 }
 
 impl IsotopicFitFilter for MinimizingFitFilter {
+    #[inline]
     fn test(&self, fit: &IsotopicFit) -> bool {
         self.threshold >= fit.score
+    }
+
+    #[inline]
+    fn test_score(&self, fit: ScoreType) -> bool {
+        self.threshold >= fit
     }
 
     fn select<I: Iterator<Item = IsotopicFit>>(&self, fits: I) -> Option<IsotopicFit> {
