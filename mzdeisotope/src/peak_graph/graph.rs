@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::mem;
 
+// TODO: Compare with an identity hash function for `usize` newtype keys
 use fnv::FnvBuildHasher;
 
 use crate::isotopic_fit::IsotopicFit;
@@ -250,9 +251,9 @@ impl<'a> BreadFirstTraversal<'a> {
         }
     }
 
-    fn edges_from(&mut self, node: FitKey) -> HashSet<FitKey> {
+    fn edges_from(&mut self, node: FitKey) -> HashSet<FitKey, FnvBuildHasher> {
         let fit_node = self.graph.fit_nodes.get(&node).unwrap();
-        let mut next_keys = HashSet::new();
+        let mut next_keys = HashSet::default();
         for peak in fit_node.peak_iter() {
             match *peak {
                 // If the peak has already been visited, skip it, otherwise
