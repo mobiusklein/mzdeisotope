@@ -2,7 +2,8 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::mem;
 
 // TODO: Compare with an identity hash function for `usize` newtype keys
-use fnv::FnvBuildHasher;
+// use fnv::FnvBuildHasher;
+use identity_hash::BuildIdentityHasher;
 
 use crate::isotopic_fit::IsotopicFit;
 use crate::peaks::PeakKey;
@@ -156,7 +157,7 @@ impl PeakDependenceGraph {
         }
     }
 
-    fn gather_independent_clusters(&mut self) -> Vec<HashSet<FitKey, FnvBuildHasher>> {
+    fn gather_independent_clusters(&mut self) -> Vec<HashSet<FitKey, BuildIdentityHasher<FitKey>>> {
         let traversal = BreadFirstTraversal::new(self);
         traversal.collect()
     }
@@ -219,7 +220,7 @@ struct BreadFirstTraversal<'a> {
 }
 
 impl<'a> Iterator for BreadFirstTraversal<'a> {
-    type Item = HashSet<FitKey, FnvBuildHasher>;
+    type Item = HashSet<FitKey, BuildIdentityHasher<FitKey>>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.next_component()
@@ -251,7 +252,7 @@ impl<'a> BreadFirstTraversal<'a> {
         }
     }
 
-    fn edges_from(&mut self, node: FitKey) -> HashSet<FitKey, FnvBuildHasher> {
+    fn edges_from(&mut self, node: FitKey) -> HashSet<FitKey, BuildIdentityHasher<FitKey>> {
         let fit_node = self.graph.fit_nodes.get(&node).unwrap();
         let mut next_keys = HashSet::default();
         for peak in fit_node.peak_iter() {
@@ -283,8 +284,8 @@ impl<'a> BreadFirstTraversal<'a> {
         next_keys
     }
 
-    fn visit(&mut self, node: FitKey) -> HashSet<FitKey, FnvBuildHasher> {
-        let mut component: HashSet<FitKey, FnvBuildHasher> = HashSet::default();
+    fn visit(&mut self, node: FitKey) -> HashSet<FitKey, BuildIdentityHasher<FitKey>> {
+        let mut component: HashSet<FitKey, BuildIdentityHasher<FitKey>> = HashSet::default();
 
         let mut nodes = VecDeque::from(vec![node]);
 
@@ -301,7 +302,7 @@ impl<'a> BreadFirstTraversal<'a> {
         component
     }
 
-    fn next_component(&mut self) -> Option<HashSet<FitKey, FnvBuildHasher>> {
+    fn next_component(&mut self) -> Option<HashSet<FitKey, BuildIdentityHasher<FitKey>>> {
         if let Some(node) = self.nodes.iter().next().copied() {
             Some(self.visit(node))
         } else {

@@ -5,6 +5,7 @@ use std::fmt::Display;
 use std::hash::Hash;
 
 use fnv::FnvBuildHasher;
+use identity_hash::IdentityHashable;
 
 use crate::isotopic_fit::IsotopicFit;
 use crate::peaks::PeakKey;
@@ -15,8 +16,18 @@ use super::cluster::{
 };
 use super::graph::FitEvictionReason;
 
-#[derive(Debug, Default, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct FitKey(usize);
+
+impl Hash for FitKey {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        state.write_usize(self.0);
+    }
+}
+
+impl IdentityHashable for FitKey {}
+
+pub type BuildIdentityHasherFitKey = identity_hash::BuildIdentityHasher<FitKey>;
 
 impl Display for FitKey {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -27,8 +38,8 @@ impl Display for FitKey {
 #[derive(Debug, Clone)]
 pub struct FitNode {
     pub key: FitKey,
-    pub edges: HashSet<FitKey, FnvBuildHasher>,
-    pub overlap_edges: HashSet<FitKey, FnvBuildHasher>,
+    pub edges: HashSet<FitKey, BuildIdentityHasherFitKey>,
+    pub overlap_edges: HashSet<FitKey, BuildIdentityHasherFitKey>,
     pub peak_indices: HashSet<PeakKey, FnvBuildHasher>,
     pub score: ScoreType,
     pub start: f64,
