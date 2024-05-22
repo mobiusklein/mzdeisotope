@@ -14,6 +14,7 @@ use crate::types::{CPeak, DPeak};
 
 pub trait SpectrumGroupTiming {
     fn earliest_time(&self) -> Option<f64>;
+    #[allow(unused)]
     fn latest_time(&self) -> Option<f64>;
 }
 
