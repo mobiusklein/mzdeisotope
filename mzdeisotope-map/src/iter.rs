@@ -23,7 +23,7 @@ impl<'a, Y> Iterator for FeatureSetIter<'a, Y> {
 
 macro_rules! f_at {
     ($f:expr, $at:expr) => {
-        $f.iter().nth($at).map(|(x, y, z)| (*x, *y, *z))
+        $f.at($at)
     };
 }
 

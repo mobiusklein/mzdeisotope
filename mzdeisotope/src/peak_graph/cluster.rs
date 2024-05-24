@@ -1,8 +1,8 @@
 use crate::scorer::ScoreInterpretation;
-use fnv::FnvBuildHasher;
+use identity_hash::BuildIdentityHasher;
 use itertools::Itertools;
 
-use super::fit::{FitNode, FitNodeGraphInner, FitRef};
+use super::fit::{FitKey, FitNode, FitNodeGraphInner, FitRef};
 
 pub type SubgraphSolution = Vec<FitRef>;
 
@@ -117,7 +117,7 @@ pub struct SubgraphSelection {
 impl SubgraphSelection {
     pub fn from_nodes(nodes: Vec<FitNode>, score_ordering: ScoreInterpretation) -> Self {
         let mut node_map =
-            FitNodeGraphInner::with_capacity_and_hasher(nodes.len(), FnvBuildHasher::default());
+            FitNodeGraphInner::with_capacity_and_hasher(nodes.len(), BuildIdentityHasher::<FitKey>::default());
         for node in nodes {
             node_map.insert(node.key, node);
         }

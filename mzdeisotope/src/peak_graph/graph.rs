@@ -1,8 +1,6 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::mem;
 
-// TODO: Compare with an identity hash function for `usize` newtype keys
-// use fnv::FnvBuildHasher;
 use identity_hash::BuildIdentityHasher;
 
 use crate::isotopic_fit::IsotopicFit;

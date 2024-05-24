@@ -1,21 +1,20 @@
-use std::collections::hash_map::{Entry, Iter, IterMut, Keys};
-use std::collections::HashMap;
+use std::collections::{hash_map::{Entry, Iter, IterMut, Keys}, HashMap};
 
-use identity_hash::BuildIdentityHasher;
+use mzdeisotope::scorer::ScoreType;
 
-use crate::peaks::PeakKey;
-use crate::scorer::ScoreType;
+use super::fit::{BuildIdentityHasherFitKey, FitKey};
 
-use super::fit::FitKey;
+
 
 #[derive(Debug)]
-pub struct PeakNode {
-    pub key: PeakKey,
-    pub links: HashMap<FitKey, ScoreType, BuildIdentityHasher<usize>>,
+pub struct FeatureNode {
+    pub key: usize,
+    pub links: HashMap<FitKey, ScoreType, BuildIdentityHasherFitKey>,
 }
 
-impl PeakNode {
-    pub fn new(key: PeakKey) -> Self {
+
+impl FeatureNode {
+    pub fn new(key: usize) -> Self {
         Self {
             key,
             links: HashMap::default(),
@@ -30,24 +29,24 @@ impl PeakNode {
     }
 }
 
-impl PartialEq for PeakNode {
+impl PartialEq for FeatureNode {
     fn eq(&self, other: &Self) -> bool {
         self.key == other.key
     }
 }
-impl Eq for PeakNode {}
-impl std::hash::Hash for PeakNode {
+impl Eq for FeatureNode {}
+impl std::hash::Hash for FeatureNode {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.key.hash(state);
     }
 }
 
 #[derive(Debug, Default)]
-pub struct PeakGraph {
-    pub peak_nodes: HashMap<PeakKey, PeakNode>,
+pub struct FeatureGraph {
+    pub peak_nodes: HashMap<usize, FeatureNode>,
 }
 
-impl PeakGraph {
+impl FeatureGraph {
     pub fn new() -> Self {
         Self::default()
     }
@@ -56,24 +55,24 @@ impl PeakGraph {
         self.peak_nodes.clear();
     }
 
-    pub fn add_peak(&mut self, key: PeakKey) {
+    pub fn add_peak(&mut self, key: usize) {
         self.peak_nodes
             .entry(key)
-            .or_insert_with(|| PeakNode::new(key));
+            .or_insert_with(|| FeatureNode::new(key));
     }
 
-    pub fn get(&self, key: &PeakKey) -> Option<&PeakNode> {
+    pub fn get(&self, key: &usize) -> Option<&FeatureNode> {
         self.peak_nodes.get(key)
     }
 
-    pub fn get_mut(&mut self, key: &PeakKey) -> Option<&mut PeakNode> {
+    pub fn get_mut(&mut self, key: &usize) -> Option<&mut FeatureNode> {
         self.peak_nodes.get_mut(key)
     }
 
-    pub fn get_or_create_mute(&mut self, key: PeakKey) -> &mut PeakNode {
+    pub fn get_or_create_mute(&mut self, key: usize) -> &mut FeatureNode {
         match self.peak_nodes.entry(key) {
             Entry::Occupied(o) => o.into_mut(),
-            Entry::Vacant(v) => v.insert(PeakNode::new(key)),
+            Entry::Vacant(v) => v.insert(FeatureNode::new(key)),
         }
     }
 
@@ -85,19 +84,19 @@ impl PeakGraph {
         self.peak_nodes.is_empty()
     }
 
-    pub fn keys(&self) -> Keys<PeakKey, PeakNode> {
+    pub fn keys(&self) -> Keys<usize, FeatureNode> {
         self.peak_nodes.keys()
     }
 
-    pub fn iter(&self) -> Iter<PeakKey, PeakNode> {
+    pub fn iter(&self) -> Iter<usize, FeatureNode> {
         self.peak_nodes.iter()
     }
 
-    pub fn iter_mut(&mut self) -> IterMut<PeakKey, PeakNode> {
+    pub fn iter_mut(&mut self) -> IterMut<usize, FeatureNode> {
         self.peak_nodes.iter_mut()
     }
 
-    pub fn drop_fit_dependence<'a, I: Iterator<Item = &'a PeakKey>>(
+    pub fn drop_fit_dependence<'a, I: Iterator<Item = &'a usize>>(
         &mut self,
         peak_iter: I,
         fit_key: &FitKey,

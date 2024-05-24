@@ -3,8 +3,10 @@ use mzpeaks::prelude::*;
 use mzpeaks::{CentroidPeak, IndexType, MZPeakSetType};
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
-use std::hash;
+use std::hash::Hash;
 use std::ops::{Index, Range};
+
+use identity_hash::IdentityHashable;
 
 use crate::charge::{quick_charge_w, ChargeListIter, ChargeRange};
 use crate::isotopic_fit::IsotopicFit;
@@ -23,6 +25,17 @@ pub enum PeakKey {
     Placeholder(Placeholder),
 }
 
+impl Hash for PeakKey {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        match self {
+            PeakKey::Matched(x) => state.write_u32(*x),
+            PeakKey::Placeholder(x) => state.write_i64(*x)
+        }
+    }
+}
+
+impl IdentityHashable for PeakKey {}
+
 impl PeakKey {
     pub fn is_matched(&self) -> bool {
         matches!(self, Self::Matched(_))
@@ -36,15 +49,6 @@ impl PeakKey {
         match self {
             PeakKey::Matched(i) => i,
             PeakKey::Placeholder(_) => panic!("PeakKey index requested, but found a placeholder"),
-        }
-    }
-}
-
-impl hash::Hash for PeakKey {
-    fn hash<H: hash::Hasher>(&self, state: &mut H) {
-        match self {
-            PeakKey::Matched(i) => i.hash(state),
-            PeakKey::Placeholder(i) => i.hash(state),
         }
     }
 }
