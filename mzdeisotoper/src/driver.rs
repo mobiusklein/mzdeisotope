@@ -179,6 +179,10 @@ If a stop is not specified, processing stops at the end of the run.
     /// The maximum number of missed peaks for MSn spectra
     #[arg(short = 'M', long = "msn-max-missed-peaks", default_value_t = 1)]
     pub msn_missed_peaks: u16,
+
+    /// Use incremental truncation of isotopic patterns instead of a single width
+    #[arg(short = 'i', long = "incremental-truncation")]
+    pub isotopic_incremental_truncation: bool,
 }
 
 impl MZDeiosotoper {
@@ -230,16 +234,10 @@ impl MZDeiosotoper {
             self.ms1_denoising.to_string(),
         ));
         for m in self.ms1_isotopic_model.iter() {
-            processing.add_param(Param::new_key_value(
-                "ms1_isotopic_model",
-                m.to_string(),
-            ));
+            processing.add_param(Param::new_key_value("ms1_isotopic_model", m.to_string()));
         }
         for m in self.msn_isotopic_model.iter() {
-            processing.add_param(Param::new_key_value(
-                "msn_isotopic_model",
-                m.to_string(),
-            ));
+            processing.add_param(Param::new_key_value("msn_isotopic_model", m.to_string()));
         }
         processing.add_param(Param::new_key_value(
             "ms1_score_threshold",
@@ -265,6 +263,12 @@ impl MZDeiosotoper {
             "msn_missed_peaks",
             self.msn_missed_peaks.to_string(),
         ));
+        if self.isotopic_incremental_truncation {
+            processing.add_param(Param::new_key_value(
+                "isotopic_incremental_truncation",
+                "true",
+            ))
+        }
         processing.order = i8::MAX;
         processing
     }
@@ -508,7 +512,7 @@ impl MZDeiosotoper {
         &self,
         reader: R,
         writer: W,
-        writer_format: MassSpectrometryFormat
+        writer_format: MassSpectrometryFormat,
     ) -> io::Result<()> {
         let buffer_size = BUFFER_SIZE;
         let (send_solved, recv_solved) = sync_channel(buffer_size);
@@ -519,12 +523,27 @@ impl MZDeiosotoper {
         let mut msn_args = make_default_msn_deconvolution_params();
 
         ms1_args.fit_filter.threshold = self.ms1_score_threshold;
-        ms1_args.isotopic_model = self.ms1_isotopic_model.iter().map(|it| it.clone().into()).collect();
+        ms1_args.isotopic_model = self
+            .ms1_isotopic_model
+            .iter()
+            .map(|it| it.clone().into())
+            .collect();
         ms1_args.charge_range = self.charge_range.into();
         ms1_args.max_missed_peaks = self.ms1_missed_peaks;
 
+        if self.isotopic_incremental_truncation {
+            ms1_args.isotopic_params.incremental_truncation = Some(0.95);
+            ms1_args.isotopic_params.truncate_after = 0.9999;
+            msn_args.isotopic_params.incremental_truncation = Some(0.8);
+            msn_args.isotopic_params.truncate_after = 0.9999;
+        }
+
         msn_args.fit_filter.threshold = self.msn_score_threshold;
-        msn_args.isotopic_model = self.msn_isotopic_model.iter().map(|it| it.clone().into()).collect();
+        msn_args.isotopic_model = self
+            .msn_isotopic_model
+            .iter()
+            .map(|it| it.clone().into())
+            .collect();
         msn_args.charge_range = self.charge_range.into();
         msn_args.max_missed_peaks = self.msn_missed_peaks;
 

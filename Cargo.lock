@@ -1280,6 +1280,33 @@ dependencies = [
  "bytemuck",
  "chrono",
  "flate2",
+ "indexmap",
+ "lazy_static",
+ "log",
+ "md5",
+ "mzpeaks 0.13.0",
+ "mzsignal 0.13.0",
+ "num-traits",
+ "quick-xml",
+ "regex",
+ "serde",
+ "serde_json",
+ "sha1",
+ "thiserror",
+]
+
+[[package]]
+name = "mzdata"
+version = "0.18.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4524f59f7cad7b6c2c9354d7855e2bc01e679bd2ffa21b46633b5f26c01be3de"
+dependencies = [
+ "base16ct",
+ "base64-simd",
+ "bitflags 2.5.0",
+ "bytemuck",
+ "chrono",
+ "flate2",
  "hdf5",
  "hdf5-sys",
  "indexmap",
@@ -1287,7 +1314,7 @@ dependencies = [
  "log",
  "md5",
  "mzpeaks 0.13.0",
- "mzsignal",
+ "mzsignal 0.14.0",
  "ndarray",
  "num-traits",
  "quick-xml",
@@ -1307,7 +1334,7 @@ dependencies = [
  "flate2",
  "identity-hash",
  "itertools",
- "mzdata",
+ "mzdata 0.18.0",
  "mzpeaks 0.13.0",
  "num-traits",
  "rayon",
@@ -1325,7 +1352,7 @@ dependencies = [
  "flate2",
  "identity-hash",
  "itertools",
- "mzdata",
+ "mzdata 0.17.0",
  "mzdeisotope",
  "mzpeaks 0.13.0",
  "num-traits",
@@ -1345,7 +1372,7 @@ dependencies = [
  "figment",
  "flate2",
  "itertools",
- "mzdata",
+ "mzdata 0.18.0",
  "mzdeisotope",
  "mzpeaks 0.13.0",
  "predicates",
@@ -1378,6 +1405,20 @@ name = "mzsignal"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "929caa4b0b9b18808327324a1d81afc527e07343f0e77fa51dcb0b3287378cc9"
+dependencies = [
+ "cfg-if",
+ "log",
+ "mzpeaks 0.13.0",
+ "nalgebra",
+ "num-traits",
+ "thiserror",
+]
+
+[[package]]
+name = "mzsignal"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3f0020a64c7c76f1558bbe3e0d1c045b69e0b4e5aa94cd42b721ddc28c2a48a7"
 dependencies = [
  "cfg-if",
  "log",

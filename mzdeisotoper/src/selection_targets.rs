@@ -6,7 +6,7 @@ use mzdata::prelude::*;
 use mzdata::spectrum::{
     MultiLayerSpectrum, SpectrumGroup, SpectrumGroupIntoIter, SpectrumGroupIter,
 };
-use mzdeisotope::interval::{SimpleInterval, Span1D};
+use mzpeaks::coordinate::{SimpleInterval, Span1D};
 use mzpeaks::{CentroidLike, DeconvolutedCentroidLike, Tolerance};
 
 use crate::time_range::TimeRange;

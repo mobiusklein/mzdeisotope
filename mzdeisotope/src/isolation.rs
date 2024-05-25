@@ -1,10 +1,9 @@
 use mzdata::spectrum::IsolationWindow;
 use mzpeaks::{prelude::*, MZPeakSetType, MassPeakSetType};
 
-use crate::{
-    interval::{SimpleInterval, Span1D},
-    solution::DeconvolvedSolutionPeak,
-};
+use mzpeaks::coordinate::{SimpleInterval, Span1D};
+
+use crate::solution::DeconvolvedSolutionPeak;
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, PartialOrd)]
 pub struct Coisolation {

@@ -2,7 +2,7 @@ use std::{error::Error, fmt::Display, num::ParseFloatError, ops::Range, str::Fro
 
 use serde::{Deserialize, Serialize};
 
-use mzdeisotope::interval::Span1D;
+use mzpeaks::coordinate::Span1D;
 
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
 pub struct TimeRange {

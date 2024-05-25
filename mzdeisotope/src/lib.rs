@@ -10,5 +10,4 @@ pub mod scorer;
 pub mod solution;
 
 pub mod deconvoluter;
-pub mod interval;
 pub mod multi_model_deconvoluters;
