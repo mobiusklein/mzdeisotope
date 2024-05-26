@@ -1270,36 +1270,9 @@ dependencies = [
 
 [[package]]
 name = "mzdata"
-version = "0.17.0"
+version = "0.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dc7c21622e3e35f2740cf13286078b26588c5ea16eba9aed495f5e668f06044e"
-dependencies = [
- "base16ct",
- "base64-simd",
- "bitflags 2.5.0",
- "bytemuck",
- "chrono",
- "flate2",
- "indexmap",
- "lazy_static",
- "log",
- "md5",
- "mzpeaks 0.13.0",
- "mzsignal 0.13.0",
- "num-traits",
- "quick-xml",
- "regex",
- "serde",
- "serde_json",
- "sha1",
- "thiserror",
-]
-
-[[package]]
-name = "mzdata"
-version = "0.18.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4524f59f7cad7b6c2c9354d7855e2bc01e679bd2ffa21b46633b5f26c01be3de"
+checksum = "2c0f573672612955e155e2eadd7862b9f1390bc48aaad18fa7c572fcb598db9a"
 dependencies = [
  "base16ct",
  "base64-simd",
@@ -1314,7 +1287,7 @@ dependencies = [
  "log",
  "md5",
  "mzpeaks 0.13.0",
- "mzsignal 0.14.0",
+ "mzsignal",
  "ndarray",
  "num-traits",
  "quick-xml",
@@ -1334,7 +1307,7 @@ dependencies = [
  "flate2",
  "identity-hash",
  "itertools",
- "mzdata 0.18.0",
+ "mzdata",
  "mzpeaks 0.13.0",
  "num-traits",
  "rayon",
@@ -1352,7 +1325,7 @@ dependencies = [
  "flate2",
  "identity-hash",
  "itertools",
- "mzdata 0.17.0",
+ "mzdata",
  "mzdeisotope",
  "mzpeaks 0.13.0",
  "num-traits",
@@ -1372,7 +1345,7 @@ dependencies = [
  "figment",
  "flate2",
  "itertools",
- "mzdata 0.18.0",
+ "mzdata",
  "mzdeisotope",
  "mzpeaks 0.13.0",
  "predicates",
@@ -1398,20 +1371,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e7f5cd00ee21a67b72ae1424d296c53a0cfc80c54f9528067ed8284541cabe1e"
 dependencies = [
  "num-traits",
-]
-
-[[package]]
-name = "mzsignal"
-version = "0.13.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "929caa4b0b9b18808327324a1d81afc527e07343f0e77fa51dcb0b3287378cc9"
-dependencies = [
- "cfg-if",
- "log",
- "mzpeaks 0.13.0",
- "nalgebra",
- "num-traits",
- "thiserror",
 ]
 
 [[package]]
