@@ -40,3 +40,9 @@ flate2 = "1.0.28"
 test-log = "0.2.12 "
 rayon = "1.7.0"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter", "fmt"]}
+
+[package.metadata.docs.rs]
+rustdoc-args = [
+    "--html-in-header",
+    "mzdeiostope/doc/katex.html",
+]

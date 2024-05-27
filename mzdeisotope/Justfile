@@ -5,3 +5,7 @@ test:
 
 docs:
     cargo doc --lib --no-deps
+
+docmath:
+    cargo clean --doc
+    RUSTDOCFLAGS="--html-in-header mzdeisotope/doc/katex.html" cargo doc --lib --no-deps -v

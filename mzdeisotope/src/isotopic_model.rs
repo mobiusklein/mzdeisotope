@@ -151,7 +151,7 @@ pub trait IsotopicPatternGenerator {
     }
 }
 
-/// The mass difference between isotopes C[13] and C[12]. Not precisely universal, but the
+/// The mass difference between isotopes C\[13\] and C\[12\]. Not precisely universal, but the
 /// majority of expected applications are carbon-based
 pub const NEUTRON_SHIFT: f64 = 1.0033548378;
 

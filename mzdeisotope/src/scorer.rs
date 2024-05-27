@@ -1,3 +1,4 @@
+//! Isotopic pattern evaluation tools
 use std::collections::HashSet;
 
 use chemical_elements::isotopic_pattern::{Peak as TheoreticalPeak, TheoreticalIsotopicPattern};
@@ -24,6 +25,31 @@ pub trait IsotopicPatternScorer {
     }
 }
 
+/// An implementation of the scoring function used in [MS-Deconv][1]
+///
+///
+/// ```math
+/// \begin{split}
+///     s_{mz}(e, t) &= \begin{cases}
+///         1 - \frac{\|mz(e) - mz(t)\|}{d} & \text{if } \|mz(e) - mz(t)\| < d,\\
+///         0 & \text{otherwise}
+///     \end{cases}\\
+///
+///     s_{int}(e, t) &= \begin{cases}
+///         1 - \frac{int(t) - int(e)}{int(e)} & \text{if } int(e) < int(t) \text{ and } \frac{int(t) - int(e)}{int(e)} \le 1, \\
+///         \sqrt{1 - \frac{int(e) - int(t)}{int(t)}} & \text{if } int(e) \ge int(t) \text{ and } \frac{int(e) - int(t)}{int(t)} \le 1,\\
+///         0 & \text{otherwise}
+///     \end{cases}\\
+///
+///     \text{S}(e, t) &= \sqrt{int(t)}\times s_{mz}(e,t) \times s_{int}(e, t)
+/// \end{split}
+/// ```
+/// # References
+/// - [1]: <https://doi.org/10.1074/mcp.M110.002766>
+///     Liu, X., Inbar, Y., Dorrestein, P. C., Wynne, C., Edwards, N., Souda, P., …
+///     Pevzner, P. A. (2010). Deconvolution and database search of complex tandem
+///     mass spectra of intact proteins: a combinatorial approach. Molecular & Cellular
+///     Proteomics : MCP, 9(12), 2772–2782.
 #[derive(Debug, Clone, Copy)]
 pub struct MSDeconvScorer {
     pub error_tolerance: f64,
@@ -94,6 +120,16 @@ impl IsotopicPatternScorer for MSDeconvScorer {
     }
 }
 
+/// Evaluate an isotopic fit using a [G-test](https://en.wikipedia.org/wiki/G-test)
+///
+/// ```math
+/// G = 2 \displaystyle\sum_i^n {o_i * (\log o_i  - \log e_i)}
+/// ```
+///
+/// where $`o_i`$ is the intensity of the ith experimental peak
+/// and $`e_i`$ is the intensity of the ith theoretical peak.
+///
+/// The G statistic is on the scale of the signal used.
 #[derive(Default, Debug, Clone, Copy)]
 pub struct GTestScorer {}
 
@@ -130,6 +166,14 @@ impl IsotopicPatternScorer for GTestScorer {
     }
 }
 
+
+/// Evaluate an isotopic fit using a [G-test](https://en.wikipedia.org/wiki/G-test), after normalizing the
+/// list of experimental and theoretical peaks to both sum to 1.
+/// ```math
+/// G = 2 \displaystyle\sum_i^n {o_i * (\log o_i  - \log e_i)}
+/// ```
+/// where $`o_i`$ is the intensity of the ith experimental peak and $`e_i`$ is the
+/// intensity of the ith theoretical peak.
 #[derive(Default, Debug, Clone, Copy)]
 pub struct ScaledGTestScorer {}
 
@@ -169,11 +213,20 @@ impl IsotopicPatternScorer for ScaledGTestScorer {
     }
 }
 
+
+/// Combines [`MSDeconvScorer`] with a penalty of [`ScaledGTestScorer`].
+///
+/// ```math
+/// S(e, t) = \operatorname{MS-Deconv}(e, t) \times (1 - \mathit{w} \operatorname{G-test}(e, t))
+/// ```
+/// where $`w`$ is [`PenalizedMSDeconvScorer::penalty_factor`]
 #[derive(Debug, Clone, Copy)]
 pub struct PenalizedMSDeconvScorer {
     msdeconv: MSDeconvScorer,
     penalizer: ScaledGTestScorer,
-    penalty_factor: ScoreType,
+    /// The scaling of the normalized G-statistic to apply. Smaller
+    /// values lead to less penalty, where `0` makes this equivalent to [`MSDeconvScorer`]
+    pub penalty_factor: ScoreType,
 }
 
 impl IsotopicPatternScorer for PenalizedMSDeconvScorer {
