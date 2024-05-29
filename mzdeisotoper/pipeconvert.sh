@@ -7,6 +7,6 @@ cargo b --release
 
 msconvert --mzML $RAW -o- | cargo r --release -- \
     - -g 1 -s 10 -a glycopeptide \
-    --msn-score-threshold 5 --msn-isotopic-model peptide \
-    -i \
+    --msn-score-threshold 5 -A peptide -A glycopeptide \
+    -i -v dia \
     -o $OUT
