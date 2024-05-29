@@ -828,6 +828,74 @@ impl TheoreticalIsotopicDistributionScalingMethod {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct BasePeakToMonoisotopicOffsetEstimator<I: IsotopicPatternGenerator> {
+    isotopic_model: I,
+    bins: Vec<usize>,
+    step_size: f64,
+}
+
+impl<I: IsotopicPatternGenerator> BasePeakToMonoisotopicOffsetEstimator<I> {
+    pub fn new(isotopic_model: I, step_size: f64) -> Self {
+        Self {
+            isotopic_model,
+            bins: Vec::new(),
+            step_size,
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.bins.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.bins.is_empty()
+    }
+
+    fn max_bin_mass(&self) -> f64 {
+        self.len() as f64 * self.step_size
+    }
+
+    fn bin_for(&self, mass: f64) -> usize {
+        let offset = mass / self.step_size;
+        offset as usize
+    }
+
+    fn estimate_for_peak_offset(&mut self, mass: f64) -> usize {
+        let tid = self
+            .isotopic_model
+            .isotopic_cluster(mass, 1, PROTON, 0.99, 0.0);
+        tid.into_iter()
+            .enumerate()
+            .max_by(|(_, pa), (_, pb)| pa.intensity.total_cmp(&pb.intensity))
+            .map(|(i, _)| i)
+            .unwrap()
+    }
+
+    fn populate_bins(&mut self, max_mass: f64) {
+        let mut current_bin = self.max_bin_mass();
+
+        while max_mass >= current_bin {
+            let next_bin_mass = current_bin + self.step_size;
+            let delta = self.estimate_for_peak_offset(next_bin_mass);
+            self.bins.push(delta);
+            current_bin = next_bin_mass;
+        }
+    }
+
+    pub fn get_peak_offset(&mut self, mass: f64) -> usize {
+        let index = self.bin_for(mass);
+        if self.len() <= index {
+            self.populate_bins(mass);
+        };
+        self.bins[index]
+    }
+
+    pub fn get_peak_offset_direct(&mut self, mass: f64) -> usize {
+        self.estimate_for_peak_offset(mass)
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -956,5 +1024,15 @@ mod test {
         let tid = tid.scale_by(100.0);
         let tot: f32 = tid.iter().map(|p| p.intensity()).sum();
         assert!((tot - 100.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn test_mono_to_base() {
+        let mut model: BasePeakToMonoisotopicOffsetEstimator<IsotopicModel> =
+            BasePeakToMonoisotopicOffsetEstimator::new(IsotopicModels::Peptide.into(), 10.0);
+
+        assert_eq!(model.get_peak_offset(1000.0), 0);
+        assert_eq!(model.get_peak_offset(2500.0), 1);
+        assert_eq!(model.get_peak_offset(10000.0), 6);
     }
 }
