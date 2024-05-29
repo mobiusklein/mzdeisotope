@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::hash::Hash;
 use std::ops::{Index, Range};
 
-use identity_hash::IdentityHashable;
+use identity_hash::{BuildIdentityHasher, IdentityHashable};
 
 use crate::charge::{quick_charge_w, ChargeListIter, ChargeRange};
 use crate::isotopic_fit::IsotopicFit;
@@ -55,7 +55,7 @@ impl PeakKey {
 
 #[derive(Debug)]
 pub struct PlaceholderCache<C: PeakLike> {
-    placeholders: HashMap<Placeholder, C>,
+    placeholders: HashMap<Placeholder, C, BuildIdentityHasher<Placeholder>>,
 }
 
 impl<C: PeakLike> Default for PlaceholderCache<C> {

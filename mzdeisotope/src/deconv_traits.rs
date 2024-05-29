@@ -28,6 +28,9 @@ pub enum DeconvolutionError {
     FailedToResolveFit(FitRef),
 }
 
+
+/// A set of behaviors for fitting theoretical peaks to experimentally detected
+/// peak lists.
 pub trait IsotopicPatternFitter<C: CentroidLike> {
     fn collect_for(&self, keys: &[PeakKey]) -> Vec<&C>;
 
@@ -111,11 +114,19 @@ pub trait IsotopicPatternFitter<C: CentroidLike> {
         )
     }
 
+    /// Search for an experimental peak satisfying the m/z error tolerance limits
     fn has_peak_direct(&self, mz: f64, error_tolerance: Tolerance) -> Option<&C>;
+    /// Search for an experimental peak satisfying the m/z error tolerance limits,
+    /// but return a [`PeakKey`] which records the index of the peak if it is found
+    /// or a unique identifier for a marker for a common missing peak.
     fn has_peak(&mut self, mz: f64, error_tolerance: Tolerance) -> PeakKey;
     fn between(&mut self, m1: f64, m2: f64) -> Range<usize>;
+    /// Translate a [`PeakKey`] into a reference to `C`. Placeholders are created
+    /// and cached on-the-fly.
     fn get_peak(&self, key: PeakKey) -> &C;
+    /// Translate an m/z into a placeholder
     fn create_key(&mut self, mz: f64) -> PeakKey;
+    /// The number of peaks in the experimental peak list
     fn peak_count(&self) -> usize;
 
     #[tracing::instrument(skip_all, level = "trace")]
@@ -169,9 +180,11 @@ pub trait IsotopicPatternFitter<C: CentroidLike> {
         acc
     }
 
+    /// Subtract the scaled theoretical intensities from experimental peaks
     fn subtract_theoretical_intensity(&mut self, fit: &IsotopicFit);
 }
 
+/// A collection of common behaviors for searching for peaks +/- isotopic peaks
 pub trait RelativePeakSearch<C: CentroidLike>: IsotopicPatternFitter<C> {
     fn has_previous_peak_at_charge(
         &mut self,
@@ -258,6 +271,9 @@ pub trait RelativePeakSearch<C: CentroidLike>: IsotopicPatternFitter<C> {
     }
 }
 
+
+/// A collection of behaviors to exhaustively try to fit each experimental peak
+/// as a theoretical isotopic distribution.
 pub trait ExhaustivePeakSearch<C: CentroidLike>:
     IsotopicPatternFitter<C> + RelativePeakSearch<C>
 {
@@ -432,6 +448,8 @@ pub trait ExhaustivePeakSearch<C: CentroidLike>:
     }
 }
 
+/// In addition to the behavior of [`ExhaustivePeakSearch`], maintain a graph of
+/// overlapping solutions to deconvolve complex spectra.
 pub trait GraphDependentSearch<C: CentroidLike>: ExhaustivePeakSearch<C> {
     fn add_fit_dependence(&mut self, fit: IsotopicFit);
 
@@ -535,11 +553,14 @@ pub trait GraphDependentSearch<C: CentroidLike>: ExhaustivePeakSearch<C> {
     }
 }
 
+/// Behavior for registering deconvolution solutions for specific experimental peaks
 pub trait TargetedDeconvolution<C: CentroidLike>:
     IsotopicPatternFitter<C> + RelativePeakSearch<C>
 {
     type TargetSolution;
 
+    /// Deconvolve the specific target peak and register a solution handle that can be used
+    /// to retrieve the final solution later.
     fn targeted_deconvolution(
         &mut self,
         peak: PeakKey,
@@ -550,6 +571,7 @@ pub trait TargetedDeconvolution<C: CentroidLike>:
         params: IsotopicPatternParams,
     ) -> Self::TargetSolution;
 
+    /// Retrieve a solution by its handle
     fn resolve_target<'a, 'b: 'a>(
         &self,
         deconvoluted_peaks: &'b MassPeakSetType<DeconvolvedSolutionPeak>,
@@ -557,6 +579,8 @@ pub trait TargetedDeconvolution<C: CentroidLike>:
     ) -> Option<&'b DeconvolvedSolutionPeak>;
 }
 
+
+/// Deconvolve the entire spectrum iteratively
 pub trait IsotopicDeconvolutionAlgorithm<C: CentroidLike> {
     fn deconvolve(
         &mut self,
