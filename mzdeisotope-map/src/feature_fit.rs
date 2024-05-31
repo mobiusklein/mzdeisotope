@@ -5,7 +5,7 @@ use chemical_elements::isotopic_pattern::TheoreticalIsotopicPattern;
 
 use mzdeisotope::scorer::ScoreType;
 
-#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, PartialOrd)]
 pub struct MapCoordinate {
     pub coord: f64,
     pub time: f64,

@@ -1,6 +1,6 @@
 use std::{
     cmp,
-    collections::{hash_set::Iter, HashSet},
+    collections::{hash_set::Iter, HashMap, HashSet},
     fmt::Display,
     hash::Hash,
 };
@@ -165,4 +165,12 @@ impl Ord for FitRef {
     fn cmp(&self, other: &Self) -> cmp::Ordering {
         self.score.partial_cmp(&other.score).unwrap()
     }
+}
+
+pub(crate) type FitNodeGraphInner = HashMap<FitKey, FitNode, BuildIdentityHasherFitKey>;
+
+#[derive(Debug, Default)]
+pub struct FitGraph {
+    pub nodes: FitNodeGraphInner,
+    pub dependencies: HashMap<FitKey, FeatureSetFit>,
 }

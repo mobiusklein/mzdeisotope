@@ -43,7 +43,7 @@ impl std::hash::Hash for FeatureNode {
 
 #[derive(Debug, Default)]
 pub struct FeatureGraph {
-    pub peak_nodes: HashMap<usize, FeatureNode>,
+    pub nodes: HashMap<usize, FeatureNode>,
 }
 
 impl FeatureGraph {
@@ -52,48 +52,48 @@ impl FeatureGraph {
     }
 
     pub fn reset(&mut self) {
-        self.peak_nodes.clear();
+        self.nodes.clear();
     }
 
     pub fn add_peak(&mut self, key: usize) {
-        self.peak_nodes
+        self.nodes
             .entry(key)
             .or_insert_with(|| FeatureNode::new(key));
     }
 
     pub fn get(&self, key: &usize) -> Option<&FeatureNode> {
-        self.peak_nodes.get(key)
+        self.nodes.get(key)
     }
 
     pub fn get_mut(&mut self, key: &usize) -> Option<&mut FeatureNode> {
-        self.peak_nodes.get_mut(key)
+        self.nodes.get_mut(key)
     }
 
     pub fn get_or_create_mute(&mut self, key: usize) -> &mut FeatureNode {
-        match self.peak_nodes.entry(key) {
+        match self.nodes.entry(key) {
             Entry::Occupied(o) => o.into_mut(),
             Entry::Vacant(v) => v.insert(FeatureNode::new(key)),
         }
     }
 
     pub fn len(&self) -> usize {
-        self.peak_nodes.len()
+        self.nodes.len()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.peak_nodes.is_empty()
+        self.nodes.is_empty()
     }
 
     pub fn keys(&self) -> Keys<usize, FeatureNode> {
-        self.peak_nodes.keys()
+        self.nodes.keys()
     }
 
     pub fn iter(&self) -> Iter<usize, FeatureNode> {
-        self.peak_nodes.iter()
+        self.nodes.iter()
     }
 
     pub fn iter_mut(&mut self) -> IterMut<usize, FeatureNode> {
-        self.peak_nodes.iter_mut()
+        self.nodes.iter_mut()
     }
 
     pub fn drop_fit_dependence<'a, I: Iterator<Item = &'a usize>>(
@@ -102,7 +102,7 @@ impl FeatureGraph {
         fit_key: &FitKey,
     ) {
         for p in peak_iter {
-            if let Some(p) = self.peak_nodes.get_mut(p) {
+            if let Some(p) = self.nodes.get_mut(p) {
                 p.remove(fit_key);
             } else {
                 tracing::warn!("Failed to remove {fit_key} for {p:?}");
