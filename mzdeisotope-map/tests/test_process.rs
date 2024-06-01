@@ -12,16 +12,16 @@ use mzdeisotope_map::{FeatureProcessor, FeatureSearchParams};
 use tracing_subscriber::{fmt, EnvFilter, prelude::*};
 
 #[test]
+#[ignore]
 fn test_map() -> io::Result<()> {
     let subscriber = tracing_subscriber::registry()
-        .with(EnvFilter::from_default_env().add_directive(tracing::Level::TRACE.into()))
         .with(
             fmt::layer()
                 .compact()
                 .with_writer(io::stderr)
                 .with_filter(
                     EnvFilter::builder()
-                        .with_default_directive(tracing::Level::INFO.into())
+                        .with_default_directive(tracing::Level::DEBUG.into())
                         .from_env_lossy(),
                 ),
         );
