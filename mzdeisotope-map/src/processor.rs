@@ -385,6 +385,7 @@ impl<Y: Clone, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: Isotopi
                 }
 
                 let score = self.scorer.score(&cleaned_eid, &tid);
+                // tracing::debug!("{cleaned_eid:?} vs. {tid} => {score:0.2}");
                 if score.is_nan() {
                     continue;
                 }
@@ -427,7 +428,7 @@ impl<Y: Clone, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: Isotopi
                 score_vec,
                 time_vec,
             );
-
+            tracing::debug!("Selecting feature set score {final_score} at mass {neutral_mass:0.2} with charge {charge} {start:?}-{end:?}");
             if !self.fit_filter.test_score(final_score) {
                 continue;
             }
@@ -445,7 +446,7 @@ impl<Y: Clone, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: Isotopi
         percentage: ScoreType,
     ) -> ScoreType {
         let threshold = maximum_score * percentage;
-
+        tracing::debug!("Extracting score over {scores:?} {} items with maximum {maximum_score} with threshold {threshold} ({percentage})", scores.len());
         let (acc, count) = scores.iter().fold((0.0, 0usize), |(total, count), val| {
             if *val > threshold {
                 (total + val, count + 1)
@@ -453,7 +454,11 @@ impl<Y: Clone, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: Isotopi
                 (total, count)
             }
         });
-        acc / count as ScoreType
+        if count == 0 {
+            0.0
+        } else {
+            acc / count as ScoreType
+        }
     }
 
     fn skip_feature(&self, feature: &Feature<MZ, Y>) -> bool {

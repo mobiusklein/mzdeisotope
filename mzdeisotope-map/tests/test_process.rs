@@ -50,7 +50,7 @@ fn test_map() -> io::Result<()> {
         features,
         CachingIsotopicModel::from(IsotopicModels::Glycopeptide),
         PenalizedMSDeconvScorer::new(0.02, 1.0),
-        MaximizingFitFilter::new(5.0),
+        MaximizingFitFilter::new(1.0),
         TheoreticalIsotopicDistributionScalingMethod::Sum,
         3,
         0.25,
