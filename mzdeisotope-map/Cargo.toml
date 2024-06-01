@@ -20,6 +20,7 @@ categories = ["science", "science::bioinformatics::proteomics"]
 num-traits = "0.2"
 
 mzdata = { version = ">=0.20.0", default-features = false, features = ["mzsignal", "nalgebra"] }
+mzsignal = { version = ">= 0.14.0", default-features = false, features = ["nalgebra"] }
 mzpeaks = { version = ">=0.13.0,<1.0.0" }
 mzdeisotope = { path = "../mzdeisotope", version = "0.1.6" }
 chemical_elements = { version = "0.3.0", features = ['mzpeaks'] }

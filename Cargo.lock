@@ -1328,6 +1328,7 @@ dependencies = [
  "mzdata",
  "mzdeisotope",
  "mzpeaks 0.13.0",
+ "mzsignal",
  "num-traits",
  "rayon",
  "test-log",

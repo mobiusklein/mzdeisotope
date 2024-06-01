@@ -28,10 +28,22 @@ macro_rules! f_at {
 }
 
 impl<'a, Y> FeatureSetIter<'a, Y> {
-    pub fn new(features: &'a [Option<&'a Feature<MZ, Y>>]) -> Self {
+    pub fn new_with_time_interval(features: &'a [Option<&'a Feature<MZ, Y>>], start_time: f64, end_time: f64) -> Self {
         let n = features.len();
         let index_list = (0..n).into_iter().map(|_| 0).collect();
 
+        let mut this = Self {
+            features,
+            start_time,
+            end_time,
+            index_list,
+            last_time_seen: f64::NEG_INFINITY,
+        };
+        this.initialize_indices();
+        this
+    }
+
+    pub fn new(features: &'a [Option<&'a Feature<MZ, Y>>]) -> Self {
         let mut start_time: f64 = 0.0;
         let mut end_time: f64 = f64::INFINITY;
 
@@ -50,15 +62,7 @@ impl<'a, Y> FeatureSetIter<'a, Y> {
             }
         });
 
-        let mut this = Self {
-            features,
-            start_time,
-            end_time,
-            index_list,
-            last_time_seen: f64::NEG_INFINITY,
-        };
-        this.initialize_indices();
-        this
+        Self::new_with_time_interval(features, start_time, end_time)
     }
 
     fn get_next_time(&self) -> Option<f64> {
