@@ -166,7 +166,7 @@ impl SubgraphSelection {
                         break;
                     }
                 }
-                if !collision {
+                if collision {
                     layer.push(node);
                     placed = true;
                     break;
