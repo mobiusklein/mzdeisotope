@@ -10,37 +10,25 @@ use mzpeaks::{
 };
 
 use mzdeisotope::{
-    charge::{ChargeIterator, ChargeRange, ChargeRangeIter},
+    charge::ChargeRange,
     isotopic_model::{
-        isotopic_shift, IsotopicPatternGenerator, TheoreticalIsotopicDistributionScalingMethod,
-        PROTON,
+        IsotopicPatternGenerator, TheoreticalIsotopicDistributionScalingMethod, PROTON,
     },
     scorer::{IsotopicFitFilter, IsotopicPatternScorer, ScoreInterpretation, ScoreType},
 };
-use thiserror::Error;
+use mzsignal::feature_mapping::FeatureGraphBuilder;
+use tracing::debug;
 
 use crate::{
-    dependency_graph::{DependenceCluster, FeatureDependenceGraph, FitRef, SubgraphSolverMethod},
+    dependency_graph::FeatureDependenceGraph,
     feature_fit::{FeatureSetFit, MapCoordinate},
+    solution::FeatureMerger,
+    traits::{
+        DeconvolutionError, FeatureIsotopicFitter, FeatureMapMatch, FeatureSearchParams,
+        GraphFeatureDeconvolution,
+    },
     DeconvolvedSolutionFeature, FeatureSetIter,
 };
-
-/// An error that might occur during deconvolution
-#[derive(Debug, Clone, PartialEq, Error)]
-pub enum DeconvolutionError {
-    #[error("Failed to resolve a deconvolution solution")]
-    FailedToResolveSolution,
-    #[error("Failed to resolve a fit reference {0:?}")]
-    FailedToResolveFit(FitRef),
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct FeatureSearchParams {
-    pub truncate_after: f64,
-    pub max_missed_peaks: usize,
-    pub threshold_scale: f32,
-    pub detection_threshold: f32,
-}
 
 #[derive(Debug)]
 pub struct EnvelopeConformer {
@@ -85,11 +73,11 @@ impl EnvelopeConformer {
     }
 }
 
-const MAX_COMBINATIONS: usize = 10000 / 2;
+const MAX_COMBINATIONS: usize = 1000;
 
 #[derive(Debug)]
 pub struct FeatureProcessor<
-    Y: Clone,
+    Y: Clone + Default,
     I: IsotopicPatternGenerator,
     S: IsotopicPatternScorer,
     F: IsotopicFitFilter,
@@ -106,214 +94,21 @@ pub struct FeatureProcessor<
     pub dependency_graph: FeatureDependenceGraph,
 }
 
-impl<Y: Clone, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: IsotopicFitFilter>
-    FeatureProcessor<Y, I, S, F>
+impl<
+        Y: Clone + Default,
+        I: IsotopicPatternGenerator,
+        S: IsotopicPatternScorer,
+        F: IsotopicFitFilter,
+    > FeatureIsotopicFitter<Y> for FeatureProcessor<Y, I, S, F>
 {
-    pub fn new(
-        feature_map: FeatureMap<MZ, Y, Feature<MZ, Y>>,
-        isotopic_model: I,
-        scorer: S,
-        fit_filter: F,
-        scaling_method: TheoreticalIsotopicDistributionScalingMethod,
-        minimum_size: usize,
-        maximum_time_gap: f64,
-        prefer_multiply_charged: bool,
-    ) -> Self {
-        let dependency_graph = FeatureDependenceGraph::new(scorer.interpretation());
-        Self {
-            feature_map,
-            isotopic_model,
-            scorer,
-            fit_filter,
-            scaling_method,
-            envelope_conformer: EnvelopeConformer::new(0.05),
-            minimum_size,
-            maximum_time_gap,
-            prefer_multiply_charged,
-            dependency_graph,
-        }
-    }
-
-    pub fn find_all_features(
-        &self,
-        mz: f64,
-        error_tolerance: Tolerance,
-    ) -> Vec<(usize, &Feature<MZ, Y>)> {
-        let indices = self.feature_map.all_indices_for(mz, error_tolerance);
-        indices
-            .into_iter()
-            .map(|i| (i, &self.feature_map[i]))
-            .collect_vec()
-    }
-
-    pub fn find_features(
-        &self,
-        mz: f64,
-        error_tolerance: Tolerance,
-        interval: &Option<CoordinateRange<Y>>,
-    ) -> Option<Vec<(usize, &Feature<MZ, Y>)>> {
-        let f = self.find_all_features(mz, error_tolerance);
-        if f.is_empty() {
-            return None;
-        } else if let Some(interval) = interval {
-            let search_width = interval.end.unwrap() - interval.start.unwrap();
-            if search_width == 0.0 {
-                return None;
-            }
-            let f: Vec<(usize, &Feature<MZ, Y>)> = f
-                .into_iter()
-                .filter(|(_, f)| {
-                    let t = f.as_range();
-                    if t.overlaps(&interval) {
-                        ((t.end.unwrap() - t.start.unwrap()) / search_width) >= 0.05
-                    } else {
-                        false
-                    }
-                })
-                .collect();
-            if f.is_empty() {
-                None
-            } else {
-                Some(f)
-            }
-        } else {
-            Some(f.into_iter().collect_vec())
-        }
-    }
-
-    pub fn match_theoretical_isotopic_distribution(
-        &self,
-        theoretical_distribution: &TheoreticalIsotopicPattern,
-        error_tolerance: Tolerance,
-        interval: &Option<CoordinateRange<Y>>,
-    ) -> Vec<Option<Vec<(usize, &Feature<MZ, Y>)>>> {
-        theoretical_distribution
-            .iter()
-            .map(|p| self.find_features(p.mz, error_tolerance, interval))
-            .collect()
-    }
-
-    pub fn collect_all_fits<Z: ChargeIterator>(
-        &mut self,
-        feature: usize,
-        error_tolerance: Tolerance,
-        charge_range: Z,
-        left_search: i8,
-        right_search: i8,
-        search_params: &FeatureSearchParams,
-    ) -> usize {
-        let (mut best_fit_score, is_maximizing) = match self.scorer.interpretation() {
-            ScoreInterpretation::HigherIsBetter => (0.0, true),
-            ScoreInterpretation::LowerIsBetter => (ScoreType::INFINITY, false),
-        };
-        let mut best_fit_charge = 0;
-
-        let mut holdout = None;
-        let mut counter = 0;
-
-        for charge in charge_range {
-            let current_fits = self.fit_theoretical_distribution(
-                feature,
-                error_tolerance,
-                charge,
-                left_search,
-                right_search,
-                search_params,
-            );
-
-            let is_multiply_charged = charge.abs() > 1;
-            if is_maximizing {
-                for fit in current_fits.iter() {
-                    if fit.score > best_fit_score {
-                        if is_multiply_charged && !fit.has_multiple_real_features() {
-                            continue;
-                        }
-                        best_fit_score = fit.score;
-                        best_fit_charge = charge.abs();
-                    }
-                }
-            } else {
-                for fit in current_fits.iter() {
-                    if fit.score < best_fit_score {
-                        if is_multiply_charged && !fit.has_multiple_real_features() {
-                            continue;
-                        }
-                        best_fit_score = fit.score;
-                        best_fit_charge = charge.abs();
-                    }
-                }
-            }
-            if !is_multiply_charged && self.prefer_multiply_charged {
-                holdout = Some(current_fits);
-            } else {
-                for fit in current_fits {
-                    counter += 1;
-                    self.dependency_graph.add_fit(fit);
-                }
-            }
-        }
-        if !holdout.is_some() && best_fit_charge == 1 {
-            for fit in holdout.unwrap() {
-                counter += 1;
-                self.dependency_graph.add_fit(fit);
-            }
-        }
-        counter
-    }
-
-    pub fn fit_theoretical_distribution(
-        &mut self,
-        feature: usize,
-        error_tolerance: Tolerance,
-        charge: i32,
-        left_search: i8,
-        right_search: i8,
-        search_params: &FeatureSearchParams,
-    ) -> Vec<FeatureSetFit> {
-        let base_mz = self.feature_map.get_item(feature).mz();
-        let time_range = Some(self.feature_map.get_item(feature).as_range());
-        let mut all_fits = Vec::new();
-        for offset in -left_search..=right_search {
-            let shift = isotopic_shift(charge) * (offset as f64);
-            let mz = base_mz + shift;
-            all_fits.extend(self.fit_feature_set(
-                mz,
-                error_tolerance,
-                charge,
-                search_params,
-                &time_range,
-            ));
-        }
-        all_fits
-    }
-
-    fn fit_feature_set(
+    fn make_isotopic_pattern(
         &mut self,
         mz: f64,
-        error_tolerance: Tolerance,
         charge: i32,
         search_params: &FeatureSearchParams,
-        feature: &Option<CoordinateRange<Y>>,
-    ) -> Vec<FeatureSetFit> {
-        let base_tid = self.isotopic_model.isotopic_cluster(
-            mz,
-            charge,
-            PROTON,
-            search_params.truncate_after,
-            0.05,
-        );
-
-        let fits = self.fit_theoretical_distribution_on_features(
-            mz,
-            error_tolerance,
-            charge,
-            base_tid,
-            search_params.max_missed_peaks,
-            search_params.threshold_scale,
-            feature,
-        );
-
-        fits
+    ) -> TheoreticalIsotopicPattern {
+        self.isotopic_model
+            .isotopic_cluster(mz, charge, PROTON, search_params.truncate_after, 0.05)
     }
 
     fn fit_theoretical_distribution_on_features(
@@ -328,6 +123,15 @@ impl<Y: Clone, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: Isotopi
     ) -> Vec<FeatureSetFit> {
         let feature_groups =
             self.match_theoretical_isotopic_distribution(&base_tid, error_tolerance, feature);
+        let n_real = feature_groups
+            .iter()
+            .flatten()
+            .map(|s| s.len())
+            .sum::<usize>();
+
+        if n_real == 0 {
+            return Vec::new();
+        }
         let fgi = feature_groups
             .into_iter()
             .map(|g| {
@@ -352,9 +156,9 @@ impl<Y: Clone, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: Isotopi
             }
 
             if let Some((_, f)) = features.first().unwrap() {
-                snapped_tid = base_tid.clone().shift(f.mz());
+                snapped_tid = base_tid.clone().shift(mz - f.mz());
             } else {
-                snapped_tid = base_tid.clone().shift(mz);
+                snapped_tid = base_tid.clone();
             };
 
             let mut counter = 0;
@@ -385,7 +189,6 @@ impl<Y: Clone, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: Isotopi
                 }
 
                 let score = self.scorer.score(&cleaned_eid, &tid);
-                // tracing::debug!("{cleaned_eid:?} vs. {tid} => {score:0.2}");
                 if score.is_nan() {
                     continue;
                 }
@@ -399,6 +202,11 @@ impl<Y: Clone, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: Isotopi
             }
 
             let final_score = self.find_thresholded_score(&score_vec, score_max, threshold_scale);
+
+            if !self.fit_filter.test_score(final_score) {
+                continue;
+            }
+
             let missing_features: usize = features_vec.iter().map(|f| f.is_none() as usize).sum();
 
             let (start, end) = features_vec
@@ -428,15 +236,101 @@ impl<Y: Clone, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: Isotopi
                 score_vec,
                 time_vec,
             );
-            tracing::debug!("Selecting feature set score {final_score} at mass {neutral_mass:0.2} with charge {charge} {start:?}-{end:?}");
-            if !self.fit_filter.test_score(final_score) {
-                continue;
-            }
 
             fits.push(fit);
         }
 
         fits
+    }
+}
+
+impl<
+        Y: Clone + Default,
+        I: IsotopicPatternGenerator,
+        S: IsotopicPatternScorer,
+        F: IsotopicFitFilter,
+    > FeatureMapMatch<Y> for FeatureProcessor<Y, I, S, F>
+{
+    #[inline(always)]
+    fn feature_map(&self) -> &FeatureMap<MZ, Y, Feature<MZ, Y>> {
+        &self.feature_map
+    }
+
+    fn feature_map_mut(&mut self) -> &mut FeatureMap<MZ, Y, Feature<MZ, Y>> {
+        &mut self.feature_map
+    }
+}
+
+impl<
+        Y: Clone + Default,
+        I: IsotopicPatternGenerator,
+        S: IsotopicPatternScorer,
+        F: IsotopicFitFilter,
+    > GraphFeatureDeconvolution<Y> for FeatureProcessor<Y, I, S, F>
+{
+    #[inline(always)]
+    fn score_interpretation(&self) -> ScoreInterpretation {
+        self.scorer.interpretation()
+    }
+
+    #[inline(always)]
+    fn add_fit_to_graph(&mut self, fit: FeatureSetFit) {
+        self.dependency_graph.add_fit(fit)
+    }
+
+    #[inline(always)]
+    fn prefer_multiply_charged(&self) -> bool {
+        self.prefer_multiply_charged
+    }
+
+    fn skip_feature(&self, feature: &Feature<MZ, Y>) -> bool {
+        if self.minimum_size > feature.len() {
+            debug!(
+                "Skipping feature {} with {} points",
+                feature.mz(),
+                feature.len()
+            );
+            true
+        } else {
+            false
+        }
+    }
+
+    fn dependency_graph_mut(&mut self) -> &mut FeatureDependenceGraph {
+        &mut self.dependency_graph
+    }
+}
+
+impl<
+        Y: Clone + Default,
+        I: IsotopicPatternGenerator,
+        S: IsotopicPatternScorer,
+        F: IsotopicFitFilter,
+    > FeatureProcessor<Y, I, S, F>
+{
+    pub fn new(
+        feature_map: FeatureMap<MZ, Y, Feature<MZ, Y>>,
+        isotopic_model: I,
+        scorer: S,
+        fit_filter: F,
+        scaling_method: TheoreticalIsotopicDistributionScalingMethod,
+        minimum_size: usize,
+        maximum_time_gap: f64,
+        prefer_multiply_charged: bool,
+    ) -> Self {
+        let dependency_graph = FeatureDependenceGraph::new(scorer.interpretation());
+        Self {
+            feature_map,
+            isotopic_model,
+            scorer,
+            fit_filter,
+            scaling_method,
+            envelope_conformer: EnvelopeConformer::new(0.05),
+            minimum_size,
+            maximum_time_gap,
+            prefer_multiply_charged,
+            dependency_graph,
+        }
     }
 
     fn find_thresholded_score(
@@ -446,7 +340,6 @@ impl<Y: Clone, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: Isotopi
         percentage: ScoreType,
     ) -> ScoreType {
         let threshold = maximum_score * percentage;
-        tracing::debug!("Extracting score over {scores:?} {} items with maximum {maximum_score} with threshold {threshold} ({percentage})", scores.len());
         let (acc, count) = scores.iter().fold((0.0, 0usize), |(total, count), val| {
             if *val > threshold {
                 (total + val, count + 1)
@@ -459,114 +352,6 @@ impl<Y: Clone, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: Isotopi
         } else {
             acc / count as ScoreType
         }
-    }
-
-    fn skip_feature(&self, feature: &Feature<MZ, Y>) -> bool {
-        self.minimum_size < feature.len()
-    }
-
-    fn explore_local<Z: ChargeIterator>(
-        &mut self,
-        feature: usize,
-        error_tolerance: Tolerance,
-        charge_range: Z,
-        left_search: i8,
-        right_search: i8,
-        search_params: &FeatureSearchParams,
-    ) -> usize {
-        if self.skip_feature(&self.feature_map[feature]) {
-            0
-        } else {
-            self.collect_all_fits(
-                feature,
-                error_tolerance,
-                charge_range,
-                left_search,
-                right_search,
-                search_params,
-            )
-        }
-    }
-
-    pub fn populate_graph(
-        &mut self,
-        error_tolerance: Tolerance,
-        charge_range: ChargeRange,
-        left_search: i8,
-        right_search: i8,
-        search_params: &FeatureSearchParams,
-    ) -> usize {
-        let n = self.feature_map.len();
-        if n == 0 {
-            return 0;
-        }
-        (0..n)
-            .rev()
-            .map(|i| {
-                self.explore_local(
-                    i,
-                    error_tolerance,
-                    ChargeRangeIter::from(charge_range),
-                    left_search,
-                    right_search,
-                    search_params,
-                )
-            })
-            .sum()
-    }
-
-    fn solve_subgraph_top(
-        &mut self,
-        cluster: DependenceCluster,
-        fits: Vec<(FitRef, FeatureSetFit)>,
-        peak_accumulator: &mut Vec<FeatureSetFit>,
-    ) -> Result<(), DeconvolutionError> {
-        if let Some(best_fit_key) = cluster.best_fit() {
-            if let Some((_, fit)) = fits.into_iter().find(|(k, _)| k.key == best_fit_key.key) {
-                peak_accumulator.push(fit);
-                Ok(())
-            } else {
-                Err(DeconvolutionError::FailedToResolveFit(*best_fit_key))
-            }
-        } else {
-            Ok(())
-        }
-    }
-
-    fn select_best_disjoint_subgraphs(
-        &mut self,
-        fit_accumulator: &mut Vec<FeatureSetFit>,
-    ) -> Result<(), DeconvolutionError> {
-        let solutions = self
-            .dependency_graph
-            .solutions(SubgraphSolverMethod::Greedy);
-        tracing::debug!("{} distinct solution clusters", solutions.len());
-        let res: Result<(), DeconvolutionError> =
-            solutions.into_iter().try_for_each(|(cluster, fits)| {
-                self.solve_subgraph_top(cluster, fits, fit_accumulator)
-            });
-        res
-    }
-
-    pub fn graph_step_deconvolve(
-        &mut self,
-        error_tolerance: Tolerance,
-        charge_range: ChargeRange,
-        left_search: i8,
-        right_search: i8,
-        search_params: &FeatureSearchParams,
-    ) -> Result<Vec<FeatureSetFit>, DeconvolutionError> {
-        let mut fit_accumulator = Vec::new();
-        self.populate_graph(
-            error_tolerance,
-            charge_range,
-            left_search,
-            right_search,
-            search_params,
-        );
-        tracing::debug!("{} fits in the graph", self.dependency_graph.fit_nodes.len());
-        self.select_best_disjoint_subgraphs(&mut fit_accumulator)?;
-        Ok(fit_accumulator)
     }
 
     pub fn finalize_fit(
@@ -591,9 +376,10 @@ impl<Y: Clone, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: Isotopi
         let charge = fit.charge;
         let abs_charge = charge.abs();
 
+        let mut scores = Vec::new();
+
         // Accumulators for the experimental envelope features
         let mut envelope_features = Vec::with_capacity(base_tid.len());
-
         // Accumulators for the residual intensities for features
         let mut residuals = Vec::with_capacity(base_tid.len());
 
@@ -603,7 +389,7 @@ impl<Y: Clone, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: Isotopi
             residuals.push(Vec::new());
         }
 
-        let mut feature = ChargedFeature::empty(charge);
+        let mut deconv_feature = ChargedFeature::empty(charge);
 
         for (time, eid) in feat_iter {
             let mut tid = base_tid.clone();
@@ -617,9 +403,10 @@ impl<Y: Clone, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: Isotopi
             }
 
             let score = self.scorer.score(&cleaned_eid, &tid);
-            if !(score < 0.0 || score.is_nan()) {
+            if score < 0.0 || score.is_nan() {
                 continue;
             }
+            scores.push(score);
 
             // Collect all the properties at this time point
             let mut total_intensity = 0.0;
@@ -641,11 +428,11 @@ impl<Y: Clone, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: Isotopi
                     if e.intensity() * 0.7 < t.intensity() {
                         residuals[i].push(1.0);
                     } else {
-                        residuals[i].push((e.intensity() - t.intensity()).max(1.0));
+                        residuals[i].push((e.intensity() - intens).max(1.0));
                     }
                 });
             let neutral_mass = tid[0].neutral_mass();
-            feature.push_raw(neutral_mass, time, total_intensity);
+            deconv_feature.push_raw(neutral_mass, time, total_intensity);
         }
 
         drop(features);
@@ -655,14 +442,69 @@ impl<Y: Clone, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: Isotopi
             if fidx.is_none() {
                 continue;
             }
-            let f = &mut self.feature_map[fidx.unwrap()];
-            for (time, res_int) in feature.iter_time().zip(residuals[i].iter().copied()) {
-                if let Some((_mz_at, _time_at, int_at)) = f.at_time_mut(time) {
-                    *int_at = res_int;
+            let fidx = fidx.unwrap();
+
+            // let time_vec: Vec<_> = self.feature_map[fidx].iter_time().collect();
+            let tstart = self.feature_map[fidx].start_time().unwrap();
+            let tend = self.feature_map[fidx].end_time().unwrap();
+
+            let feature_to_reduce = &mut self.feature_map[fidx];
+            let residual_intensity = &residuals[i];
+            let mz_of = feature_to_reduce.mz();
+
+            for (time, res_int) in deconv_feature
+                .iter_time()
+                .zip(residual_intensity.iter().copied())
+            {
+                if let (Some(j), terr) = feature_to_reduce.find_time(time) {
+                    if let Some((mz_at, time_at, int_at)) = feature_to_reduce.at_mut(j) {
+                        if terr.abs() > 1e-3 {
+                            let terr = *time_at - time;
+                            tracing::trace!(
+                                "Did not find a coordinate {mz_of} for {time} ({time_at} {terr} {j}) in {i} ({tstart:0.3}-{tend:0.3})",
+                            );
+                        } else {
+                            tracing::trace!(
+                                "Residual({}) {int_at} => {res_int} @ {mz_at}|{time}|{time_at}",
+                                fidx
+                            );
+                            assert!(*int_at >= res_int);
+                            *int_at = res_int;
+                        }
+                    } else {
+                        tracing::debug!("{i} unable to update {time}");
+                    }
+                } else {
+                    tracing::debug!("{i} unable to update {time}");
                 }
             }
         }
-        DeconvolvedSolutionFeature::new(feature, fit.score, envelope_features.into_boxed_slice())
+        DeconvolvedSolutionFeature::new(
+            deconv_feature,
+            fit.score,
+            scores,
+            envelope_features.into_boxed_slice(),
+        )
+    }
+
+    fn remove_dead_points(&mut self) {
+        let n_before = self.feature_map.len();
+        let n_points_before: usize = self.feature_map.iter().map(|f| f.len()).sum();
+        let features: Vec<_> = self
+            .feature_map
+            .iter()
+            .map(|f| {
+                f.split_when(|_, (_, _, cur_int)| cur_int <= (1.001))
+                    .into_iter()
+                    .map(|s| s.to_owned())
+            })
+            .flatten()
+            .filter(|f| f.len() >= self.minimum_size)
+            .collect();
+        self.feature_map = FeatureMap::new(features);
+        let n_after = self.feature_map.len();
+        let n_points_after: usize = self.feature_map.iter().map(|f| f.len()).sum();
+        debug!("{n_before} features, {n_points_before} points before, {n_after} features, {n_points_after} after");
     }
 
     #[allow(unused)]
@@ -677,14 +519,15 @@ impl<Y: Clone, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: Isotopi
         max_iterations: u32,
     ) -> Result<FeatureMap<Mass, Y, DeconvolvedSolutionFeature<Y>>, DeconvolutionError> {
         let mut before_tic: f32 = self.feature_map.iter().map(|f| f.total_intensity()).sum();
-        let ref_tick = before_tic;
+        let ref_tic = before_tic;
         let mut deconvoluted_features = Vec::new();
         let mut converged = false;
         let mut convergence_check = f32::MAX;
         for i in 0..max_iterations {
+            self.remove_dead_points();
             tracing::debug!(
                 "Starting iteration {i} with remaining TIC {before_tic:0.4e} ({:0.3}%), {} feature fit",
-                before_tic / ref_tick * 100.0,
+                before_tic / ref_tic * 100.0,
                 deconvoluted_features.len()
             );
 
@@ -702,34 +545,20 @@ impl<Y: Clone, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: Isotopi
             let max_gap_size = self.maximum_time_gap;
             deconvoluted_features.extend(
                 fits.iter()
+                    .filter(|fit| fit.n_points >= minimum_size)
                     .map(|fit| {
-                        self.finalize_fit(
+                        let solution = self.finalize_fit(
                             fit,
                             search_params.detection_threshold,
                             search_params.max_missed_peaks,
-                        )
-                    })
-                    .map(|f| {
-                        let (breakpoints, _) = f.iter_time().fold(
-                            (Vec::new(), f.start_time().unwrap()),
-                            |(mut points, last_time), time| {
-                                if time - last_time > max_gap_size {
-                                    points.push(time)
-                                }
-                                (points, time)
-                            },
                         );
-                        let mut segments = Vec::new();
-                        let mut remainder = f;
-                        for i in breakpoints {
-                            let (before, after) = remainder.split_at(i);
-                            segments.push(before);
-                            remainder = after;
-                        }
-                        segments.push(remainder);
-                        segments
+
+                        solution
                     })
-                    .flatten(),
+                    .filter(|f| !f.is_empty())
+                    .map(|f| f.split_sparse(max_gap_size))
+                    .flatten()
+                    .filter(|fit| fit.len() >= minimum_size),
             );
 
             let after_tic = self.feature_map.iter().map(|f| f.total_intensity()).sum();
@@ -754,6 +583,10 @@ impl<Y: Clone, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: Isotopi
             );
         }
 
-        Ok(FeatureMap::new(deconvoluted_features))
+        let map = FeatureMap::new(deconvoluted_features);
+        let merger = FeatureMerger::<Y>::default();
+        let map_merged =
+            merger.bridge_feature_gaps(&map, Tolerance::PPM(2.0), self.maximum_time_gap);
+        Ok(map_merged)
     }
 }

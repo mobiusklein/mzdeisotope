@@ -116,8 +116,8 @@ impl FeatureDependenceGraph {
                     // Is this search really necessary?
                     if self.fit_nodes.dependencies[candidate_key]
                         .features
-                        .iter()
-                        .any(|k| FeatureKey(k.unwrap()) == mono)
+                        .iter().flatten()
+                        .any(|k| FeatureKey(*k) == mono)
                     {
                         match score_ordering {
                             ScoreInterpretation::HigherIsBetter => {
@@ -197,6 +197,15 @@ impl FeatureDependenceGraph {
                         },
                     )
                     .collect();
+                let mut features_used = HashMap::new();
+                for (r, f) in fits_of.iter() {
+                    for i in f.features.iter().flatten() {
+                        if features_used.contains_key(i) {
+                            tracing::warn!("Feature {i} was already used in {:?}, used again in {r:?}", features_used.get(i).unwrap())
+                        }
+                        features_used.insert(*i, r);
+                    }
+                }
                 (cluster, fits_of)
             })
             .collect();

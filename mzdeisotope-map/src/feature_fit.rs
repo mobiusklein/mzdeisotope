@@ -137,7 +137,7 @@ impl FeatureSetFit {
             moving_average::<f32, 1>(&self.scores, &mut scores);
             let mut begin_i = 0;
             for (i, score) in scores.iter().copied().enumerate() {
-                if score > 0.0 && last_score > 0.0 {
+                if score > 0.0 && last_score < 0.0 {
                     begin_i = i
                 } else if score < 0.0 && last_score > 0.0 {
                     let end_i = i;
@@ -149,7 +149,7 @@ impl FeatureSetFit {
                 }
                 last_score = score;
             }
-            let end_i = scores.len();
+            let end_i = scores.len().saturating_sub(1);
             segments.push(ScoreSegment::new(
                 begin_i, end_i,
                 scores[begin_i..end_i].iter().sum()

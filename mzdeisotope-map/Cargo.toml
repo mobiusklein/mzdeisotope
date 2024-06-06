@@ -21,7 +21,7 @@ num-traits = "0.2"
 
 mzdata = { version = ">=0.20.0", default-features = false, features = ["mzsignal", "nalgebra"] }
 mzsignal = { version = ">= 0.14.0", default-features = false, features = ["nalgebra"] }
-mzpeaks = { version = ">=0.13.0,<1.0.0" }
+mzpeaks = { version = ">=0.14.0,<1.0.0" }
 mzdeisotope = { path = "../mzdeisotope", version = "0.1.6" }
 chemical_elements = { version = "0.3.0", features = ['mzpeaks'] }
 tracing = { version = "0.1.40" }
@@ -35,3 +35,4 @@ flate2 = "1.0.28"
 test-log = "0.2.12 "
 rayon = "1.7.0"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter", "fmt"]}
+tracing-appender = "0.2.3"

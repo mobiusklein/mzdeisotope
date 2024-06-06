@@ -169,7 +169,7 @@ impl SubgraphSelection {
                         break;
                     }
                 }
-                if !collision {
+                if collision {
                     layer.push(node);
                     placed = true;
                     break;
@@ -179,11 +179,13 @@ impl SubgraphSelection {
                 layers.push(vec![node]);
             }
         }
-        layers
+        let node_refs = layers
             .iter()
             .filter_map(|layer| layer.first())
             .map(|node| node.create_ref())
-            .collect()
+            .collect();
+
+        node_refs
     }
 
     pub fn solve(mut self, method: SubgraphSolverMethod) -> (SubgraphSolution, FitNodeGraphInner) {
