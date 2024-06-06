@@ -37,7 +37,6 @@ fn prepare_feature_map() -> io::Result<FeatureMap<MZ, Time, Feature<MZ, Time>>> 
 }
 
 #[test]
-#[ignore]
 fn test_map() -> io::Result<()> {
     let subscriber = tracing_subscriber::registry().with(
         fmt::layer().compact().with_writer(io::stderr).with_filter(

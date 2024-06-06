@@ -5,7 +5,11 @@ use itertools::Itertools;
 
 use chemical_elements::isotopic_pattern::TheoreticalIsotopicPattern;
 
-use mzdeisotope::{charge::{ChargeIterator, ChargeRange, ChargeRangeIter}, isotopic_model::isotopic_shift, scorer::{ScoreInterpretation, ScoreType}};
+use mzdeisotope::{
+    charge::{ChargeIterator, ChargeRange, ChargeRangeIter},
+    isotopic_model::isotopic_shift,
+    scorer::{ScoreInterpretation, ScoreType},
+};
 use mzpeaks::{
     coordinate::CoordinateRange,
     feature::{Feature, TimeInterval},
@@ -16,8 +20,12 @@ use mzpeaks::{
 use thiserror::Error;
 use tracing::debug;
 
-use crate::{dependency_graph::{DependenceCluster, FeatureDependenceGraph, FitKey, FitRef, SubgraphSolverMethod}, FeatureSetFit};
-
+use crate::{
+    dependency_graph::{
+        DependenceCluster, FeatureDependenceGraph, FitKey, FitRef, SubgraphSolverMethod,
+    },
+    FeatureSetFit,
+};
 
 /// An error that might occur during deconvolution
 #[derive(Debug, Clone, PartialEq, Error)]
@@ -28,13 +36,39 @@ pub enum DeconvolutionError {
     FailedToResolveFit(FitRef),
 }
 
-
 #[derive(Debug, Clone, Copy)]
 pub struct FeatureSearchParams {
     pub truncate_after: f64,
     pub max_missed_peaks: usize,
     pub threshold_scale: f32,
     pub detection_threshold: f32,
+}
+
+impl Default for FeatureSearchParams {
+    fn default() -> Self {
+        Self {
+            truncate_after: 0.95,
+            max_missed_peaks: 1,
+            threshold_scale: 0.3,
+            detection_threshold: 0.1,
+        }
+    }
+}
+
+impl FeatureSearchParams {
+    pub fn new(
+        truncate_after: f64,
+        max_missed_peaks: usize,
+        threshold_scale: f32,
+        detection_threshold: f32,
+    ) -> Self {
+        Self {
+            truncate_after,
+            max_missed_peaks,
+            threshold_scale,
+            detection_threshold,
+        }
+    }
 }
 
 pub trait FeatureMapMatch<Y> {
@@ -102,7 +136,6 @@ pub trait FeatureMapMatch<Y> {
 }
 
 pub trait FeatureIsotopicFitter<Y>: FeatureMapMatch<Y> {
-
     fn fit_theoretical_distribution(
         &mut self,
         feature: usize,
@@ -175,7 +208,7 @@ pub trait FeatureIsotopicFitter<Y>: FeatureMapMatch<Y> {
     ) -> Vec<FeatureSetFit>;
 }
 
-pub trait GraphFeatureDeconvolution<Y> : FeatureIsotopicFitter<Y> {
+pub trait GraphFeatureDeconvolution<Y>: FeatureIsotopicFitter<Y> {
     fn score_interpretation(&self) -> ScoreInterpretation;
 
     fn add_fit_to_graph(&mut self, fit: FeatureSetFit) {
@@ -371,6 +404,4 @@ pub trait GraphFeatureDeconvolution<Y> : FeatureIsotopicFitter<Y> {
         self.select_best_disjoint_subgraphs(&mut fit_accumulator)?;
         Ok(fit_accumulator)
     }
-
-
 }
