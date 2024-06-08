@@ -73,7 +73,7 @@ impl<'a, Y> FeatureSetIter<'a, Y> {
                 let ix = self.index_list[i];
                 if ix < f.len() {
                     let ix_time = f_at!(f, ix).unwrap().1;
-                    if ix_time < time && ix_time < self.end_time {
+                    if ix_time < time && ix_time < self.end_time && ix_time > self.last_time_seen {
                         time = ix_time;
                     }
                 }
@@ -123,9 +123,13 @@ impl<'a, Y> FeatureSetIter<'a, Y> {
         for (_, f) in self.features.iter().enumerate() {
             if let Some(f) = f {
                 if !f.is_empty() {
-                    let (ix, _) = f.find_time(time);
+                    let (ix, err) = f.find_time(time);
+                    if err.abs() > 1e-3 {
+                        peaks.push(None);
+                        continue;
+                    }
                     if let Some(ix) = ix {
-                        let p = f_at!(f, ix).unwrap();
+                        let p = f.at(ix).unwrap();
                         peaks.push(Some(CentroidPeak::new(p.0, p.2, ix as u32)));
                     }
                 } else {

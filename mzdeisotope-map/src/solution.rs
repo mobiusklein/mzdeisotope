@@ -1,8 +1,11 @@
 use mzdeisotope::{scorer::ScoreType, solution::DeconvolvedSolutionPeak};
-use std::boxed::Box;
+use std::{
+    boxed::Box,
+    ops::{Bound, RangeBounds},
+};
 
 use mzpeaks::{
-    feature::{ChargedFeature, Feature},
+    feature::{ChargedFeature, FeatureView, TimeArray},
     feature_map::FeatureMap,
     peak::MZPoint,
     prelude::*,
@@ -11,12 +14,84 @@ use mzpeaks::{
 
 use mzsignal::feature_mapping::{ChargeAwareFeatureMerger, FeatureGraphBuilder};
 
+#[derive(Default, Debug, Clone)]
+pub struct MZPointSeries {
+    mz: Vec<f64>,
+    intensity: Vec<f32>,
+}
+
+impl<'a> MZPointSeries {
+    pub fn new(mz: Vec<f64>, intensity: Vec<f32>) -> Self {
+        Self { mz, intensity }
+    }
+
+    pub fn push<T: CoordinateLike<MZ> + IntensityMeasurement>(&mut self, pt: T) {
+        self.push_raw(pt.mz(), pt.intensity());
+    }
+
+    pub fn push_raw(&mut self, mz: f64, intensity: f32) {
+        self.mz.push(mz);
+        self.intensity.push(intensity);
+    }
+
+    pub fn split_at(&self, i: usize) -> (Self, Self) {
+        let mz_a = self.mz[..i].to_vec();
+        let mz_b = self.mz[i..].to_vec();
+
+        let inten_a = self.intensity[..i].to_vec();
+        let inten_b = self.intensity[i..].to_vec();
+
+        (Self::new(mz_a, inten_a), Self::new(mz_b, inten_b))
+    }
+
+    pub fn slice<I: RangeBounds<usize> + Clone>(&self, bounds: I) -> Self {
+        let start = match bounds.start_bound() {
+            Bound::Included(i) | Bound::Excluded(i) => *i,
+            Bound::Unbounded => 0,
+        };
+
+        let end = match bounds.end_bound() {
+            Bound::Included(i) => *i + 1,
+            Bound::Excluded(i) => *i,
+            Bound::Unbounded => self.mz.len(),
+        };
+
+        Self::new(
+            self.mz[start..end].to_vec(),
+            self.intensity[start..end].to_vec(),
+        )
+    }
+
+    pub fn len(&self) -> usize {
+        self.mz.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.mz.is_empty()
+    }
+
+    pub fn at(&self, index: usize) -> Option<MZPoint> {
+        if index < self.len() {
+            Some(MZPoint::new(self.mz[index], self.intensity[index]))
+        } else {
+            None
+        }
+    }
+
+    pub fn as_feature_view<Y>(&'a self, time: &'a [f64]) -> FeatureView<'a, MZ, Y> {
+        let start = 0;
+        let end = time.len().min(self.len());
+
+        FeatureView::new(&self.mz[start..end], &time, &self.intensity[start..end])
+    }
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct DeconvolvedSolutionFeature<Y: Clone> {
     inner: ChargedFeature<Mass, Y>,
     pub score: ScoreType,
     pub scores: Vec<ScoreType>,
-    pub envelope: Box<[Feature<MZ, Y>]>,
+    envelope: Box<[MZPointSeries]>,
 }
 
 impl<Y: Clone> DeconvolvedSolutionFeature<Y> {
@@ -24,7 +99,7 @@ impl<Y: Clone> DeconvolvedSolutionFeature<Y> {
         inner: ChargedFeature<Mass, Y>,
         score: ScoreType,
         scores: Vec<ScoreType>,
-        envelope: Box<[Feature<MZ, Y>]>,
+        envelope: Box<[MZPointSeries]>,
     ) -> Self {
         Self {
             inner,
@@ -54,7 +129,7 @@ impl<Y: Clone> DeconvolvedSolutionFeature<Y> {
         PeakIter::new(&self)
     }
 
-    pub fn iter_env_points(&self) -> EnvelopeIter<'_, Y> {
+    pub fn iter_envelope(&self) -> EnvelopeIter<'_, Y> {
         EnvelopeIter::new(self)
     }
 
@@ -69,7 +144,15 @@ impl<Y: Clone> DeconvolvedSolutionFeature<Y> {
         self.envelope
             .iter_mut()
             .zip(peak.envelope.iter())
-            .for_each(|(ev, pt)| ev.push(pt, time));
+            .for_each(|(ev, pt)| ev.push(pt));
+    }
+
+    pub fn envelope(&self) -> Vec<FeatureView<MZ, Y>> {
+        let times = self.inner.time_view();
+        self.envelope
+            .iter()
+            .map(|s| s.as_feature_view(times))
+            .collect()
     }
 }
 
@@ -122,6 +205,12 @@ impl<Y0: Clone> TimeInterval<Y0> for DeconvolvedSolutionFeature<Y0> {
 
     fn find_time(&self, time: f64) -> (Option<usize>, f64) {
         <ChargedFeature<Mass, Y0> as TimeInterval<Y0>>::find_time(&self.inner, time)
+    }
+}
+
+impl<Y0: Clone> TimeArray<Y0> for DeconvolvedSolutionFeature<Y0> {
+    fn time_view(&self) -> &[f64] {
+        self.inner.time_view()
     }
 }
 
@@ -178,7 +267,7 @@ impl<Y: Clone> SplittableFeatureLike<'_, Mass, Y> for DeconvolvedSolutionFeature
             let mut envelope_before = Vec::new();
             let mut envelope_after = Vec::new();
             for (env_before_i, env_after_i) in self.envelope.iter().map(|e| {
-                let (a, b) = e.split_at_time(point);
+                let (a, b) = e.split_at(idx);
                 (a.to_owned(), b.to_owned())
             }) {
                 envelope_before.push(env_before_i);
@@ -201,10 +290,11 @@ impl<Y: Clone> SplittableFeatureLike<'_, Mass, Y> for DeconvolvedSolutionFeature
         } else {
             let mut envelope_before = Vec::new();
             let mut envelope_after = Vec::new();
-            for (env_before_i, env_after_i) in self.envelope.iter().map(|e| {
-                let (a, b) = e.split_at_time(point);
-                (a.to_owned(), b.to_owned())
-            }) {
+            for (env_before_i, env_after_i) in self
+                .envelope
+                .iter()
+                .map(|_| (MZPointSeries::default(), MZPointSeries::default()))
+            {
                 envelope_before.push(env_before_i);
                 envelope_after.push(env_after_i);
             }
@@ -261,14 +351,14 @@ impl<Y: Clone> SplittableFeatureLike<'_, Mass, Y> for DeconvolvedSolutionFeature
             .collect();
 
         let start = match bounds.start_bound() {
-            std::ops::Bound::Included(i) => *i,
-            std::ops::Bound::Excluded(i) => *i,
-            std::ops::Bound::Unbounded => 0,
+            Bound::Included(i) => *i,
+            Bound::Excluded(i) => *i,
+            Bound::Unbounded => 0,
         };
         let end = match bounds.end_bound() {
-            std::ops::Bound::Included(i) => *i + 1,
-            std::ops::Bound::Excluded(i) => *i,
-            std::ops::Bound::Unbounded => self.scores.len(),
+            Bound::Included(i) => *i + 1,
+            Bound::Excluded(i) => *i,
+            Bound::Unbounded => self.scores.len(),
         };
 
         let scores = self.scores[start..end].to_vec();
@@ -300,10 +390,7 @@ impl<'a, Y: Clone> Iterator for PeakIter<'a, Y> {
                 .feature
                 .envelope
                 .iter()
-                .map(|e| {
-                    let pt = e.at(i).unwrap();
-                    MZPoint::new(pt.0, pt.2)
-                })
+                .map(|e| e.at(i).unwrap())
                 .collect();
             let peak = DeconvolvedSolutionPeak::new(
                 mass,
@@ -345,7 +432,7 @@ impl<'a, Y: Clone> Iterator for EnvelopeIter<'a, Y> {
                 .iter()
                 .map(|e| {
                     let pt = e.at(i).unwrap();
-                    (pt.0, pt.2)
+                    (pt.mz, pt.intensity)
                 })
                 .collect();
             self.i += 1;

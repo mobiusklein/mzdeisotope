@@ -6,11 +6,12 @@ use mzpeaks::feature_map::FeatureMap;
 use mzpeaks::{Mass, Time, Tolerance, MZ};
 use mzsignal::feature_mapping::{FeatureExtracter, FeatureExtracterType};
 
-use mzdeisotope::isotopic_model::{
-    CachingIsotopicModel, IsotopicModels, TheoreticalIsotopicDistributionScalingMethod,
-};
+use mzdeisotope::isotopic_model::{CachingIsotopicModel, IsotopicModels};
 use mzdeisotope::scorer::{MaximizingFitFilter, PenalizedMSDeconvScorer};
-use mzdeisotope_map::{DeconvolvedSolutionFeature, FeatureProcessor, FeatureSearchParams};
+use mzdeisotope_map::{
+    solution::DeconvolvedSolutionFeature, FeatureProcessor, FeatureSearchParams,
+};
+use tracing::debug;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 fn prepare_feature_map() -> io::Result<FeatureMap<MZ, Time, Feature<MZ, Time>>> {
@@ -18,12 +19,15 @@ fn prepare_feature_map() -> io::Result<FeatureMap<MZ, Time, Feature<MZ, Time>>> 
 
     let scans: Vec<_> = reader
         .into_iter()
-        .filter(|s| s.ms_level() == 1 && s.start_time() < 122.0)
+        .filter(|s| s.ms_level() == 1 && s.start_time() < 125.0)
         .map(|mut s| {
             s.pick_peaks(1.0).unwrap();
             s
         })
         .collect();
+
+    let n_peaks: usize = scans.iter().map(|s| s.peaks().len()).sum();
+    debug!("Selected {} scans with {} peaks", scans.len(), n_peaks);
 
     let mut extractor: FeatureExtracterType<_, _, _, Time> = FeatureExtracter::from_iter(
         scans
@@ -45,7 +49,7 @@ fn test_map() -> io::Result<()> {
                 .from_env_lossy(),
         ),
     );
-    // let log_file = fs::File::create("mzdeisotope-map.log")?;
+    // let log_file = std::fs::File::create("mzdeisotope-map.log")?;
     // let (log_file, _guard) = tracing_appender::non_blocking(log_file);
     // let subscriber = subscriber.with(
     //     fmt::layer()
@@ -76,9 +80,9 @@ fn test_map() -> io::Result<()> {
         CachingIsotopicModel::from(IsotopicModels::Glycopeptide),
         PenalizedMSDeconvScorer::new(0.02, 2.0),
         MaximizingFitFilter::new(10.0),
-        TheoreticalIsotopicDistributionScalingMethod::Sum,
         3,
         0.25,
+        5.0,
         true,
     );
     let params = FeatureSearchParams {
@@ -104,13 +108,13 @@ fn test_map() -> io::Result<()> {
                 .cmp(&b.charge())
                 .then_with(|| a.start_time().partial_cmp(&b.start_time()).unwrap())
         });
-        tracing::debug!(
+        debug!(
             "{} solved features, {} hits for query",
             feature_map.len(),
             hits.len()
         );
         for hit in hits {
-            tracing::debug!(
+            debug!(
                 "{:0.2} {} ({:0.2}|{:0.2}) {}-{} {} points",
                 hit.neutral_mass(),
                 hit.charge(),
@@ -122,8 +126,8 @@ fn test_map() -> io::Result<()> {
             );
 
             for (i, (mass, time, inten)) in hit.iter().enumerate() {
-                let envelope: Vec<_> = hit.envelope.iter().map(|e| e.at(i).unwrap()).collect();
-                tracing::debug!("\t{i}\t{mass:0.3}@{time:0.2} => {inten:0.2} ({envelope:?})",);
+                let envelope: Vec<_> = hit.envelope().iter().map(|e| e.at(i).unwrap()).collect();
+                debug!("\t{i}\t{mass:0.3}@{time:0.2} => {inten:0.2} ({envelope:?})",);
             }
         }
     }

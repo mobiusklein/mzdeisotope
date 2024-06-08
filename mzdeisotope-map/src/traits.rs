@@ -238,7 +238,8 @@ pub trait GraphFeatureDeconvolution<Y>: FeatureIsotopicFitter<Y> {
             .map(|i| {
                 if i % 5000 == 0 {
                     debug!(
-                        "Processing feature {i}/{n} ({:0.2}%)",
+                        "Processing feature {}/{n} ({:0.2}%)",
+                        (n - i),
                         (n - i) as f32 / n as f32 * 100.0
                     )
                 }

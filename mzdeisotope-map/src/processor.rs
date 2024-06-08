@@ -17,17 +17,18 @@ use mzdeisotope::{
     scorer::{IsotopicFitFilter, IsotopicPatternScorer, ScoreInterpretation, ScoreType},
 };
 use mzsignal::feature_mapping::FeatureGraphBuilder;
-use tracing::debug;
+use tracing::{debug, trace};
 
 use crate::{
     dependency_graph::FeatureDependenceGraph,
     feature_fit::{FeatureSetFit, MapCoordinate},
     solution::FeatureMerger,
+    solution::{DeconvolvedSolutionFeature, MZPointSeries},
     traits::{
         DeconvolutionError, FeatureIsotopicFitter, FeatureMapMatch, FeatureSearchParams,
         GraphFeatureDeconvolution,
     },
-    DeconvolvedSolutionFeature, FeatureSetIter,
+    FeatureSetIter,
 };
 
 #[derive(Debug)]
@@ -76,6 +77,81 @@ impl EnvelopeConformer {
 const MAX_COMBINATIONS: usize = 1000;
 
 #[derive(Debug)]
+pub struct FeatureProcessorBuilder<
+    Y: Clone + Default,
+    I: IsotopicPatternGenerator,
+    S: IsotopicPatternScorer,
+    F: IsotopicFitFilter,
+> {
+    pub feature_map: FeatureMap<MZ, Y, Feature<MZ, Y>>,
+    pub isotopic_model: Option<I>,
+    pub scorer: Option<S>,
+    pub fit_filter: Option<F>,
+    pub scaling_method: TheoreticalIsotopicDistributionScalingMethod,
+    pub prefer_multiply_charged: bool,
+    pub minimum_size: usize,
+    pub maximum_time_gap: f64,
+    pub minimum_intensity: f32,
+}
+
+impl<Y: Clone + Default, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: IsotopicFitFilter> FeatureProcessorBuilder<Y, I, S, F> {
+    pub fn feature_map(&mut self, feature_map: FeatureMap<MZ, Y, Feature<MZ, Y>>) -> &mut Self {
+        self.feature_map = feature_map;
+        self
+    }
+
+    pub fn isotopic_model(&mut self, isotopic_model: I) -> &mut Self {
+        self.isotopic_model = Some(isotopic_model);
+        self
+    }
+
+    pub fn fit_filter(&mut self, fit_filter: F) -> &mut Self {
+        self.fit_filter = Some(fit_filter);
+        self
+    }
+
+    pub fn scorer(&mut self, scorer: S) -> &mut Self {
+        self.scorer = Some(scorer);
+        self
+    }
+
+    pub fn build(self) -> FeatureProcessor<Y, I, S, F> {
+        FeatureProcessor::new(
+            self.feature_map,
+            self.isotopic_model.unwrap(),
+            self.scorer.unwrap(),
+            self.fit_filter.unwrap(),
+            self.minimum_size,
+            self.maximum_time_gap,
+            self.minimum_intensity,
+            self.prefer_multiply_charged
+        )
+    }
+}
+
+impl<
+        Y: Clone + Default,
+        I: IsotopicPatternGenerator,
+        S: IsotopicPatternScorer,
+        F: IsotopicFitFilter,
+    > Default for FeatureProcessorBuilder<Y, I, S, F>
+{
+    fn default() -> Self {
+        Self {
+            feature_map: Default::default(),
+            isotopic_model: Default::default(),
+            scorer: Default::default(),
+            fit_filter: Default::default(),
+            scaling_method: Default::default(),
+            prefer_multiply_charged: true,
+            minimum_size: 3,
+            maximum_time_gap: 0.25,
+            minimum_intensity: 5.0,
+        }
+    }
+}
+
+#[derive(Debug)]
 pub struct FeatureProcessor<
     Y: Clone + Default,
     I: IsotopicPatternGenerator,
@@ -90,8 +166,9 @@ pub struct FeatureProcessor<
     pub prefer_multiply_charged: bool,
     pub minimum_size: usize,
     pub maximum_time_gap: f64,
-    pub envelope_conformer: EnvelopeConformer,
-    pub dependency_graph: FeatureDependenceGraph,
+    pub minimum_intensity: f32,
+    envelope_conformer: EnvelopeConformer,
+    dependency_graph: FeatureDependenceGraph,
 }
 
 impl<
@@ -151,6 +228,10 @@ impl<
                 break;
             }
 
+            if i % 100 == 0 && i > 0 {
+                debug!("... Considering combination {i} of {n_real} features for {mz}@{charge}");
+            }
+
             if features.iter().all(|f| f.is_none()) {
                 continue;
             }
@@ -170,8 +251,8 @@ impl<
             let mut features_vec: Vec<_> = Vec::with_capacity(features.len());
             let mut indices_vec: Vec<_> = Vec::with_capacity(features.len());
             for opt in features.into_iter() {
-                if let Some((i, f)) = opt {
-                    indices_vec.push(Some(i));
+                if let Some((j, f)) = opt {
+                    indices_vec.push(Some(j));
                     features_vec.push(Some(f));
                 } else {
                     features_vec.push(None);
@@ -182,6 +263,9 @@ impl<
             let it = FeatureSetIter::new(&features_vec);
             for (time, eid) in it {
                 counter += 1;
+                if counter % 500 == 0 && counter > 0 {
+                    debug!("Step {counter} at {time} for feature combination {i} of {mz}@{charge}");
+                }
                 let mut tid = snapped_tid.clone();
                 let (cleaned_eid, n_missing) = self.envelope_conformer.conform(eid, &mut tid);
                 if n_missing > max_missed_peaks {
@@ -313,9 +397,9 @@ impl<
         isotopic_model: I,
         scorer: S,
         fit_filter: F,
-        scaling_method: TheoreticalIsotopicDistributionScalingMethod,
         minimum_size: usize,
         maximum_time_gap: f64,
+        minimum_intensity: f32,
         prefer_multiply_charged: bool,
     ) -> Self {
         let dependency_graph = FeatureDependenceGraph::new(scorer.interpretation());
@@ -324,13 +408,18 @@ impl<
             isotopic_model,
             scorer,
             fit_filter,
-            scaling_method,
+            scaling_method: TheoreticalIsotopicDistributionScalingMethod::default(),
             envelope_conformer: EnvelopeConformer::new(0.05),
             minimum_size,
             maximum_time_gap,
+            minimum_intensity: minimum_intensity.max(1.001),
             prefer_multiply_charged,
             dependency_graph,
         }
+    }
+
+    pub fn builder() -> FeatureProcessorBuilder<Y, I, S, F> {
+        FeatureProcessorBuilder::default()
     }
 
     fn find_thresholded_score(
@@ -385,12 +474,11 @@ impl<
 
         // Initialize the accumulators
         for _ in base_tid.iter() {
-            envelope_features.push(Feature::empty());
+            envelope_features.push(MZPointSeries::default());
             residuals.push(Vec::new());
         }
 
         let mut deconv_feature = ChargedFeature::empty(charge);
-
         for (time, eid) in feat_iter {
             let mut tid = base_tid.clone();
             let (cleaned_eid, n_missing) = self.envelope_conformer.conform(eid, &mut tid);
@@ -422,7 +510,7 @@ impl<
                     envelope_features
                         .get_mut(i)
                         .unwrap()
-                        .push_raw(e.mz(), time, intens);
+                        .push_raw(e.mz(), intens);
 
                     // Update the residual for this time point
                     if e.intensity() * 0.7 < t.intensity() {
@@ -430,6 +518,21 @@ impl<
                     } else {
                         residuals[i].push((e.intensity() - intens).max(1.0));
                     }
+                    if tracing::enabled!(tracing::Level::TRACE) {
+                        trace!(
+                            "Resid({}): at time {time} slot {i} e:{}/t:{} -> {intens} with residual {}",
+                            fit.features[i].map(|x| x.to_string()).unwrap_or("?".to_string()),
+                            e.intensity(),
+                            t.intensity(),
+                            *residuals[i].last().unwrap()
+                        );
+                    }
+                    debug_assert!(
+                        e.intensity() >= *residuals[i].last().unwrap(),
+                        "{} < {}",
+                        e.intensity(),
+                        *residuals[i].last().unwrap()
+                    );
                 });
             let neutral_mass = tid[0].neutral_mass();
             deconv_feature.push_raw(neutral_mass, time, total_intensity);
@@ -437,7 +540,23 @@ impl<
 
         drop(features);
 
-        // Do the subtraction now that the wide reads are done
+        self.do_subtraction(fit, &residuals, &deconv_feature);
+
+        DeconvolvedSolutionFeature::new(
+            deconv_feature,
+            fit.score,
+            scores,
+            envelope_features.into_boxed_slice(),
+        )
+    }
+
+    fn do_subtraction(
+        &mut self,
+        fit: &FeatureSetFit,
+        residuals: &[Vec<f32>],
+        deconv_feature: &ChargedFeature<Mass, Y>,
+    ) {
+        // Do the subtraction along each feature now that the wide reads are done
         for (i, fidx) in fit.features.iter().enumerate() {
             if fidx.is_none() {
                 continue;
@@ -449,7 +568,9 @@ impl<
             let tend = self.feature_map[fidx].end_time().unwrap();
 
             let feature_to_reduce = &mut self.feature_map[fidx];
+            let n_of = feature_to_reduce.len();
             let residual_intensity = &residuals[i];
+            let n_residual = residual_intensity.len();
             let mz_of = feature_to_reduce.mz();
 
             for (time, res_int) in deconv_feature
@@ -460,31 +581,24 @@ impl<
                     if let Some((mz_at, time_at, int_at)) = feature_to_reduce.at_mut(j) {
                         if terr.abs() > 1e-3 {
                             let terr = *time_at - time;
-                            tracing::trace!(
+                            trace!(
                                 "Did not find a coordinate {mz_of} for {time} ({time_at} {terr} {j}) in {i} ({tstart:0.3}-{tend:0.3})",
                             );
                         } else {
-                            tracing::trace!(
-                                "Residual({}) {int_at} => {res_int} @ {mz_at}|{time}|{time_at}",
-                                fidx
+                            trace!(
+                                "Residual({fidx}) {int_at} => {res_int} @ {mz_at}|{time}|{time_at} {n_residual}/{n_of}",
                             );
-                            assert!(*int_at >= res_int);
+                            debug_assert!(*int_at >= res_int);
                             *int_at = res_int;
                         }
                     } else {
-                        tracing::debug!("{i} unable to update {time}");
+                        debug!("{i} unable to update {time}");
                     }
                 } else {
-                    tracing::debug!("{i} unable to update {time}");
+                    debug!("{i} unable to update {time}");
                 }
             }
         }
-        DeconvolvedSolutionFeature::new(
-            deconv_feature,
-            fit.score,
-            scores,
-            envelope_features.into_boxed_slice(),
-        )
     }
 
     fn remove_dead_points(&mut self) {
@@ -494,7 +608,7 @@ impl<
             .feature_map
             .iter()
             .map(|f| {
-                f.split_when(|_, (_, _, cur_int)| cur_int <= (1.001))
+                f.split_when(|_, (_, _, cur_int)| cur_int <= self.minimum_intensity)
                     .into_iter()
                     .map(|s| s.to_owned())
             })
@@ -504,10 +618,9 @@ impl<
         self.feature_map = FeatureMap::new(features);
         let n_after = self.feature_map.len();
         let n_points_after: usize = self.feature_map.iter().map(|f| f.len()).sum();
-        debug!("{n_before} features, {n_points_before} points before, {n_after} features, {n_points_after} after");
+        debug!("{n_before} features, {n_points_before} points before, {n_after} features, {n_points_after} points after");
     }
 
-    #[allow(unused)]
     pub fn deconvolve(
         &mut self,
         error_tolerance: Tolerance,
@@ -525,7 +638,7 @@ impl<
         let mut convergence_check = f32::MAX;
         for i in 0..max_iterations {
             self.remove_dead_points();
-            tracing::debug!(
+            debug!(
                 "Starting iteration {i} with remaining TIC {before_tic:0.4e} ({:0.3}%), {} feature fit",
                 before_tic / ref_tic * 100.0,
                 deconvoluted_features.len()
@@ -539,7 +652,7 @@ impl<
                 search_params,
             )?;
 
-            tracing::debug!("Found {} fits", fits.len());
+            debug!("Found {} fits", fits.len());
 
             let minimum_size = self.minimum_size;
             let max_gap_size = self.maximum_time_gap;
@@ -564,8 +677,8 @@ impl<
             let after_tic = self.feature_map.iter().map(|f| f.total_intensity()).sum();
             convergence_check = (before_tic - after_tic) / after_tic;
             if convergence_check <= convergence {
-                tracing::debug!(
-                    "Converged at on iteration {i} with remaining TIC {before_tic:0.4e} - {after_tic:0.4e} = {:0.4e} ({convergence_check}), {} peaks fit",
+                debug!(
+                    "Converged at on iteration {i} with remaining TIC {before_tic:0.4e} - {after_tic:0.4e} = {:0.4e} ({convergence_check}), {} features fit",
                     before_tic - after_tic,
                     deconvoluted_features.len()
                 );
@@ -577,8 +690,8 @@ impl<
             self.dependency_graph.reset();
         }
         if !converged {
-            tracing::debug!(
-                "Failed to converge after {max_iterations} iterations with remaining TIC {before_tic:0.4e} ({convergence_check}), {} peaks fit",
+            debug!(
+                "Failed to converge after {max_iterations} iterations with remaining TIC {before_tic:0.4e} ({convergence_check}), {} features fit",
                 deconvoluted_features.len()
             );
         }
