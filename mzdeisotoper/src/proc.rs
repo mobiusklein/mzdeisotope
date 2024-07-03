@@ -7,7 +7,7 @@ use std::time::Instant;
 use mzdata::io::MassSpectrometryFormat;
 use rayon::prelude::*;
 
-use tracing::{debug, info, warn};
+use tracing::{debug, info, trace, warn};
 
 #[cfg(feature = "mzmlb")]
 use mzdata::io::mzmlb::{MzMLbReaderType, MzMLbWriterBuilder};
@@ -42,6 +42,7 @@ pub fn prepare_procesing<
     writer_format: MassSpectrometryFormat
 ) -> io::Result<ProgressRecord> {
     let init_counter = AtomicU16::new(0);
+    let init_averager_counter = AtomicU16::new(0);
     let started = Instant::now();
     let precursor_processing = precursor_processing.unwrap_or_default();
 
@@ -74,7 +75,10 @@ pub fn prepare_procesing<
             .take_while(|(_, g)| (g.earliest_time().unwrap_or_default() <= end_time))
             .par_bridge()
             .map_init(
-                || (averager.clone(), reprofiler.clone()),
+                || {
+                    init_averager_counter.fetch_add(1, Ordering::AcqRel);
+                    (averager.clone(), reprofiler.clone())
+                },
                 |(averager, reprofiler), (i, g)| {
                     let (mut g, arrays) = g.reprofile_with_average_with(averager, reprofiler);
                     if let Some(p) = g.precursor_mut() {
@@ -104,10 +108,10 @@ pub fn prepare_procesing<
                 },
             )
             .map(|(group_idx, group, prog)| {
-                if tracing::event_enabled!(tracing::Level::DEBUG) {
+                if tracing::event_enabled!(tracing::Level::TRACE) {
                     let tid = thread::current().id();
                     let v: Vec<_> = group.iter().map(|s| s.index()).collect();
-                    debug!("{tid:?}: Sending group {group_idx} containing {:?}", v);
+                    trace!("{tid:?}: Sending group {group_idx} containing {:?}", v);
                 }
                 if let Err(e) = sender.send((group_idx, group)) {
                     warn!("Failed to send group: {}", e);
@@ -143,10 +147,10 @@ pub fn prepare_procesing<
                 },
             )
             .map(|(group_idx, group, prog)| {
-                if tracing::event_enabled!(tracing::Level::DEBUG) {
+                if tracing::event_enabled!(tracing::Level::TRACE) {
                     let tid = thread::current().id();
                     let v: Vec<_> = group.iter().map(|s| s.index()).collect();
-                    debug!("{tid:?}: Sending group {group_idx} containing {:?}", v);
+                    trace!("{tid:?}: Sending group {group_idx} containing {:?}", v);
                 }
                 if let Err(e) = sender.send((group_idx, group)) {
                     warn!("Failed to send group: {}", e);
@@ -162,6 +166,10 @@ pub fn prepare_procesing<
     debug!(
         "{} threads run for deconvolution",
         init_counter.load(Ordering::SeqCst)
+    );
+    debug!(
+        "{} threads run for averaging",
+        init_averager_counter.load(Ordering::SeqCst)
     );
     let spectra_per_second =
         (prog.ms1_spectra + prog.msn_spectra) as f64 / elapsed.as_secs() as f64;

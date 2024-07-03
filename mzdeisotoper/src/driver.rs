@@ -37,10 +37,10 @@ use std::env;
 
 use mzdeisotope::scorer::ScoreType;
 
-use crate::args::make_default_ms1_deconvolution_params;
-use crate::args::make_default_msn_deconvolution_params;
-use crate::args::make_default_signal_processing_params;
-use crate::args::{ArgChargeRange, ArgIsotopicModels, PrecursorProcessing};
+use crate::args::{
+    make_default_ms1_deconvolution_params, make_default_msn_deconvolution_params, ArgChargeRange,
+    ArgIsotopicModels, PrecursorProcessing, SignalParams
+};
 use crate::proc::prepare_procesing;
 use crate::time_range::TimeRange;
 use crate::types::{CPeak, DPeak, SpectrumType, BUFFER_SIZE};
@@ -99,6 +99,12 @@ pub struct MZDeiosotoper {
     /// Environment variables prefixed with `MZDEISOTOPER_` will be read too.
     #[arg(long = "config-file")]
     pub config_file: Option<PathBuf>,
+
+    /// The size of the buffer for queueing writing of results to the output stream.
+    ///
+    /// Making this longer consumes more memory but reduces the odds of
+    #[arg(short = 'w', long="write-buffer-size", default_value_t=BUFFER_SIZE)]
+    pub write_buffer_size: usize,
 
     /// The number of threads to use, passing a value < 1 to use all available threads
     #[arg(
@@ -183,6 +189,12 @@ If a stop is not specified, processing stops at the end of the run.
     /// Use incremental truncation of isotopic patterns instead of a single width
     #[arg(short = 'i', long = "incremental-truncation")]
     pub isotopic_incremental_truncation: bool,
+
+    #[arg(
+        skip,
+        help = "Specifies additional granular information about low-level signal processing operations"
+    )]
+    pub signal_params: SignalParams,
 }
 
 impl MZDeiosotoper {
@@ -514,13 +526,15 @@ impl MZDeiosotoper {
         writer: W,
         writer_format: MassSpectrometryFormat,
     ) -> io::Result<()> {
-        let buffer_size = BUFFER_SIZE;
+        let buffer_size = self.write_buffer_size;
         let (send_solved, recv_solved) = sync_channel(buffer_size);
         let (send_collated, recv_collated) = sync_channel(buffer_size);
 
+        let mut signal_params = self.signal_params.clone();
         let mut ms1_args = make_default_ms1_deconvolution_params();
-        let mut signal_params = make_default_signal_processing_params();
         let mut msn_args = make_default_msn_deconvolution_params();
+        ms1_args.mz_range = signal_params.mz_range;
+        msn_args.mz_range = signal_params.mz_range;
 
         ms1_args.fit_filter.threshold = self.ms1_score_threshold;
         ms1_args.isotopic_model = self

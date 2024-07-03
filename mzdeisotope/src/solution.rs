@@ -7,7 +7,7 @@ use mzdata::spectrum::{BinaryArrayMap, BinaryDataArrayType, DataArray};
 use mzpeaks::peak::MZPoint;
 use mzpeaks::prelude::*;
 use mzpeaks::{self, CoordinateLikeMut};
-use mzpeaks::{CoordinateLike, IntensityMeasurement, KnownCharge, Mass, MZ};
+use mzpeaks::{CoordinateLike, IntensityMeasurement, KnownCharge, MZ};
 
 use mzdata::spectrum::bindata::{
     ArrayRetrievalError, ArrayType, BinaryCompressionType, BuildArrayMapFrom, BuildFromArrayMap,
