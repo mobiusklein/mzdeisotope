@@ -17,8 +17,8 @@ use super::peak::PeakGraph;
 /// the same experimental peaks.
 #[derive(Debug)]
 pub struct PeakDependenceGraph {
-    pub peak_nodes: PeakGraph,
-    pub fit_nodes: FitGraph,
+    peak_nodes: PeakGraph,
+    fit_nodes: FitGraph,
     pub score_ordering: ScoreInterpretation,
     pub clusters: Vec<DependenceCluster>,
 }

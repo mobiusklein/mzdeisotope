@@ -5,7 +5,7 @@ use std::ops::Range;
 use crate::charge::ChargeRangeIter;
 use crate::isotopic_fit::IsotopicFit;
 use crate::isotopic_model::{
-    CachingIsotopicModel, IsotopicModels, IsotopicPatternGenerator, IsotopicPatternParams, TheoreticalIsotopicDistributionScalingMethod
+    CachingIsotopicModel, IsotopicPatternGenerator, IsotopicPatternParams, TheoreticalIsotopicDistributionScalingMethod
 };
 use crate::peak_graph::{DependenceCluster, FitRef, PeakDependenceGraph, SubgraphSolverMethod};
 use crate::peaks::{PeakKey, PeakLike, WorkingPeakSet};

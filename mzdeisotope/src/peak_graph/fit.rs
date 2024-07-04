@@ -173,6 +173,7 @@ pub struct FitGraph {
     pub dependencies: HashMap<FitKey, IsotopicFit>,
 }
 
+#[allow(unused)]
 impl FitGraph {
     pub fn new() -> Self {
         Self::default()

@@ -21,6 +21,8 @@ impl PeakNode {
             links: HashMap::default(),
         }
     }
+
+    #[allow(unused)]
     pub fn contains(&self, fit: &FitKey) -> bool {
         self.links.contains_key(fit)
     }
@@ -47,6 +49,7 @@ pub(crate) struct PeakGraph {
     pub peak_nodes: HashMap<PeakKey, PeakNode>,
 }
 
+#[allow(unused)]
 impl PeakGraph {
     pub fn new() -> Self {
         Self::default()
