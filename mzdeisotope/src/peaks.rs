@@ -1,3 +1,5 @@
+//! Helper types for writing exhaustive deconvolution algorithms.
+
 use chemical_elements::isotopic_pattern::TheoreticalIsotopicPattern;
 use mzpeaks::prelude::*;
 use mzpeaks::{CentroidPeak, IndexType, MZPeakSetType};
@@ -13,15 +15,25 @@ use crate::isotopic_fit::IsotopicFit;
 
 const PEAK_ELIMINATION_FACTOR: f32 = 0.7;
 
-type Placeholder = i64;
+/// An integral type for storing a transformed m/z that is sufficiently unique for hashing.
+pub type Placeholder = i64;
 
+
+/// A combination of traits that [`WorkingPeakSet`] needs to function.
 pub trait PeakLike: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut {}
 
 impl<T> PeakLike for T where T: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut {}
 
+
+/// Represent a sufficiently unique key for indexing or hashing
+/// peaks from a peak list, or denoting a theoretical but absent
+/// peak.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum PeakKey {
+    /// A matched experimental peak index
     Matched(u32),
+    /// A synthetic marker for a peak m/z that was not found but
+    /// which may anchor a solution containing real peaks.
     Placeholder(Placeholder),
 }
 
@@ -37,10 +49,13 @@ impl Hash for PeakKey {
 impl IdentityHashable for PeakKey {}
 
 impl PeakKey {
+
+    /// Check if the key corresponds to a matched peak
     pub fn is_matched(&self) -> bool {
         matches!(self, Self::Matched(_))
     }
 
+    /// Check if the key corresponds to a placeholder
     pub fn is_placeholder(&self) -> bool {
         matches!(self, Self::Placeholder(_))
     }
@@ -53,6 +68,9 @@ impl PeakKey {
     }
 }
 
+
+/// A cache mapping [`Placeholder`] values to concrete [`PeakLike`] values for a single
+/// peak list deconvolution problem.
 #[derive(Debug)]
 pub struct PlaceholderCache<C: PeakLike> {
     placeholders: HashMap<Placeholder, C, BuildIdentityHasher<Placeholder>>,
@@ -66,6 +84,7 @@ impl<C: PeakLike> Default for PlaceholderCache<C> {
     }
 }
 
+/// Helper trait for producing [`Placeholder`] values for [`PeakKey`] instances
 pub trait MZCaching {
     fn key_for(&self, mz: f64) -> Placeholder {
         (mz * 1000.0).round() as Placeholder
@@ -73,6 +92,9 @@ pub trait MZCaching {
 }
 
 impl<C: PeakLike> PlaceholderCache<C> {
+    /// Create a [`Placeholder`] value for a given m/z and store
+    /// an associated [`PeakLike`] instance in the cache with
+    /// it.
     pub fn create(&mut self, mz: f64) -> Placeholder {
         let key = self.key_for(mz);
         self.placeholders
@@ -81,21 +103,25 @@ impl<C: PeakLike> PlaceholderCache<C> {
         key
     }
 
+    /// As [`Self::create`] but instead return the peak, not the key
     pub fn create_and_get(&mut self, mz: f64) -> &C {
         let key = self.key_for(mz);
         self.create(mz);
         self.placeholders.get(&key).unwrap()
     }
 
+    /// Map a specified m/z to a pre-existing peak
     pub fn get(&self, mz: f64) -> Option<&C> {
         let key = self.key_for(mz);
         self.placeholders.get(&key)
     }
 
+    /// Map a specified [`Placeholder`] key to a pre-existing peak
     pub fn get_key(&self, key: &Placeholder) -> &C {
         self.placeholders.get(key).unwrap()
     }
 
+    /// Clear the cache
     pub fn clear(&mut self) {
         self.placeholders.clear()
     }
@@ -103,6 +129,8 @@ impl<C: PeakLike> PlaceholderCache<C> {
 
 impl<C: PeakLike> MZCaching for PlaceholderCache<C> {}
 
+/// A cache mapping a pair of [`Placeholder`] to real indices in an
+/// experimental peak list
 #[derive(Debug, Clone, Default)]
 pub struct SliceCache {
     range_to_indices: HashMap<(Placeholder, Placeholder), Range<usize>>,
@@ -127,6 +155,9 @@ impl SliceCache {
     }
 }
 
+
+/// A wrapper enclosing an [`MZPeakSetType`] with sets of caches that make
+/// writing deconvoluters more convenient.
 #[derive(Debug)]
 pub struct WorkingPeakSet<C: PeakLike + IntensityMeasurementMut> {
     pub peaks: MZPeakSetType<C>,
@@ -266,6 +297,8 @@ impl<C: PeakLike + IntensityMeasurementMut> Index<PeakKey> for WorkingPeakSet<C>
     }
 }
 
+/// An iterator over a range of [`PeakKey`]s corresponding to [`PeakKey::Matched`]
+/// instances.
 #[derive(Debug, Clone)]
 pub struct PeakKeyIter {
     total: usize,

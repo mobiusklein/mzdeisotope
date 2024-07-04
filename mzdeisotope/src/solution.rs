@@ -1,12 +1,13 @@
+//! Types and operations on deconvolution solutions
+
 use std::{cmp, mem};
 
-use chemical_elements::{mass_charge_ratio, PROTON};
 use itertools::multizip;
 
 use mzdata::spectrum::{BinaryArrayMap, BinaryDataArrayType, DataArray};
 use mzpeaks::peak::MZPoint;
 use mzpeaks::prelude::*;
-use mzpeaks::{self, CoordinateLikeMut};
+use mzpeaks;
 use mzpeaks::{CoordinateLike, IntensityMeasurement, KnownCharge, MZ};
 
 use mzdata::spectrum::bindata::{
@@ -18,13 +19,25 @@ use crate::scorer::ScoreType;
 
 pub type Envelope = Vec<MZPoint>;
 
+/// An [`DeconvolutedCentroidLike`] peak type, that
+/// also carries a deconvolution score and an isotopic peak envelope recording
+/// experimental peak m/z and intensity used to fit it.
 #[derive(Debug, Default, Clone)]
 pub struct DeconvolvedSolutionPeak {
+    /// The neutral mass of the monoisototopic peak for this ion's isotopic pattern
     pub neutral_mass: f64,
+    /// The sum over isotopic peak intensities used to fit the isotopic pattern for
+    /// this ion
     pub intensity: f32,
+    /// The charge state determined for this ion from its isotopic pattern spacing
     pub charge: i32,
+    /// The sort index for this peak in the neutral mass dimension.
     pub index: u32,
+    /// The score the deconvolution algorithm gave to the isotopic pattern fit for
+    /// this ion.
     pub score: ScoreType,
+    /// The experimental isotopic peaks' m/z and intensities for the isotopic pattern
+    /// fit for this ion
     pub envelope: Box<Envelope>,
 }
 
@@ -220,15 +233,16 @@ impl BuildArrayMapFrom for DeconvolvedSolutionPeak {
     }
 }
 
+
+/// Perform an in-place conversion of the peaks from being multiply charged to singly charged,
+/// setting their charge to the new requested charge.
 pub fn decharge_peaks_in_place<
-    D: DeconvolutedCentroidLike + KnownChargeMut + CoordinateLikeMut<MZ>,
+    D: DeconvolutedCentroidLike + KnownChargeMut,
 >(
     peaks: &mut [D],
     new_charge: i32,
 ) {
     peaks.iter_mut().for_each(|p| {
-        let mass = p.neutral_mass();
-        *CoordinateLikeMut::<MZ>::coordinate_mut(p) = mass_charge_ratio(mass, new_charge, PROTON);
         *p.charge_mut() = new_charge;
     })
 }

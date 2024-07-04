@@ -1,3 +1,5 @@
+//! Tools for evaluating isolation windows
+
 use mzdata::spectrum::IsolationWindow;
 use mzpeaks::{prelude::*, MZPeakSetType, MassPeakSetType};
 
@@ -5,10 +7,14 @@ use mzpeaks::coordinate::{SimpleInterval, Span1D};
 
 use crate::solution::DeconvolvedSolutionPeak;
 
+/// A precursor ion co-isolated in an isolation window
 #[derive(Debug, Default, Clone, Copy, PartialEq, PartialOrd)]
 pub struct Coisolation {
+    /// The estimated neutral mass of the ion
     pub neutral_mass: f64,
+    /// The total intensity of the ion's isotopic pattern
     pub intensity: f32,
+    /// The estimated charge of the ion
     pub charge: Option<i32>,
 }
 
@@ -22,9 +28,15 @@ impl Coisolation {
     }
 }
 
+
+/// An estimator of precursor selection purity
 #[derive(Debug, Clone)]
 pub struct PrecursorPurityEstimator {
+    /// How far beyond the lower bound of the isolation window to search for
+    /// co-isolating peaks
     pub lower_extension: f64,
+    /// The default width assumed for an isolation window when a width is not
+    /// provided
     pub default_width: f64,
 }
 
@@ -68,6 +80,15 @@ impl PrecursorPurityEstimator {
         }
     }
 
+    /// Find all co-isolating ions around a precursor peak, given an isolation window.
+    ///
+    /// # Arguments
+    /// - `peaks`: The deconvolved peak set itself to search for coisolations in
+    /// - `precursor_peak`: The peak that we are treating as the selected target ion
+    /// - `isolation_window`: The selected range of m/z for the `precursor_peak`, if any.
+    /// - `relative_intensity_threshold`: The minimum percentage of the `precursor_peak`'s intensity
+    ///   needed for a coisolating ion to be be reported.
+    /// - `ignore_singly_charged`: Whether or not to skip singly charged ions near the `precursor_peak`
     pub fn coisolation(
         &self,
         peaks: &MassPeakSetType<DeconvolvedSolutionPeak>,
@@ -92,6 +113,13 @@ impl PrecursorPurityEstimator {
         isolates
     }
 
+    /// Estimate the purity of an ion selection as a function of the ratio of the selected ion's
+    /// total intensity to the total intensity of all co-isolating isotopic peak.
+    ///
+    /// # Arguments
+    /// `peaks`: The original raw m/z peak list.
+    /// `precursor_peak`: The deconvolved selected ion's merged peak.
+    /// `isolation_window`: The selected range of m/z for the `precursor_peak`, if any.
     pub fn precursor_purity<C: CentroidLike>(
         &self,
         peaks: &MZPeakSetType<C>,

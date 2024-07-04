@@ -15,12 +15,12 @@ use mzdata::io::{
     mzml::{MzMLReaderType, MzMLWriterType},
     SpectrumWriter,
 };
-#[allow(unused)]
+
 use mzdata::prelude::*;
 use mzdata::spectrum::{utils::Collator, SignalContinuity, SpectrumGroup};
 use mzdata::Param;
 
-use mzdeisotope::api::{DeconvolutionEngine, PeaksAndTargets};
+use mzdeisotope::{DeconvolutionEngine, PeaksAndTargets};
 use mzdeisotope::isotopic_model::{IsotopicModel, IsotopicModels, IsotopicPatternParams};
 use mzdeisotope::scorer::{MSDeconvScorer, MaximizingFitFilter, PenalizedMSDeconvScorer};
 use mzdeisotope::solution::DeconvolvedSolutionPeak;

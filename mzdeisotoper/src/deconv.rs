@@ -6,7 +6,7 @@ use mzdata::{io::MassSpectrometryFormat, prelude::*, spectrum::SignalContinuity,
 use mzpeaks::MZPeakSetType;
 
 use mzdeisotope::{
-    api::{DeconvolutionEngine, PeaksAndTargets},
+    {DeconvolutionEngine, PeaksAndTargets},
     isolation::{Coisolation, PrecursorPurityEstimator},
     scorer::{IsotopicFitFilter, IsotopicPatternScorer},
     solution::DeconvolvedSolutionPeak,

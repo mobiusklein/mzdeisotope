@@ -11,6 +11,10 @@ use super::cluster::{DependenceCluster, SubgraphSolverMethod};
 use super::fit::{FitGraph, FitKey, FitRef};
 use super::peak::PeakGraph;
 
+
+/// A graph relating experimental peaks to isotopic pattern fits, constructing two levels
+/// of dependence, from peaks to isotopic fits and later isotopic fits which depend upon
+/// the same experimental peaks.
 #[derive(Debug)]
 pub struct PeakDependenceGraph {
     pub peak_nodes: PeakGraph,

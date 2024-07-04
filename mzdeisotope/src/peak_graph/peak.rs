@@ -43,7 +43,7 @@ impl std::hash::Hash for PeakNode {
 }
 
 #[derive(Debug, Default)]
-pub struct PeakGraph {
+pub(crate) struct PeakGraph {
     pub peak_nodes: HashMap<PeakKey, PeakNode>,
 }
 

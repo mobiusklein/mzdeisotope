@@ -23,6 +23,9 @@ use crate::{
     solution::DeconvolvedSolutionPeak,
 };
 
+
+/// An algebraic data structure for abstracting over one or many
+/// [`CachingIsotopicModel`].
 #[derive(Debug, Clone)]
 pub enum IsotopicModelLike<'a> {
     SingleModel(CachingIsotopicModel<'a>),
@@ -230,6 +233,9 @@ impl<
 
     /// Pre-calculcate and cache all isotopic patterns between `min_mz` and `max_mz` for
     /// charge states between `min_charge` and `max_charge`.
+    ///
+    /// # See also
+    /// [`IsotopicPatternGenerator::populate_cache`](crate::isotopic_model::IsotopicPatternGenerator::populate_cache)
     pub fn populate_isotopic_model_cache(
         &mut self,
         min_mz: f64,

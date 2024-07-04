@@ -151,7 +151,7 @@ pub trait IsotopicPatternGenerator {
     }
 }
 
-/// The mass difference between isotopes C\[13\] and C\[12\]. Not precisely universal, but the
+/// The mass difference between isotopes `C[13]` and `C[12]`. Not precisely universal, but the
 /// majority of expected applications are carbon-based
 pub const NEUTRON_SHIFT: f64 = 1.0033548378;
 
@@ -689,6 +689,9 @@ impl<'a> From<IsotopicModel<'a>> for CachingIsotopicModel<'a> {
     }
 }
 
+/// A set of named average monomer isotopic models
+/// for biomolecules. Variants convert to [`IsotopicModel`]
+/// and [`CachingIsotopicModel`].
 #[derive(Debug, Clone, Copy)]
 pub enum IsotopicModels {
     Peptide,

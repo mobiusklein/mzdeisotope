@@ -1,10 +1,10 @@
 /*! A variant of the the deconvolution machinery using multiple
- * isotopic models concurrently */
+ * isotopic models simultaneously */
 use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 
 use crate::charge::ChargeRangeIter;
-use crate::deconvoluter::{PeakDepenceGraphTargetLink, TrivialTargetLink};
+use crate::deconvoluter::TargetLink;
 use crate::isotopic_fit::IsotopicFit;
 use crate::isotopic_model::{
     CachingIsotopicModel, IsotopicPatternGenerator, IsotopicPatternParams,
@@ -26,6 +26,9 @@ use chemical_elements::isotopic_pattern::TheoreticalIsotopicPattern;
 use mzpeaks::{prelude::*, IntensityMeasurementMut, MZPeakSetType, MassPeakSetType};
 use mzpeaks::{CentroidPeak, Tolerance};
 
+
+/// A variant of [`DeconvoluterType`](crate::deconvoluter::DeconvoluterType) that uses multiple
+/// isotopic pattern generators.
 #[derive(Debug)]
 pub struct MultiDeconvoluterType<
     C: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut,
@@ -41,7 +44,7 @@ pub struct MultiDeconvoluterType<
     pub max_missed_peaks: u16,
     pub use_quick_charge: bool,
     pub current_model_index: usize,
-    targets: Vec<TrivialTargetLink>,
+    targets: Vec<TargetLink>,
 }
 
 impl<
@@ -274,7 +277,7 @@ impl<
         F: IsotopicFitFilter,
     > TargetedDeconvolution<C> for MultiDeconvoluterType<C, I, S, F>
 {
-    type TargetSolution = TrivialTargetLink;
+    type TargetSolution = TargetLink;
 
     fn targeted_deconvolution(
         &mut self,
@@ -304,7 +307,7 @@ impl<
         } else {
             None
         };
-        let link = TrivialTargetLink::new(peak, solution);
+        let link = TargetLink::new(peak, solution);
         self.targets.push(link.clone());
         link
     }
@@ -385,6 +388,8 @@ impl<
     }
 }
 
+
+/// A variant of [`GraphDeconvoluterType`](crate::deconvoluter::GraphDeconvoluterType) that uses multiple isotopic pattern generators.
 #[derive(Debug)]
 pub struct GraphMultiDeconvoluterType<
     C: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut,
@@ -394,7 +399,7 @@ pub struct GraphMultiDeconvoluterType<
 > {
     pub inner: MultiDeconvoluterType<C, I, S, F>,
     pub peak_graph: PeakDependenceGraph,
-    solutions: Vec<PeakDepenceGraphTargetLink>,
+    solutions: Vec<TargetLink>,
 }
 
 impl<
@@ -611,7 +616,7 @@ impl<
         F: IsotopicFitFilter,
     > TargetedDeconvolution<C> for GraphMultiDeconvoluterType<C, I, S, F>
 {
-    type TargetSolution = PeakDepenceGraphTargetLink;
+    type TargetSolution = TargetLink;
 
     fn targeted_deconvolution(
         &mut self,
@@ -630,7 +635,7 @@ impl<
             right_search_limit,
             params,
         );
-        let link = PeakDepenceGraphTargetLink {
+        let link = TargetLink {
             query: peak,
             link: None,
         };

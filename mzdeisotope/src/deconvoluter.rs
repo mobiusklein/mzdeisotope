@@ -5,8 +5,7 @@ use std::ops::Range;
 use crate::charge::ChargeRangeIter;
 use crate::isotopic_fit::IsotopicFit;
 use crate::isotopic_model::{
-    CachingIsotopicModel, IsotopicPatternGenerator, IsotopicPatternParams,
-    TheoreticalIsotopicDistributionScalingMethod,
+    CachingIsotopicModel, IsotopicModels, IsotopicPatternGenerator, IsotopicPatternParams, TheoreticalIsotopicDistributionScalingMethod
 };
 use crate::peak_graph::{DependenceCluster, FitRef, PeakDependenceGraph, SubgraphSolverMethod};
 use crate::peaks::{PeakKey, PeakLike, WorkingPeakSet};
@@ -24,21 +23,23 @@ use chemical_elements::isotopic_pattern::TheoreticalIsotopicPattern;
 use mzpeaks::{prelude::*, MassPeakSetType};
 use mzpeaks::{CentroidPeak, MZPeakSetType, Tolerance};
 
+/// A targeted deconvolution solution for use with [`TargetedDeconvolution`]
 #[derive(Debug, Clone, PartialEq)]
-pub struct TrivialTargetLink {
+pub struct TargetLink {
     pub query: PeakKey,
     pub link: Option<DeconvolvedSolutionPeak>,
 }
 
-impl TrivialTargetLink {
+impl TargetLink {
     pub fn new(query: PeakKey, link: Option<DeconvolvedSolutionPeak>) -> Self {
         Self { query, link }
     }
 }
 
+/// A builder pattern for [`DeconvoluterType`] or [`GraphDeconvoluterType`]
 #[derive(Debug, Default)]
 pub struct DeconvoluterBuilder<
-    C: PeakLike,
+    C: PeakLike + Default,
     I: IsotopicPatternGenerator,
     S: IsotopicPatternScorer,
     F: IsotopicFitFilter,
@@ -51,7 +52,7 @@ pub struct DeconvoluterBuilder<
     use_quick_charge: bool,
 }
 
-impl<C: PeakLike, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: IsotopicFitFilter>
+impl<C: PeakLike + Default, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: IsotopicFitFilter>
     DeconvoluterBuilder<C, I, S, F>
 {
     pub fn new() -> Self {
@@ -65,21 +66,25 @@ impl<C: PeakLike, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: Isot
         }
     }
 
+    /// Pre-specify `max_missed_peaks`
     pub fn missed_peaks(mut self, value: u16) -> Self {
         self.max_missed_peaks = Some(value);
         self
     }
 
+    /// Pre-specify the [`IsotopicPatternScorer`] implementation
     pub fn scoring(mut self, value: S) -> Self {
         self.scorer = Some(value);
         self
     }
 
+    /// Pre-specify the [`IsotopicFitFilter`] implementation
     pub fn filter(mut self, value: F) -> Self {
         self.fit_filter = Some(value);
         self
     }
 
+    /// Pre-specify the [`IsotopicPatternGenerator`] implementation
     pub fn isotopic_model(mut self, value: I) -> Self {
         self.isotopic_model = Some(value);
         self
@@ -95,29 +100,35 @@ impl<C: PeakLike, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: Isot
         self
     }
 
+    /// Create a [`DeconvoluterType`] instance from the builder's properties
     pub fn create(self) -> DeconvoluterType<C, I, S, F> {
         DeconvoluterType::new(
-            self.peaks.unwrap(),
-            self.isotopic_model.unwrap(),
-            self.scorer.unwrap(),
-            self.fit_filter.unwrap(),
+            self.peaks.unwrap_or_default(),
+            self.isotopic_model.expect("An isotopic pattern generator must be specified"),
+            self.scorer.expect("An isotopic scorer must be specified"),
+            self.fit_filter.expect("An isotopic fit filter must be specified"),
             self.max_missed_peaks.unwrap(),
             self.use_quick_charge,
         )
     }
 
+    /// Create a [`GraphDeconvoluterType`] instance from the builder's properties
     pub fn create_graph(self) -> GraphDeconvoluterType<C, I, S, F> {
         GraphDeconvoluterType::new(
-            self.peaks.unwrap(),
-            self.isotopic_model.unwrap(),
-            self.scorer.unwrap(),
-            self.fit_filter.unwrap(),
+            self.peaks.unwrap_or_default(),
+            self.isotopic_model.expect("An isotopic pattern generator must be specified"),
+            self.scorer.expect("An isotopic scorer must be specified"),
+            self.fit_filter.expect("An isotopic fit filter must be specified"),
             self.max_missed_peaks.unwrap(),
             self.use_quick_charge,
         )
     }
 }
 
+
+/// A basic deconvolution that greedily takes the best solution for an isotopic peak in a search window.
+///
+/// This algorithm is not suitable for complex mass spectra.
 #[derive(Debug)]
 pub struct DeconvoluterType<
     C: PeakLike,
@@ -125,14 +136,14 @@ pub struct DeconvoluterType<
     S: IsotopicPatternScorer,
     F: IsotopicFitFilter,
 > {
-    pub peaks: WorkingPeakSet<C>,
-    pub isotopic_model: I,
-    pub scorer: S,
-    pub fit_filter: F,
-    pub scaling_method: TheoreticalIsotopicDistributionScalingMethod,
-    pub max_missed_peaks: u16,
-    pub use_quick_charge: bool,
-    targets: Vec<TrivialTargetLink>,
+    pub(crate) peaks: WorkingPeakSet<C>,
+    pub(crate) isotopic_model: I,
+    pub(crate) scorer: S,
+    pub(crate) fit_filter: F,
+    pub(crate) scaling_method: TheoreticalIsotopicDistributionScalingMethod,
+    pub(crate) max_missed_peaks: u16,
+    pub(crate) use_quick_charge: bool,
+    targets: Vec<TargetLink>,
 }
 
 impl<C: PeakLike, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: IsotopicFitFilter>
@@ -187,6 +198,11 @@ impl<C: PeakLike, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: Isot
         }
     }
 
+    /// Pre-compute the isotopic patterns for a range of m/z values and a
+    /// range of charge states for a specific set of truncation rules.
+    ///
+    /// # See also
+    /// [`IsotopicPatternGenerator::populate_cache`]
     pub fn populate_isotopic_model_cache(
         &mut self,
         min_mz: f64,
@@ -318,6 +334,8 @@ impl<C: PeakLike, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: Isot
     }
 }
 
+
+/// A pre-specified [`DeconvoluterType`] with its type parameters fixed for ease of use.
 pub type AveragineDeconvoluter<'lifespan> = DeconvoluterType<
     CentroidPeak,
     CachingIsotopicModel<'lifespan>,
@@ -328,7 +346,7 @@ pub type AveragineDeconvoluter<'lifespan> = DeconvoluterType<
 impl<C: PeakLike, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: IsotopicFitFilter>
     TargetedDeconvolution<C> for DeconvoluterType<C, I, S, F>
 {
-    type TargetSolution = TrivialTargetLink;
+    type TargetSolution = TargetLink;
 
     fn targeted_deconvolution(
         &mut self,
@@ -358,7 +376,7 @@ impl<C: PeakLike, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: Isot
         } else {
             None
         };
-        let link = TrivialTargetLink::new(peak, solution);
+        let link = TargetLink::new(peak, solution);
         self.targets.push(link.clone());
         link
     }
@@ -435,13 +453,12 @@ impl<C: PeakLike, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: Isot
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct PeakDepenceGraphTargetLink {
-    pub query: PeakKey,
-    pub link: Option<DeconvolvedSolutionPeak>,
-}
 
-/// Graph deconvolution tracks fit dependencies so that whole peak list deconvolution doesn't re-use peaks
+/// The preferred algorithm, uses a dependencies graph tracks fit-to-peak and fit-to-fit
+/// relationships to correctly deconvolve a complex spectrum.
+///
+/// The dependency tracking method by not double-counting or pre-emptively consuming an
+/// isotopic peaks.
 #[derive(Debug)]
 pub struct GraphDeconvoluterType<
     C: PeakLike,
@@ -449,9 +466,9 @@ pub struct GraphDeconvoluterType<
     S: IsotopicPatternScorer,
     F: IsotopicFitFilter,
 > {
-    pub inner: DeconvoluterType<C, I, S, F>,
-    pub peak_graph: PeakDependenceGraph,
-    solutions: Vec<PeakDepenceGraphTargetLink>,
+    pub(crate) inner: DeconvoluterType<C, I, S, F>,
+    pub(crate) peak_graph: PeakDependenceGraph,
+    solutions: Vec<TargetLink>,
 }
 
 impl<C: PeakLike, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: IsotopicFitFilter>
@@ -664,7 +681,7 @@ impl<C: PeakLike, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: Isot
 impl<C: PeakLike, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: IsotopicFitFilter>
     TargetedDeconvolution<C> for GraphDeconvoluterType<C, I, S, F>
 {
-    type TargetSolution = PeakDepenceGraphTargetLink;
+    type TargetSolution = TargetLink;
 
     fn targeted_deconvolution(
         &mut self,
@@ -683,7 +700,7 @@ impl<C: PeakLike, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: Isot
             right_search_limit,
             params,
         );
-        let link = PeakDepenceGraphTargetLink {
+        let link = TargetLink {
             query: peak,
             link: None,
         };
@@ -828,6 +845,8 @@ impl<C: PeakLike, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: Isot
     }
 }
 
+
+/// A pre-specified [`GraphDeconvoluterType`] with its type parameters fixed for ease of use.
 pub type GraphAveragineDeconvoluter<'lifespan, C> =
     GraphDeconvoluterType<C, CachingIsotopicModel<'lifespan>, MSDeconvScorer, MaximizingFitFilter>;
 

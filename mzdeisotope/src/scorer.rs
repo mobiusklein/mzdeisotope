@@ -271,21 +271,30 @@ impl PenalizedMSDeconvScorer {
     }
 }
 
+/// A type that sort and filter [`IsotopicFit`] instances.
 pub trait IsotopicFitFilter {
+    /// Filter out fits which do not satisfy the filter.
     fn filter(&self, mut fits: HashSet<IsotopicFit>) -> HashSet<IsotopicFit> {
         fits.retain(|f| self.test(f));
         fits
     }
 
+    /// Get the best solution from an iterator
     fn select<I: Iterator<Item = IsotopicFit>>(&self, fits: I) -> Option<IsotopicFit>;
 
+    /// Test if an [`IsotopicFit`] passes the required score threshold, though
+    /// it may perform other checks in addition to testing the score.
     fn test(&self, fit: &IsotopicFit) -> bool {
         self.test_score(fit.score)
     }
 
+    /// Test if a score is good enough to satisfy the filter.
     fn test_score(&self, fit: ScoreType) -> bool;
 }
 
+
+/// A [`IsotopicFitFilter`] that has a minimum score threshold and
+/// prefers larger scores. The default form uses a threshold of `0.0`.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct MaximizingFitFilter {
     pub threshold: ScoreType,
@@ -314,6 +323,8 @@ impl IsotopicFitFilter for MaximizingFitFilter {
     }
 }
 
+/// A [`IsotopicFitFilter`] that has a maximum score threshold and
+/// prefers smaller scores. The default form uses a threshold of `1.0`.
 #[derive(Debug, Clone, Copy)]
 pub struct MinimizingFitFilter {
     pub threshold: ScoreType,

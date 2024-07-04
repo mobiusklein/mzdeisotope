@@ -1,3 +1,5 @@
+//! Implementation of peak dependency tracking
+
 mod cluster;
 mod fit;
 mod graph;

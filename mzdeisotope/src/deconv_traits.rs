@@ -277,8 +277,16 @@ pub trait RelativePeakSearch<C: CentroidLike>: IsotopicPatternFitter<C> {
 pub trait ExhaustivePeakSearch<C: CentroidLike>:
     IsotopicPatternFitter<C> + RelativePeakSearch<C>
 {
+    /// The minimum intensity below which an experimental peak is ignored.
     const MINIMUM_INTENSITY: f32 = 5.0;
 
+    /// Evaluate a set of local isotopic pattern seeds and return the set of [`IsotopicFit`]
+    /// that pass quality thresholds.
+    ///
+    /// # Arguments
+    /// - `peak_charge_set`: The ([`PeakKey`], charge) pairs to fit in this batch
+    /// - `error_tolerance`: The mass error tolerance for matching isotopic peaks
+    /// - `params`: The isotopic pattern generation parameters to use
     fn fit_peaks_at_charge(
         &mut self,
         peak_charge_set: QuerySet,
@@ -312,8 +320,20 @@ pub trait ExhaustivePeakSearch<C: CentroidLike>:
         solutions
     }
 
+    /// Verify an [`IsotopicFit`] passes some quality threshold for
+    /// further consideration.
     fn check_isotopic_fit(&self, fit: &IsotopicFit) -> bool;
 
+    /// Find all the charge states for all peaks suggested by the locale of `mz`
+    ///
+    /// # Arguments
+    /// - `mz`: The query m/z value to search from
+    /// - `error_tolerance`: The mass error tolerance for matching isotopic peaks
+    /// - `charge_range`: The range of charge states to consider for each peak
+    /// - `left_search_limit`: The number of isotopic shifts lower from each peak m/z to probe
+    /// - `right_search_limit`: The number of isotopic shifts up from the each peak m/z to probe
+    /// - `recalculate_starting_peak`: Whether or not to use adjacent isotopic peaks to recalculate the
+    ///   query m/z
     fn _find_all_peak_charge_pairs_iter<I: ChargeIterator>(
         &mut self,
         mz: f64,
@@ -392,16 +412,31 @@ pub trait ExhaustivePeakSearch<C: CentroidLike>:
         )
     }
 
+    /// Skip a peak if it isn't fails simple quality requirements like
+    /// intensity being too low or have a non-positive m/z.
     fn skip_peak(&self, peak: &C) -> bool {
         peak.mz() <= 0.0
             || peak.intensity() < Self::MINIMUM_INTENSITY
             || (peak.intensity() - Self::MINIMUM_INTENSITY).abs() <= 1e-3
     }
 
+    /// A predicate whether or not to use the [QuickCharge](crate::charge::quick_charge) algorithm for charge
+    /// state selection.
     fn use_quick_charge(&self) -> bool;
 
+    /// Invoke [`quick_charge`](crate::charge::quick_charge) on the peak
+    /// at `index`.
     fn quick_charge(&self, index: usize, charge_range: ChargeRange) -> ChargeListIter;
 
+    /// Visit all of the peaks in the spectrum and fit each of them in m/z descending order
+    /// using [`ExhaustivePeakSearch::find_all_peak_charge_pairs`] and [`ExhaustivePeakSearch::fit_peaks_at_charge`].
+    ///
+    /// # Arguments
+    /// - `error_tolerance`: The mass error tolerance for matching isotopic peaks
+    /// - `charge_range`: The range of charge states to consider for each peak
+    /// - `left_search_limit`: The number of isotopic shifts lower from each peak m/z to probe
+    /// - `right_search_limit`: The number of isotopic shifts up from the each peak m/z to probe
+    /// - `params`: The isotopic pattern generation parameters to use
     fn step_deconvolve(
         &mut self,
         error_tolerance: Tolerance,
@@ -451,8 +486,12 @@ pub trait ExhaustivePeakSearch<C: CentroidLike>:
 /// In addition to the behavior of [`ExhaustivePeakSearch`], maintain a graph of
 /// overlapping solutions to deconvolve complex spectra.
 pub trait GraphDependentSearch<C: CentroidLike>: ExhaustivePeakSearch<C> {
+
+    /// Register `fit`'s dependencies and store it for later extraction
     fn add_fit_dependence(&mut self, fit: IsotopicFit);
 
+    /// Select the set of solutions for this iteration, pushing them into
+    /// `fit_accumulator`.
     fn select_best_disjoint_subgraphs(
         &mut self,
         fit_accumulator: &mut Vec<IsotopicFit>,
@@ -492,6 +531,15 @@ pub trait GraphDependentSearch<C: CentroidLike>: ExhaustivePeakSearch<C> {
         }
     }
 
+    /// Visit all peaks in the spectrum and add their plausible solutions to the
+    /// dependence graph.
+    ///
+    /// # Arguments
+    /// - `error_tolerance`: The mass error tolerance for matching isotopic peaks
+    /// - `charge_range`: The range of charge states to consider for each peak
+    /// - `left_search_limit`: The number of isotopic shifts lower from each peak m/z to probe
+    /// - `right_search_limit`: The number of isotopic shifts up from the each peak m/z to probe
+    /// - `params`: The isotopic pattern generation parameters to use
     fn populate_graph(
         &mut self,
         error_tolerance: Tolerance,
@@ -532,6 +580,15 @@ pub trait GraphDependentSearch<C: CentroidLike>: ExhaustivePeakSearch<C> {
             .sum()
     }
 
+    /// Populate the graph with the current peaks and then select the best solutions and
+    /// return them.
+    ///
+    /// # Arguments
+    /// - `error_tolerance`: The mass error tolerance for matching isotopic peaks
+    /// - `charge_range`: The range of charge states to consider for each peak
+    /// - `left_search_limit`: The number of isotopic shifts lower from each peak m/z to probe
+    /// - `right_search_limit`: The number of isotopic shifts up from the each peak m/z to probe
+    /// - `params`: The isotopic pattern generation parameters to use
     fn graph_step_deconvolve(
         &mut self,
         error_tolerance: Tolerance,
@@ -557,10 +614,18 @@ pub trait GraphDependentSearch<C: CentroidLike>: ExhaustivePeakSearch<C> {
 pub trait TargetedDeconvolution<C: CentroidLike>:
     IsotopicPatternFitter<C> + RelativePeakSearch<C>
 {
+    /// A place to store a solution.
     type TargetSolution;
 
     /// Deconvolve the specific target peak and register a solution handle that can be used
     /// to retrieve the final solution later.
+    /// # Arguments
+    /// - `peak`: The peak key to seed the targeted solution with
+    /// - `error_tolerance`: The mass error tolerance for matching isotopic peaks
+    /// - `charge_range`: The range of charge states to consider for each peak
+    /// - `left_search_limit`: The number of isotopic shifts lower from each peak m/z to probe
+    /// - `right_search_limit`: The number of isotopic shifts up from the each peak m/z to probe
+    /// - `params`: The isotopic pattern generation parameters to use
     fn targeted_deconvolution(
         &mut self,
         peak: PeakKey,
@@ -582,6 +647,23 @@ pub trait TargetedDeconvolution<C: CentroidLike>:
 
 /// Deconvolve the entire spectrum iteratively
 pub trait IsotopicDeconvolutionAlgorithm<C: CentroidLike> {
+    /// Process the spectrum peak list, extracting solutions, subtracting
+    /// used signal, and repeat the process until `max_iterations` have elapsed
+    /// or the ratio of change in remaining intensity falls below `convergence`.
+    ///
+    /// # Arguments
+    /// - `error_tolerance`: The mass error tolerance for matching isotopic peaks
+    /// - `charge_range`: The range of charge states to consider for each peak
+    /// - `left_search_limit`: The number of isotopic shifts lower from each peak m/z to probe
+    /// - `right_search_limit`: The number of isotopic shifts up from the each peak m/z to probe
+    /// - `convergence`: The ratio of change in total intensity over remaining intensity below which
+    ///   subsequent iterations are skipped.
+    /// - `max_iterations`: The maximum number of iterations to run through.
+    ///
+    /// # Returns
+    /// The set of all solved [`DeconvolvedSolutionPeak`] in a [`MassPeakSetType`] if successful. [`DeconvolutionError`]
+    /// otherwise.
+    ///
     fn deconvolve(
         &mut self,
         error_tolerance: Tolerance,

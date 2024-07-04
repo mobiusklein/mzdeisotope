@@ -6,11 +6,16 @@ use super::fit::{FitKey, FitNode, FitNodeGraphInner, FitRef};
 
 pub type SubgraphSolution = Vec<FitRef>;
 
+/// A collection of inter-dependent isotopic fits
 #[derive(Debug, Clone)]
 pub struct DependenceCluster {
+    /// A collection of isotopic fit references stored in a [`PeakDependenceGraph`](crate::peak_graph::PeakDependenceGraph)
     pub dependencies: Vec<FitRef>,
+    /// How to sort fits by score
     pub score_ordering: ScoreInterpretation,
+    /// The minimum m/z of the isotopic peaks in the cluster
     pub start: f64,
+    /// The maximum m/z of the isotopic peaks in the cluster
     pub end: f64,
 }
 
@@ -41,7 +46,7 @@ impl DependenceCluster {
         self.dependencies.iter().any(|f| f == fit)
     }
 
-    pub fn mz_bounds(&self) -> (f64, f64) {
+    fn mz_bounds(&self) -> (f64, f64) {
         let mut start = f64::INFINITY;
         let mut end = -f64::INFINITY;
         for f in self.dependencies.iter() {

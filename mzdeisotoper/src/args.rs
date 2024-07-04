@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use mzdeisotope::{
-    api::DeconvolutionEngine,
+    DeconvolutionEngine,
     charge::ChargeRange,
     isotopic_model::{IsotopicModel, IsotopicModels, IsotopicPatternParams, PROTON},
     scorer::{
