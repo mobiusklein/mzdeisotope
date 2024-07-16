@@ -8,6 +8,10 @@ members = [
     "mzdeisotoper"
 ]
 
+[workspace.dependencies]
+
+mzdata = { version = ">=0.22.0", default-features = false, features = ["mzsignal", "nalgebra"] }
+mzpeaks = { version = ">=0.17.0,<1.0.0" }
 
 [profile.release]
 lto = true

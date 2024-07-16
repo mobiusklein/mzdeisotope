@@ -593,13 +593,13 @@ checksum = "fea41bba32d969b513997752735605054bc0dfa92b4c56bf1189f2e174be7a10"
 
 [[package]]
 name = "dotnetrawfilereader-sys"
-version = "0.2.5"
+version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4c72833ca99ebdf5fdc27bdca2d85a03eb8acae939e80cecaf1b24e16e893345"
+checksum = "55e88bdd913cd9e0c1f5a64689c0a7fb54682179e62ceb7807c3c5b4c37204e1"
 dependencies = [
  "include_dir",
  "netcorehost",
- "tempdir",
+ "tempfile",
 ]
 
 [[package]]
@@ -676,6 +676,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "errno"
+version = "0.3.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "534c5cf6194dfab3db3242765c03bbe257cf92f22b38f6bc0c58d59108a820ba"
+dependencies = [
+ "libc",
+ "windows-sys 0.52.0",
+]
+
+[[package]]
 name = "errno-dragonfly"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -684,6 +694,12 @@ dependencies = [
  "cc",
  "libc",
 ]
+
+[[package]]
+name = "fastrand"
+version = "2.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9fc0510504f03c51ada170672ac806f1f105a88aa97a5281117e1ddc3368e51a"
 
 [[package]]
 name = "ffi-opaque"
@@ -749,12 +765,6 @@ checksum = "e13624c2627564efccf4934284bdd98cbaa14e79b0b5a141218e507b3a823456"
 dependencies = [
  "percent-encoding",
 ]
-
-[[package]]
-name = "fuchsia-cprng"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a06f77d526c1a601b7c4cdd98f54b5eaabffc14d5f2f0296febdc7f357c6d3ba"
 
 [[package]]
 name = "futures-channel"
@@ -865,7 +875,7 @@ dependencies = [
  "bitflags 1.3.2",
  "blosc-src",
  "cfg-if",
- "errno",
+ "errno 0.2.8",
  "hdf5-derive",
  "hdf5-sys",
  "hdf5-types",
@@ -1187,6 +1197,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "linux-raw-sys"
+version = "0.4.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "78b3ae25bc7c8c38cec158d1f2757ee79e9b3740fbc7ccf0e59e4b08d793fa89"
+
+[[package]]
 name = "lock_api"
 version = "0.4.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1270,9 +1286,9 @@ dependencies = [
 
 [[package]]
 name = "mzdata"
-version = "0.21.0"
+version = "0.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "09fdf3531191168ca9a0c779b634ec6a389028fc99d37acb42b8919e84167f44"
+checksum = "4e996734aff68f587be071bbfd11c2f12bcd8d59739042d1aa27e6a1b4e4e01a"
 dependencies = [
  "base16ct",
  "base64-simd",
@@ -1286,8 +1302,8 @@ dependencies = [
  "lazy_static",
  "log",
  "md5",
- "mzpeaks 0.16.0",
- "mzsignal 0.15.0",
+ "mzpeaks 0.17.0",
+ "mzsignal",
  "ndarray",
  "num-traits",
  "quick-xml",
@@ -1308,7 +1324,7 @@ dependencies = [
  "identity-hash",
  "itertools",
  "mzdata",
- "mzpeaks 0.16.0",
+ "mzpeaks 0.17.0",
  "num-traits",
  "rayon",
  "test-log",
@@ -1327,8 +1343,8 @@ dependencies = [
  "itertools",
  "mzdata",
  "mzdeisotope",
- "mzpeaks 0.16.0",
- "mzsignal 0.14.0",
+ "mzpeaks 0.17.0",
+ "mzsignal",
  "num-traits",
  "rayon",
  "test-log",
@@ -1349,7 +1365,7 @@ dependencies = [
  "itertools",
  "mzdata",
  "mzdeisotope",
- "mzpeaks 0.16.0",
+ "mzpeaks 0.17.0",
  "predicates",
  "rayon",
  "serde",
@@ -1368,36 +1384,22 @@ checksum = "59058c9f26d536e00596c7dc01c5d9e88e88ec294b20a6cedc5b83ac6db804f1"
 
 [[package]]
 name = "mzpeaks"
-version = "0.16.0"
+version = "0.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dd69cc7a9d9741baf034c883713957fbc3399534ddee1974939d349c360f66b3"
+checksum = "2684b5ecb5a7200c0b987192a09af57b80a9fe58b144fed9cd12af9adff1d80f"
 dependencies = [
  "num-traits",
 ]
 
 [[package]]
 name = "mzsignal"
-version = "0.14.0"
+version = "0.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3f0020a64c7c76f1558bbe3e0d1c045b69e0b4e5aa94cd42b721ddc28c2a48a7"
+checksum = "4446136defa14cca0076d417f88d883cbc7af1e9fe431f4ad4637c3280a606cf"
 dependencies = [
  "cfg-if",
  "log",
- "mzpeaks 0.16.0",
- "nalgebra",
- "num-traits",
- "thiserror",
-]
-
-[[package]]
-name = "mzsignal"
-version = "0.15.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "80e4db75e251a5b98a9cfda6819da34567f60ddf1a4b545197bc0d372decc338"
-dependencies = [
- "cfg-if",
- "log",
- "mzpeaks 0.16.0",
+ "mzpeaks 0.17.0",
  "nalgebra",
  "num-traits",
  "thiserror",
@@ -1617,7 +1619,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7676374caaee8a325c9e7a2ae557f216c5563a171d6997b0ef8a65af35147700"
 dependencies = [
  "base64ct",
- "rand_core 0.6.4",
+ "rand_core",
  "subtle",
 ]
 
@@ -1764,34 +1766,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rand"
-version = "0.4.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "552840b97013b1a26992c11eac34bdd778e464601a4c2054b5f0bff7c6761293"
-dependencies = [
- "fuchsia-cprng",
- "libc",
- "rand_core 0.3.1",
- "rdrand",
- "winapi",
-]
-
-[[package]]
-name = "rand_core"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7a6fdeb83b075e8266dcc8762c22776f6877a63111121f5f8c7411e5be7eed4b"
-dependencies = [
- "rand_core 0.4.2",
-]
-
-[[package]]
-name = "rand_core"
-version = "0.4.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9c33a3c44ca05fa6f1807d8e6743f3824e8509beca625669633be0acbdf509dc"
-
-[[package]]
 name = "rand_core"
 version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1821,15 +1795,6 @@ checksum = "1465873a3dfdaa8ae7cb14b4383657caab0b3e8a0aa9ae8e04b044854c8dfce2"
 dependencies = [
  "crossbeam-deque",
  "crossbeam-utils",
-]
-
-[[package]]
-name = "rdrand"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "678054eb77286b51581ba43620cc911abf02758c91f93f479767aed0f90458b2"
-dependencies = [
- "rand_core 0.3.1",
 ]
 
 [[package]]
@@ -1884,15 +1849,6 @@ name = "regex-syntax"
 version = "0.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7a66a03ae7c801facd77a29370b4faec201768915ac14a721ba36f20bc9c209b"
-
-[[package]]
-name = "remove_dir_all"
-version = "0.5.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3acd125665422973a33ac9d3dd2df85edad0f4ae9b00dafb1a05e43a9f5ef8e7"
-dependencies = [
- "winapi",
-]
 
 [[package]]
 name = "reqwest"
@@ -1963,6 +1919,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bfa0f585226d2e68097d4f95d113b15b83a82e819ab25717ec0590d9584ef366"
 dependencies = [
  "semver",
+]
+
+[[package]]
+name = "rustix"
+version = "0.38.34"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "70dc5ec042f7a43c4a73241207cecc9873a06d45debb38b329f8541d85c2730f"
+dependencies = [
+ "bitflags 2.6.0",
+ "errno 0.3.9",
+ "libc",
+ "linux-raw-sys",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -2222,13 +2191,15 @@ dependencies = [
 ]
 
 [[package]]
-name = "tempdir"
-version = "0.3.7"
+name = "tempfile"
+version = "3.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "15f2b5fb00ccdf689e0149d1b1b3c03fead81c2b37735d812fa8bddbbf41b6d8"
+checksum = "85b77fafb263dd9d05cbeac119526425676db3784113aa9295c88498cbf8bff1"
 dependencies = [
- "rand",
- "remove_dir_all",
+ "cfg-if",
+ "fastrand",
+ "rustix",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -2261,9 +2232,9 @@ dependencies = [
 
 [[package]]
 name = "thermorawfilereader"
-version = "0.2.5"
+version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "087a7a5f4ce9c790deeefd2cb6f1ca5e02744a18581837cfcae6850d50f2ef68"
+checksum = "810ee8675e70d5443bcee0f603741b221c5f7f781cf3cf2234ec955259eab330"
 dependencies = [
  "bytemuck",
  "dotnetrawfilereader-sys",

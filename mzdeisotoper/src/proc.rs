@@ -82,6 +82,9 @@ pub fn prepare_procesing<
                 |(averager, reprofiler), (i, g)| {
                     let (mut g, arrays) = g.reprofile_with_average_with(averager, reprofiler);
                     if let Some(p) = g.precursor_mut() {
+                        if tracing::enabled!(tracing::Level::TRACE) {
+                            tracing::trace!("Averaging precursor spectrum {} {} @ {}", p.id(), p.index(), p.start_time())
+                        }
                         p.arrays = Some(arrays.into());
                         p.description_mut().signal_continuity = SignalContinuity::Profile;
                     }
@@ -94,6 +97,7 @@ pub fn prepare_procesing<
                     (ms1_engine.clone(), msn_engine.clone())
                 },
                 |(ms1_engine, msn_engine), (group_idx, group)| {
+                    tracing::trace!("Processing group {group_idx}");
                     deconvolution_transform(
                         ms1_engine,
                         msn_engine,
@@ -133,6 +137,7 @@ pub fn prepare_procesing<
                     (ms1_engine.clone(), msn_engine.clone())
                 },
                 |(ms1_engine, msn_engine), (group_idx, group)| {
+                    tracing::trace!("Processing group {group_idx}");
                     deconvolution_transform(
                         ms1_engine,
                         msn_engine,

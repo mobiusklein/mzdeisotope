@@ -17,19 +17,18 @@ use crate::{
         TargetedDeconvolution,
     },
     deconvoluter::GraphDeconvoluterType,
-    multi_model_deconvoluters::GraphMultiDeconvoluterType,
     isotopic_model::{CachingIsotopicModel, IsotopicPatternParams},
+    multi_model_deconvoluters::GraphMultiDeconvoluterType,
     scorer::{IsotopicFitFilter, IsotopicPatternScorer},
     solution::DeconvolvedSolutionPeak,
 };
-
 
 /// An algebraic data structure for abstracting over one or many
 /// [`CachingIsotopicModel`].
 #[derive(Debug, Clone)]
 pub enum IsotopicModelLike<'a> {
     SingleModel(CachingIsotopicModel<'a>),
-    MultipleModels(Vec<CachingIsotopicModel<'a>>)
+    MultipleModels(Vec<CachingIsotopicModel<'a>>),
 }
 
 impl<'a, I: Into<CachingIsotopicModel<'a>>> From<I> for IsotopicModelLike<'a> {
@@ -42,24 +41,26 @@ impl<'a, I: Into<CachingIsotopicModel<'a>>> From<Vec<I>> for IsotopicModelLike<'
     fn from(value: Vec<I>) -> Self {
         if value.is_empty() {
             panic!("Attempted to convert an empty collection into an isotopic model parameter")
-        }
-        else if value.len() == 1 {
+        } else if value.len() == 1 {
             Self::SingleModel(unsafe { value.into_iter().next().unwrap_unchecked().into() })
-        } else  {
+        } else {
             Self::MultipleModels(value.into_iter().map(|v| v.into()).collect())
         }
-
     }
 }
 
 impl<'a, I: Into<CachingIsotopicModel<'a>>> FromIterator<I> for IsotopicModelLike<'a> {
     fn from_iter<T: IntoIterator<Item = I>>(iter: T) -> Self {
-        (iter.into_iter().map(|v| v.into()).collect::<Vec<CachingIsotopicModel<'a>>>()).into()
+        (iter
+            .into_iter()
+            .map(|v| v.into())
+            .collect::<Vec<CachingIsotopicModel<'a>>>())
+        .into()
     }
 }
 
-
-/// A single-shot deconvolution operation on the provided peak list
+/// A single-shot deconvolution operation on the provided peak list.
+///
 ///
 /// # Arguments
 /// - `peaks`: The centroided mass spectrum to process
@@ -71,6 +72,18 @@ impl<'a, I: Into<CachingIsotopicModel<'a>>> FromIterator<I> for IsotopicModelLik
 /// - `max_missed_peaks`: The number of missing isotopic peaks to tolerate in an isotopic pattern fit, regardless of quality
 /// - `isotopic_params`: The set of parameters to use for `isotopic_model` when generating an isotopic pattern for a given m/z
 /// - `use_quick_charge`: Whether or not to use Hoopman's QuickCharge algorithm to filter candidate charge states
+///
+/// # Note
+/// If you are calling this function with the same parameters on many peak lists, it
+/// may be preferable to create a [`DeconvolutionEngine`] and call its identically named method
+/// to avoid repeatedly recomputing the same isotopic patterns, allowing them to be cached for
+/// the lifetime of that instance.
+///
+/// Internally, this function creates a [`DeconvolutionEngine`], calls [`DeconvolutionEngine::deconvolute_peaks`],
+/// and then returns the deconvolved peak list.
+///
+/// # See also
+/// [`DeconvolutionEngine::deconvolute_peaks`]
 pub fn deconvolute_peaks<
     'lifespan,
     C: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut,
@@ -98,7 +111,6 @@ pub fn deconvolute_peaks<
 
     engine.deconvolute_peaks(peaks, error_tolerance, charge_range, max_missed_peaks)
 }
-
 
 /// A deconvolution solution composed of the entire deconvoluted mass spectrum
 /// as well as a list of deconvolution solutions for specific peaks.
@@ -135,6 +147,11 @@ impl PeaksAndTargets {
 /// - `isotopic_params`: The set of parameters to use for `isotopic_model` when generating an isotopic pattern for a given m/z
 /// - `use_quick_charge`: Whether or not to use Hoopman's QuickCharge algorithm to filter candidate
 /// - `targets`: A sequence of m/z values which the deconvolution machinery should track specifically
+///
+/// See the note on [`deconvolute_peaks`] about using a [`DeconvolutionEngine`] instead if called repeatedly.
+///
+/// # See also
+/// [`DeconvolutionEngine::deconvolute_peaks_with_targets`]
 pub fn deconvolute_peaks_with_targets<
     'lifespan,
     C: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut,
@@ -234,6 +251,10 @@ impl<
     /// Pre-calculcate and cache all isotopic patterns between `min_mz` and `max_mz` for
     /// charge states between `min_charge` and `max_charge`.
     ///
+    /// If this method is not used, experimental peaks will be used to seed the isotopic pattern
+    /// caches which may lead to slightly different solutions depending upon the order in which
+    /// peak lists are processed.
+    ///
     /// # See also
     /// [`IsotopicPatternGenerator::populate_cache`](crate::isotopic_model::IsotopicPatternGenerator::populate_cache)
     pub fn populate_isotopic_model_cache(
@@ -253,7 +274,7 @@ impl<
                         max_charge,
                         self.isotopic_params,
                     );
-                },
+                }
                 IsotopicModelLike::MultipleModels(caches) => {
                     for cache in caches {
                         cache.populate_cache_params(
@@ -264,17 +285,23 @@ impl<
                             self.isotopic_params,
                         );
                     }
-                },
+                }
             }
         }
     }
 
-    /// Deconvolute the provided `peaks` to neutral mass, charge labeled peaks
+    /// Deconvolute the provided `peaks` to neutral mass, charge labeled peaks.
+    ///
     /// # Arguments
     /// - `peaks`: The centroided mass spectrum to process
     /// - `error_tolerance`: The mass accuracy constraint for isotopic peaks within a pattern
     /// - `charge_range`: The minimum to maximum charge state to consider, ordered by absolute magnitude
     /// - `max_missed_peaks`: The number of missing isotopic peaks to tolerate in an isotopic pattern fit, regardless of quality
+    ///
+    /// # Note
+    /// This may lead to slightly different solutions depending upon which pattern-seed m/zs are cached,
+    /// so precalculating the cache with [`DeconvolutionEngine::populate_isotopic_model_cache`] should
+    /// be used for consistency.
     pub fn deconvolute_peaks(
         &mut self,
         peaks: MZPeakSetType<C>,
@@ -284,14 +311,15 @@ impl<
     ) -> Result<MassPeakSetType<DeconvolvedSolutionPeak>, DeconvolutionError> {
         let output = match mem::take(&mut self.isotopic_model).unwrap() {
             IsotopicModelLike::SingleModel(model) => {
-                let mut deconvoluter = GraphDeconvoluterType::<C, CachingIsotopicModel<'lifespan>, S, F>::new(
-                    peaks,
-                    model,
-                    mem::take(&mut self.scorer).unwrap(),
-                    mem::take(&mut self.fit_filter).unwrap(),
-                    max_missed_peaks,
-                    self.use_quick_charge,
-                );
+                let mut deconvoluter =
+                    GraphDeconvoluterType::<C, CachingIsotopicModel<'lifespan>, S, F>::new(
+                        peaks,
+                        model,
+                        mem::take(&mut self.scorer).unwrap(),
+                        mem::take(&mut self.fit_filter).unwrap(),
+                        max_missed_peaks,
+                        self.use_quick_charge,
+                    );
 
                 let output = deconvoluter.deconvolve(
                     error_tolerance,
@@ -307,9 +335,10 @@ impl<
                 self.scorer = Some(deconvoluter.inner.scorer);
                 self.fit_filter = Some(deconvoluter.inner.fit_filter);
                 output
-            },
+            }
             IsotopicModelLike::MultipleModels(models) => {
-                let mut deconvoluter = GraphMultiDeconvoluterType::<C, CachingIsotopicModel<'lifespan>, S, F>::new(
+                let mut deconvoluter =
+                    GraphMultiDeconvoluterType::<C, CachingIsotopicModel<'lifespan>, S, F>::new(
                         peaks,
                         models,
                         mem::take(&mut self.scorer).unwrap(),
@@ -332,12 +361,15 @@ impl<
                 self.scorer = Some(deconvoluter.inner.scorer);
                 self.fit_filter = Some(deconvoluter.inner.fit_filter);
                 output
-            },
+            }
         };
         output
     }
 
-    /// Deconvolute the provided `peaks` to neutral mass, charge labeled peaks with a set of priority targets
+    /// Deconvolute the provided `peaks` to neutral mass, charge labeled peaks with a set of priority targets.
+    ///
+    /// See the note on [`DeconvolutionEngine::deconvolute_peaks`] regarding cache seeding.
+    ///
     /// # Arguments
     /// - `peaks`: The centroided mass spectrum to process
     /// - `error_tolerance`: The mass accuracy constraint for isotopic peaks within a pattern
@@ -352,16 +384,17 @@ impl<
         max_missed_peaks: u16,
         targets: &[f64],
     ) -> Result<PeaksAndTargets, DeconvolutionError> {
-let output = match mem::take(&mut self.isotopic_model).unwrap() {
+        let output = match mem::take(&mut self.isotopic_model).unwrap() {
             IsotopicModelLike::SingleModel(model) => {
-                let mut deconvoluter = GraphDeconvoluterType::<C, CachingIsotopicModel<'lifespan>, S, F>::new(
-                    peaks,
-                    model,
-                    mem::take(&mut self.scorer).unwrap(),
-                    mem::take(&mut self.fit_filter).unwrap(),
-                    max_missed_peaks,
-                    self.use_quick_charge,
-                );
+                let mut deconvoluter =
+                    GraphDeconvoluterType::<C, CachingIsotopicModel<'lifespan>, S, F>::new(
+                        peaks,
+                        model,
+                        mem::take(&mut self.scorer).unwrap(),
+                        mem::take(&mut self.fit_filter).unwrap(),
+                        max_missed_peaks,
+                        self.use_quick_charge,
+                    );
 
                 let links: Vec<_> = targets
                     .iter()
@@ -401,9 +434,10 @@ let output = match mem::take(&mut self.isotopic_model).unwrap() {
                 self.scorer = Some(deconvoluter.inner.scorer);
                 self.fit_filter = Some(deconvoluter.inner.fit_filter);
                 Ok(PeaksAndTargets::new(deconvoluted_peaks, targets))
-            },
+            }
             IsotopicModelLike::MultipleModels(models) => {
-                let mut deconvoluter = GraphMultiDeconvoluterType::<C, CachingIsotopicModel<'lifespan>, S, F>::new(
+                let mut deconvoluter =
+                    GraphMultiDeconvoluterType::<C, CachingIsotopicModel<'lifespan>, S, F>::new(
                         peaks,
                         models,
                         mem::take(&mut self.scorer).unwrap(),
@@ -450,7 +484,7 @@ let output = match mem::take(&mut self.isotopic_model).unwrap() {
                 self.scorer = Some(deconvoluter.inner.scorer);
                 self.fit_filter = Some(deconvoluter.inner.fit_filter);
                 Ok(PeaksAndTargets::new(deconvoluted_peaks, targets))
-            },
+            }
         };
         output
     }
