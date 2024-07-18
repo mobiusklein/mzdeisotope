@@ -13,6 +13,12 @@ members = [ "examples/high_baseline",
 mzdata = { version = ">=0.24.0", default-features = false, features = ["mzsignal", "nalgebra"] }
 mzpeaks = { version = ">=0.17.0,<1.0.0" }
 
+tracing = { version = "0.1.40" }
+tracing-log = { version = "0.2.0" }
+tracing-subscriber = { version = "0.3.18", features = ["env-filter", "fmt", "chrono"]}
+tracing-appender = "0.2.3"
+thiserror = "1.0.56"
+
 [profile.release]
 lto = true
 codegen-units = 1

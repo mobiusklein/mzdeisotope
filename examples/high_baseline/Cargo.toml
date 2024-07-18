@@ -5,13 +5,18 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
+
+thermo = ["mzdata/thermo"]
+
+
 [dependencies]
-mzdata = { workspace = true, features = ["nalgebra", "parallelism", "thermo"] }
+mzdata = { workspace = true, features = ["nalgebra", "parallelism", ] }
 mzpeaks.workspace = true
 mzsignal = "0.18.0"
 mzdeisotope = { path = "../../mzdeisotope" }
 
-tracing = { version = "0.1.40" }
-tracing-log = { version = "0.2.0" }
-tracing-subscriber = { version = "0.3.18", features = ["env-filter", "fmt", "chrono"]}
+tracing.workspace = true
+tracing-log.workspace = true
+tracing-subscriber.workspace = true
 clap = { version = "4.5.9", features = ["derive"] }
