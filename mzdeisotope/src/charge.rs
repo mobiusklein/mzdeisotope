@@ -142,7 +142,7 @@ impl ChargeIterator for ChargeRangeIter {}
 /// Hoopman's [QuickCharge][1] algorithm to quickly estimate the charge states to actually try
 /// fitting a given seed peak with.
 ///
-/// For safety, this does not rule out charge state 1.
+/// For safety, this does not rule out charge state 1 unless 1 is not in `charge_range`.
 ///
 /// # Arguments
 /// - `peaks`: The centroid mass spectrum being deconvoluted
@@ -204,11 +204,18 @@ pub fn quick_charge<C: CentroidLike, const N: usize>(
 
     let mut result = Vec::with_capacity(result_size);
     charges.iter().enumerate().for_each(|(j, hit)| {
-        if *hit {
-            result.push((j + 1) as i32)
+        let z = (j + 1) as i32;
+        if *hit && accept_charge(z, &charge_range) {
+            result.push(z)
         }
     });
     result.into()
+}
+
+#[inline(always)]
+fn accept_charge(z: i32, charge_range: &ChargeRange) -> bool {
+    let z = z.abs();
+    charge_range.0.abs() <= z && z <= charge_range.1.abs()
 }
 
 /// A [`ChargeIterator`] implementation for a sequence of charge values that are not necessarily
