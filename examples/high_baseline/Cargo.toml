@@ -1,0 +1,17 @@
+[package]
+name = "high_baseline"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+mzdata = { workspace = true, features = ["nalgebra", "parallelism", "thermo"] }
+mzpeaks.workspace = true
+mzsignal = "0.18.0"
+mzdeisotope = { path = "../../mzdeisotope" }
+
+tracing = { version = "0.1.40" }
+tracing-log = { version = "0.2.0" }
+tracing-subscriber = { version = "0.3.18", features = ["env-filter", "fmt", "chrono"]}
+clap = { version = "4.5.9", features = ["derive"] }
