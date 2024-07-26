@@ -1,6 +1,6 @@
 [package]
 name = "mzdeisotope-map"
-version = "0.1.8"
+version = "0.1.9"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -23,7 +23,7 @@ mzdata = { workspace = true }
 mzpeaks = { workspace = true }
 
 mzsignal = { version = ">= 0.17.0,<1.0.0", default-features = false, features = ["nalgebra"] }
-mzdeisotope = { path = "../mzdeisotope", version = "0.1.6" }
+mzdeisotope = { path = "../mzdeisotope", version = "0.1.9" }
 chemical_elements = { version = "0.3.0", features = ['mzpeaks'] }
 tracing.workspace = true
 itertools = "0.12.0"
