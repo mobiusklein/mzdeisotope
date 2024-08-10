@@ -1,3 +1,4 @@
+use itertools::multizip;
 use mzdeisotope::{scorer::ScoreType, solution::DeconvolvedSolutionPeak};
 use std::{
     boxed::Box,
@@ -9,10 +10,19 @@ use mzpeaks::{
     feature_map::FeatureMap,
     peak::MZPoint,
     prelude::*,
-    Mass, MZ,
+    IonMobility, Mass, MZ,
 };
 
 use mzsignal::feature_mapping::{ChargeAwareFeatureMerger, FeatureGraphBuilder};
+
+use mzdata::spectrum::bindata::{
+    ArrayRetrievalError, ArrayType, BinaryArrayMap3D, BuildArrayMap3DFrom, BuildFromArrayMap3D, DataArray
+};
+use mzdata::{
+    prelude::*,
+    spectrum::{BinaryArrayMap, BinaryDataArrayType},
+    utils::mass_charge_ratio,
+};
 
 #[derive(Default, Debug, Clone)]
 pub struct MZPointSeries {
@@ -489,5 +499,190 @@ impl<Y: Clone + Default> FeatureGraphBuilder<Mass, Y, DeconvolvedSolutionFeature
         }
 
         FeatureMap::new(merged_nodes)
+    }
+}
+
+impl BuildArrayMapFrom for DeconvolvedSolutionFeature<IonMobility> {
+    fn arrays_included(&self) -> Option<Vec<ArrayType>> {
+        Some(vec![
+            ArrayType::MZArray,
+            ArrayType::IntensityArray,
+            ArrayType::ChargeArray,
+            ArrayType::IonMobilityArray,
+            ArrayType::nonstandard("summary deconvolution score array"),
+            ArrayType::nonstandard("deconvolution score array"),
+            ArrayType::nonstandard("feature identifier array"),
+        ])
+    }
+
+    fn as_arrays(source: &[Self]) -> BinaryArrayMap {
+        let m = source.len();
+        let n: usize = source.iter().map(|f| f.len()).sum();
+
+        let mut mz_array: Vec<u8> = Vec::with_capacity(n * BinaryDataArrayType::Float64.size_of());
+
+        let mut intensity_array: Vec<u8> =
+            Vec::with_capacity(n * BinaryDataArrayType::Float32.size_of());
+
+        let mut ion_mobility_array: Vec<u8> =
+            Vec::with_capacity(n * BinaryDataArrayType::Float64.size_of());
+
+        let mut charge_array: Vec<u8> =
+            Vec::with_capacity(n * BinaryDataArrayType::Int32.size_of());
+
+        let mut score_array: Vec<u8> =
+            Vec::with_capacity(n * BinaryDataArrayType::Float32.size_of());
+
+        let mut summary_score_array: Vec<u8> =
+            Vec::with_capacity(m * BinaryDataArrayType::Float32.size_of());
+
+        let mut marker_array: Vec<u8> =
+            Vec::with_capacity(n * BinaryDataArrayType::Int32.size_of());
+
+        let mut acc = Vec::with_capacity(n);
+        source.iter().enumerate().for_each(|(i, f)| {
+            summary_score_array.extend(f.score.to_le_bytes());
+            f.iter().enumerate().for_each(|(j, (mass, im, inten))| {
+                acc.push((
+                    mass_charge_ratio(*mass, f.charge()),
+                    *im,
+                    *inten,
+                    f.charge(),
+                    f.scores[j],
+                    i,
+                ))
+            })
+        });
+
+        acc.sort_by(
+            |(mz_a, im_a, _, _, _, key_a), (mz_b, im_b, _, _, _, key_b)| {
+                mz_a.total_cmp(mz_b)
+                    .then(im_a.total_cmp(im_b))
+                    .then(key_a.cmp(key_b))
+            },
+        );
+
+        for (mz, im, inten, charge, score, key) in acc.iter() {
+            mz_array.extend(mz.to_le_bytes());
+            intensity_array.extend(inten.to_le_bytes());
+            ion_mobility_array.extend(im.to_le_bytes());
+            charge_array.extend(charge.to_le_bytes());
+            score_array.extend(score.to_le_bytes());
+            marker_array.extend((*key as i32).to_le_bytes());
+        }
+
+        let mut map = BinaryArrayMap::default();
+        map.add(DataArray::wrap(
+            &ArrayType::MZArray,
+            BinaryDataArrayType::Float64,
+            mz_array,
+        ));
+        map.add(DataArray::wrap(
+            &ArrayType::IntensityArray,
+            BinaryDataArrayType::Float32,
+            intensity_array,
+        ));
+        map.add(DataArray::wrap(
+            &ArrayType::ChargeArray,
+            BinaryDataArrayType::Int32,
+            charge_array,
+        ));
+        map.add(DataArray::wrap(
+            &ArrayType::IonMobilityArray,
+            BinaryDataArrayType::Float64,
+            ion_mobility_array,
+        ));
+        map.add(DataArray::wrap(
+            &ArrayType::nonstandard("summary deconvolution score array"),
+            BinaryDataArrayType::Float32,
+            summary_score_array,
+        ));
+        map.add(DataArray::wrap(
+            &ArrayType::nonstandard("deconvolution score array"),
+            BinaryDataArrayType::Float32,
+            score_array,
+        ));
+        map.add(DataArray::wrap(
+            &ArrayType::nonstandard("feature identifier array"),
+            BinaryDataArrayType::Int32,
+            marker_array,
+        ));
+
+        map
+    }
+}
+
+impl BuildArrayMap3DFrom for DeconvolvedSolutionFeature<IonMobility> {}
+
+impl BuildFromArrayMap for DeconvolvedSolutionFeature<IonMobility> {
+    fn try_from_arrays(arrays: &BinaryArrayMap) -> Result<Vec<Self>, ArrayRetrievalError> {
+        let arrays_3d = arrays.try_into()?;
+        Self::try_from_arrays_3d(&arrays_3d)
+    }
+}
+
+impl BuildFromArrayMap3D for DeconvolvedSolutionFeature<IonMobility> {
+    fn try_from_arrays_3d(arrays: &BinaryArrayMap3D) -> Result<Vec<Self>, ArrayRetrievalError> {
+        let key = ArrayType::nonstandard("feature identifier array");
+        let mut n: usize = 0;
+        for (_, arr) in arrays.iter() {
+            if arr.is_empty() {
+                continue;
+            }
+            if let Some(arr) = arr.get(&key) {
+                if let Some(i) = arr.iter_i32()?.map(|i| i as usize).max() {
+                    n = n.max(i);
+                }
+            }
+        }
+
+        let score_array_key = ArrayType::nonstandard("deconvolution score array");
+
+        if n == 0 {
+            return Ok(Vec::new());
+        }
+
+        let mut index = Vec::with_capacity(n);
+        index.resize(n, Self::default());
+
+        for (im, arr) in arrays.iter() {
+            if arr.is_empty() {
+                continue;
+            }
+
+            let mz_array = arr.mzs()?;
+            let intensity_array = arr.intensities()?;
+            let charge_array = arr.charges()?;
+            let scores_array = arr
+                .get(&score_array_key)
+                .ok_or_else(|| ArrayRetrievalError::NotFound(score_array_key.clone()))?
+                .to_f32()?;
+            let marker_array = arr
+                .get(&key)
+                .ok_or_else(|| ArrayRetrievalError::NotFound(key.clone()))?
+                .to_i32()?;
+
+            for (mz, inten, charge, score, key_i) in multizip((
+                mz_array.iter(),
+                intensity_array.iter(),
+                charge_array.iter(),
+                scores_array.iter(),
+                marker_array.iter(),
+            )) {
+                let f = &mut index[(*key_i) as usize];
+                if f.is_empty() {
+                    f.inner.charge = *charge;
+                }
+                f.score += *score;
+                f.push_raw(*mz, im, *inten);
+                f.scores.push(*score);
+            }
+        }
+
+        for f in index.iter_mut() {
+            f.score /= f.scores.len() as ScoreType;
+        }
+
+        Ok(index)
     }
 }

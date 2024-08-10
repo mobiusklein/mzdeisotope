@@ -46,13 +46,19 @@ impl std::hash::Hash for PeakNode {
 
 #[derive(Debug, Default)]
 pub(crate) struct PeakGraph {
-    pub peak_nodes: HashMap<PeakKey, PeakNode>,
+    pub peak_nodes: HashMap<PeakKey, PeakNode, BuildIdentityHasher<PeakKey>>,
 }
 
 #[allow(unused)]
 impl PeakGraph {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            peak_nodes: HashMap::with_capacity_and_hasher(capacity, Default::default())
+        }
     }
 
     pub fn reset(&mut self) {

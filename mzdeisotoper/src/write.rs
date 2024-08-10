@@ -18,7 +18,7 @@ pub(crate) fn postprocess_spectra(
     if matches!(output_format, MassSpectrometryFormat::MzML) {
         if let Some(precursor) = group.precursor_mut() {
             if let Some(peaks) = precursor.deconvoluted_peaks.as_ref() {
-                let mut arrays = BuildArrayMapFrom::as_arrays(peaks);
+                let mut arrays = BuildArrayMapFrom::as_arrays(peaks.as_slice());
                 arrays.iter_mut().for_each(|(_k, a)| {
                     a.store_compressed(BinaryCompressionType::Zlib).unwrap();
                 });
@@ -29,7 +29,7 @@ pub(crate) fn postprocess_spectra(
         }
         for product in group.products_mut().iter_mut() {
             if let Some(peaks) = product.deconvoluted_peaks.as_ref() {
-                let mut arrays = BuildArrayMapFrom::as_arrays(peaks);
+                let mut arrays = BuildArrayMapFrom::as_arrays(peaks.as_slice());
                 arrays.iter_mut().for_each(|(_k, a)| {
                     a.store_compressed(BinaryCompressionType::Zlib).unwrap();
                 });
@@ -42,7 +42,7 @@ pub(crate) fn postprocess_spectra(
     } else if matches!(output_format, MassSpectrometryFormat::MzMLb) {
         if let Some(precursor) = group.precursor_mut() {
             if let Some(peaks) = precursor.deconvoluted_peaks.as_ref() {
-                let arrays = BuildArrayMapFrom::as_arrays(peaks);
+                let arrays = BuildArrayMapFrom::as_arrays(peaks.as_slice());
                 precursor.arrays = Some(arrays);
                 precursor.deconvoluted_peaks = None;
                 precursor.peaks = None
@@ -50,7 +50,7 @@ pub(crate) fn postprocess_spectra(
         }
         for product in group.products_mut().iter_mut() {
             if let Some(peaks) = product.deconvoluted_peaks.as_ref() {
-                let arrays = BuildArrayMapFrom::as_arrays(peaks);
+                let arrays = BuildArrayMapFrom::as_arrays(peaks.as_slice());
                 product.arrays = Some(arrays);
                 product.deconvoluted_peaks = None;
                 product.peaks = None;

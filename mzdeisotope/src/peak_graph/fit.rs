@@ -170,13 +170,20 @@ pub(crate) type FitNodeGraphInner = HashMap<FitKey, FitNode, BuildIdentityHasher
 #[derive(Debug, Default)]
 pub struct FitGraph {
     pub nodes: FitNodeGraphInner,
-    pub dependencies: HashMap<FitKey, IsotopicFit>,
+    pub dependencies: HashMap<FitKey, IsotopicFit, BuildIdentityHasherFitKey>,
 }
 
 #[allow(unused)]
 impl FitGraph {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            nodes: FitNodeGraphInner::with_capacity_and_hasher(capacity, Default::default()),
+            dependencies: HashMap::with_capacity_and_hasher(capacity, Default::default())
+        }
     }
 
     #[inline(always)]

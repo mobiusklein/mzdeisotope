@@ -6,6 +6,7 @@ use mzpeaks::{CentroidPeak, IndexType, MZPeakSetType};
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::hash::Hash;
+use std::mem;
 use std::ops::{Index, Range};
 
 use identity_hash::{BuildIdentityHasher, IdentityHashable};
@@ -275,6 +276,17 @@ impl<C: PeakLike + IntensityMeasurementMut> WorkingPeakSet<C> {
 
     pub fn quick_charge(&self, position: usize, charge_range: ChargeRange) -> ChargeListIter {
         quick_charge_w(&self.peaks[0..], position, charge_range)
+    }
+
+    pub fn clear(&mut self) {
+        self.slice_cache.clear();
+        self.placeholders.clear();
+    }
+
+    pub fn set_peaks(&mut self, mut peaks: MZPeakSetType<C>) -> MZPeakSetType<C> {
+        mem::swap(&mut self.peaks, &mut peaks);
+        self.clear();
+        peaks
     }
 }
 

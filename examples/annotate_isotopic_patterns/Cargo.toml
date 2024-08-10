@@ -1,0 +1,17 @@
+[package]
+name = "annotate_isotopic_patterns"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+mzdata = { workspace = true, features = ["nalgebra", "parallelism", ] }
+mzpeaks.workspace = true
+mzdeisotope = { path = "../../mzdeisotope" }
+
+tracing.workspace = true
+tracing-log.workspace = true
+tracing-subscriber.workspace = true
+clap = { version = "4.5.9", features = ["derive"] }
+mzsvg = { version = "0.2.0" }

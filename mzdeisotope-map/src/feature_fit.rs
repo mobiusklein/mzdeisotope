@@ -151,7 +151,8 @@ impl FeatureSetFit {
             }
             let end_i = scores.len().saturating_sub(1);
             segments.push(ScoreSegment::new(
-                begin_i, end_i,
+                begin_i,
+                end_i,
                 scores[begin_i..end_i].iter().sum()
             ));
             let segment = segments.iter().max_by(|a, b| {a.score.total_cmp(&b.score)}).copied().unwrap();

@@ -5,7 +5,8 @@ use std::ops::Range;
 use crate::charge::ChargeRangeIter;
 use crate::isotopic_fit::IsotopicFit;
 use crate::isotopic_model::{
-    CachingIsotopicModel, IsotopicPatternGenerator, IsotopicPatternParams, TheoreticalIsotopicDistributionScalingMethod
+    CachingIsotopicModel, IsotopicPatternGenerator, IsotopicPatternParams,
+    TheoreticalIsotopicDistributionScalingMethod,
 };
 use crate::peak_graph::{DependenceCluster, FitRef, PeakDependenceGraph, SubgraphSolverMethod};
 use crate::peaks::{PeakKey, PeakLike, WorkingPeakSet};
@@ -52,8 +53,12 @@ pub struct DeconvoluterBuilder<
     use_quick_charge: bool,
 }
 
-impl<C: PeakLike + Default, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: IsotopicFitFilter>
-    DeconvoluterBuilder<C, I, S, F>
+impl<
+        C: PeakLike + Default,
+        I: IsotopicPatternGenerator,
+        S: IsotopicPatternScorer,
+        F: IsotopicFitFilter,
+    > DeconvoluterBuilder<C, I, S, F>
 {
     pub fn new() -> Self {
         Self {
@@ -104,9 +109,11 @@ impl<C: PeakLike + Default, I: IsotopicPatternGenerator, S: IsotopicPatternScore
     pub fn create(self) -> DeconvoluterType<C, I, S, F> {
         DeconvoluterType::new(
             self.peaks.unwrap_or_default(),
-            self.isotopic_model.expect("An isotopic pattern generator must be specified"),
+            self.isotopic_model
+                .expect("An isotopic pattern generator must be specified"),
             self.scorer.expect("An isotopic scorer must be specified"),
-            self.fit_filter.expect("An isotopic fit filter must be specified"),
+            self.fit_filter
+                .expect("An isotopic fit filter must be specified"),
             self.max_missed_peaks.unwrap(),
             self.use_quick_charge,
         )
@@ -116,15 +123,16 @@ impl<C: PeakLike + Default, I: IsotopicPatternGenerator, S: IsotopicPatternScore
     pub fn create_graph(self) -> GraphDeconvoluterType<C, I, S, F> {
         GraphDeconvoluterType::new(
             self.peaks.unwrap_or_default(),
-            self.isotopic_model.expect("An isotopic pattern generator must be specified"),
+            self.isotopic_model
+                .expect("An isotopic pattern generator must be specified"),
             self.scorer.expect("An isotopic scorer must be specified"),
-            self.fit_filter.expect("An isotopic fit filter must be specified"),
+            self.fit_filter
+                .expect("An isotopic fit filter must be specified"),
             self.max_missed_peaks.unwrap(),
             self.use_quick_charge,
         )
     }
 }
-
 
 /// A basic deconvolution that greedily takes the best solution for an isotopic peak in a search window.
 ///
@@ -334,7 +342,6 @@ impl<C: PeakLike, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: Isot
     }
 }
 
-
 /// A pre-specified [`DeconvoluterType`] with its type parameters fixed for ease of use.
 pub type AveragineDeconvoluter<'lifespan> = DeconvoluterType<
     CentroidPeak,
@@ -453,7 +460,6 @@ impl<C: PeakLike, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: Isot
     }
 }
 
-
 /// The preferred algorithm, uses a dependencies graph tracks fit-to-peak and fit-to-fit
 /// relationships to correctly deconvolve a complex spectrum.
 ///
@@ -490,7 +496,8 @@ impl<C: PeakLike, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: Isot
             max_missed_peaks,
             use_quick_charge,
         );
-        let peak_graph = PeakDependenceGraph::new(inner.scorer.interpretation());
+        let peak_graph =
+            PeakDependenceGraph::with_capacity(inner.peak_count(), inner.scorer.interpretation());
 
         Self {
             inner,
@@ -844,7 +851,6 @@ impl<C: PeakLike, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: Isot
         Ok(MassPeakSetType::new(deconvoluted_peaks))
     }
 }
-
 
 /// A pre-specified [`GraphDeconvoluterType`] with its type parameters fixed for ease of use.
 pub type GraphAveragineDeconvoluter<'lifespan, C> =

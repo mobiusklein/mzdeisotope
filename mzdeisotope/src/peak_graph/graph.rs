@@ -39,6 +39,15 @@ impl PeakDependenceGraph {
         }
     }
 
+    pub fn with_capacity(capacity: usize, score_ordering: ScoreInterpretation) -> Self {
+        Self {
+            score_ordering,
+            peak_nodes: PeakGraph::with_capacity(capacity),
+            fit_nodes: FitGraph::with_capacity(capacity * 2),
+            clusters: Vec::with_capacity(capacity / 2),
+        }
+    }
+
     pub fn reset(&mut self) {
         self.peak_nodes.reset();
         self.fit_nodes.reset();

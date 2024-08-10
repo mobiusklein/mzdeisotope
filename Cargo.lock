@@ -53,6 +53,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "annotate_isotopic_patterns"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "mzdata",
+ "mzdeisotope",
+ "mzpeaks 0.19.0",
+ "mzsvg",
+ "tracing",
+ "tracing-log",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "anstream"
 version = "0.6.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -938,8 +952,8 @@ dependencies = [
  "clap",
  "mzdata",
  "mzdeisotope",
- "mzpeaks 0.17.0",
- "mzsignal",
+ "mzpeaks 0.19.0",
+ "mzsignal 0.18.0",
  "tracing",
  "tracing-log",
  "tracing-subscriber",
@@ -1300,9 +1314,9 @@ dependencies = [
 
 [[package]]
 name = "mzdata"
-version = "0.25.0"
+version = "0.26.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4aeb1e43d3fbd3aeb32025cec57f2639aae66e8515b50081f5b920d39e6c9785"
+checksum = "6bbcaf3531fc1f5592cdac8ac8c516a0d54c65e7a22728862840a21e27790529"
 dependencies = [
  "base16ct",
  "base64-simd",
@@ -1316,8 +1330,8 @@ dependencies = [
  "lazy_static",
  "log",
  "md5",
- "mzpeaks 0.17.0",
- "mzsignal",
+ "mzpeaks 0.19.0",
+ "mzsignal 0.20.0",
  "ndarray",
  "num-traits",
  "quick-xml",
@@ -1339,7 +1353,7 @@ dependencies = [
  "identity-hash",
  "itertools",
  "mzdata",
- "mzpeaks 0.17.0",
+ "mzpeaks 0.19.0",
  "num-traits",
  "rayon",
  "test-log",
@@ -1358,8 +1372,8 @@ dependencies = [
  "itertools",
  "mzdata",
  "mzdeisotope",
- "mzpeaks 0.17.0",
- "mzsignal",
+ "mzpeaks 0.19.0",
+ "mzsignal 0.20.0",
  "num-traits",
  "rayon",
  "test-log",
@@ -1380,7 +1394,7 @@ dependencies = [
  "itertools",
  "mzdata",
  "mzdeisotope",
- "mzpeaks 0.17.0",
+ "mzpeaks 0.19.0",
  "predicates",
  "rayon",
  "serde",
@@ -1399,9 +1413,9 @@ checksum = "59058c9f26d536e00596c7dc01c5d9e88e88ec294b20a6cedc5b83ac6db804f1"
 
 [[package]]
 name = "mzpeaks"
-version = "0.17.0"
+version = "0.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2684b5ecb5a7200c0b987192a09af57b80a9fe58b144fed9cd12af9adff1d80f"
+checksum = "34b5e060b5ab408fac14a6271a90b3e8a2ed929ef099ba9f690c556b1edfa8c6"
 dependencies = [
  "num-traits",
 ]
@@ -1414,11 +1428,38 @@ checksum = "945233ad2901542db3e6d8ca7108c28070c4a8585053cd82083853a0bdcddf7a"
 dependencies = [
  "cfg-if",
  "log",
- "mzpeaks 0.17.0",
+ "mzpeaks 0.19.0",
  "nalgebra",
  "num-traits",
  "rayon",
  "thiserror",
+]
+
+[[package]]
+name = "mzsignal"
+version = "0.20.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "11609a2a8a6b46a6ff74565c33bdcb8980f35bd2ba5fd73248cd4fc2a488c6d4"
+dependencies = [
+ "cfg-if",
+ "log",
+ "mzpeaks 0.19.0",
+ "nalgebra",
+ "num-traits",
+ "rayon",
+ "thiserror",
+]
+
+[[package]]
+name = "mzsvg"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "665403cf9ec5e7d2dfd83e6bb08d39e310ab7e69afa235a3c86212c94870dfff"
+dependencies = [
+ "mzdata",
+ "mzpeaks 0.19.0",
+ "num-traits",
+ "svg",
 ]
 
 [[package]]
@@ -2156,6 +2197,12 @@ name = "subtle"
 version = "2.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
+
+[[package]]
+name = "svg"
+version = "0.17.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "700efb40f3f559c23c18b446e8ed62b08b56b2bb3197b36d57e0470b4102779e"
 
 [[package]]
 name = "syn"
