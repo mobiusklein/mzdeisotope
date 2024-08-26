@@ -110,7 +110,6 @@ impl<
         }
     }
 
-    #[allow(unused)]
     pub fn iter(
         &self,
     ) -> SpectrumGroupIter<'_, C, D, MultiLayerSpectrum<C, D>, TargetTrackingSpectrumGroup<C, D, G>>

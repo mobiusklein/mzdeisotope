@@ -1,8 +1,9 @@
 use std::io;
-use std::sync::atomic::{AtomicU16, Ordering};
-use std::sync::mpsc::SyncSender;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::thread;
 use std::time::Instant;
+
+use crossbeam_channel::Sender;
 
 use mzdata::io::MassSpectrometryFormat;
 use rayon::prelude::*;
@@ -36,13 +37,13 @@ pub fn prepare_procesing<
     ms1_deconv_params: DeconvolutionBuilderParams<'static, S, F>,
     msn_deconv_params: DeconvolutionBuilderParams<'static, SN, FN>,
     signal_processing_params: SignalParams,
-    sender: SyncSender<(usize, SpectrumGroupType)>,
+    sender: Sender<(usize, SpectrumGroupType)>,
     time_range: Option<TimeRange>,
     precursor_processing: Option<PrecursorProcessing>,
     writer_format: MassSpectrometryFormat
 ) -> io::Result<ProgressRecord> {
-    let init_counter = AtomicU16::new(0);
-    let init_averager_counter = AtomicU16::new(0);
+    let init_counter = AtomicU32::new(0);
+    let init_averager_counter = AtomicU32::new(0);
     let started = Instant::now();
     let precursor_processing = precursor_processing.unwrap_or_default();
 
@@ -169,11 +170,11 @@ pub fn prepare_procesing<
     let finished = Instant::now();
     let elapsed = finished - started;
     debug!(
-        "{} threads run for deconvolution",
+        "{} workers run for deconvolution",
         init_counter.load(Ordering::SeqCst)
     );
     debug!(
-        "{} threads run for averaging",
+        "{} workers run for averaging",
         init_averager_counter.load(Ordering::SeqCst)
     );
     let spectra_per_second =

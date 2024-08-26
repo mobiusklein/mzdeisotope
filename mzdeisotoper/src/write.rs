@@ -1,12 +1,11 @@
-use std::{
-    io,
-    sync::mpsc::{Receiver, SyncSender, TryRecvError, TrySendError}
-};
+use std::io;
+use std::time::Instant;
+
+use crossbeam_channel::{Receiver, Sender, TryRecvError, TrySendError};
 
 use itertools::Itertools;
 use mzdata::{io::MassSpectrometryFormat, prelude::*, spectrum::bindata::BinaryCompressionType};
 use tracing::{debug, error, info};
-use std::time::Instant;
 
 use crate::types::{CPeak, DPeak, SpectrumCollator, SpectrumGroupType, SpectrumType, BUFFER_SIZE};
 
@@ -89,7 +88,7 @@ fn drain_channel(collator: &mut SpectrumCollator, channel: &Receiver<(usize, Spe
 
 pub fn collate_results_spectra(
     receiver: Receiver<(usize, SpectrumGroupType)>,
-    sender: SyncSender<(usize, SpectrumType)>,
+    sender: Sender<(usize, SpectrumType)>,
 ) {
     let mut collator = SpectrumCollator::default();
     let mut i = 0usize;
@@ -137,8 +136,9 @@ pub fn collate_results_spectra(
                 if (t - last_send).as_secs_f64() > 30.0 {
                     let waiting_keys: Vec<_> =
                         collator.waiting.keys().sorted().take(10).copied().collect();
+                    let write_queue_size = sender.len();
                     tracing::info!(
-                       "Collator holding {n} entries at tick {i}, next key {} ({}), pending keys: {waiting_keys:?}",
+                       "Collator holding {n} entries at tick {i}, next key {} ({}), pending keys: {waiting_keys:?} with {write_queue_size} writing backlog",
                         collator.next_key,
                         collator.has_next()
                     );
@@ -216,13 +216,14 @@ pub fn write_output_spectra<S: SpectrumWriter<CPeak, DPeak>>(
         if ((group_idx - checkpoint) % 1000 == 0 && group_idx != 0)
             || (scan_time - time_checkpoint) > 1.0
         {
+            let queue_size = receiver.len();
             if group_idx + 1 != scan_counter {
                 tracing::info!(
-                    "Completed Scan {} | Scans={scan_counter} Time={scan_time:0.3}",
+                    "Completed Scan {} | Scans={scan_counter} Time={scan_time:0.3} | {queue_size} items in the write queue",
                     group_idx + 1
                 );
             } else {
-                tracing::info!("Completed Scan {} | Time={scan_time:0.3}", group_idx + 1);
+                tracing::info!("Completed Scan {} | Time={scan_time:0.3} | {queue_size} items in the write queue", group_idx + 1);
             }
             checkpoint = group_idx;
             time_checkpoint = scan_time;

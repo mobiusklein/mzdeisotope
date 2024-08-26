@@ -4,15 +4,17 @@ use mzdeisotope::isotopic_model::{
 use std::env;
 
 fn main() {
-    let mut args = env::args().skip(1);
+    let mut args = env::args().skip(2);
     let mut model: IsotopicModel = IsotopicModels::Peptide.into();
     let mz = args
         .next()
+        .inspect(|s| eprintln!("m/z: {s}"))
         .expect("Expected a floating point m/z")
         .parse::<f64>()
         .unwrap();
     let charge = args
         .next()
+        .inspect(|s| eprintln!("z: {s}"))
         .expect("Expected an integer charge")
         .parse::<i32>()
         .unwrap();

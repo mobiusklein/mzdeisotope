@@ -2,9 +2,10 @@ use std::fs;
 use std::io;
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::sync::mpsc::sync_channel;
 use std::thread;
 use std::time::Instant;
+
+use crossbeam_channel::bounded;
 
 use clap::Parser;
 use serde::{Deserialize, Serialize};
@@ -239,11 +240,11 @@ impl MZDeiosotoper {
         );
         processing.add_param(Param::new_key_value(
             "ms1_averaging_range",
-            self.ms1_averaging_range.to_string(),
+            self.ms1_averaging_range,
         ));
         processing.add_param(Param::new_key_value(
             "ms1_denoising",
-            self.ms1_denoising.to_string(),
+            self.ms1_denoising,
         ));
         for m in self.ms1_isotopic_model.iter() {
             processing.add_param(Param::new_key_value("ms1_isotopic_model", m.to_string()));
@@ -253,11 +254,11 @@ impl MZDeiosotoper {
         }
         processing.add_param(Param::new_key_value(
             "ms1_score_threshold",
-            self.ms1_score_threshold.to_string(),
+            self.ms1_score_threshold,
         ));
         processing.add_param(Param::new_key_value(
             "msn_score_threshold",
-            self.msn_score_threshold.to_string(),
+            self.msn_score_threshold,
         ));
         processing.add_param(Param::new_key_value(
             "precursor_processing",
@@ -269,16 +270,16 @@ impl MZDeiosotoper {
         ));
         processing.add_param(Param::new_key_value(
             "ms1_missed_peaks",
-            self.ms1_missed_peaks.to_string(),
+            self.ms1_missed_peaks,
         ));
         processing.add_param(Param::new_key_value(
             "msn_missed_peaks",
-            self.msn_missed_peaks.to_string(),
+            self.msn_missed_peaks,
         ));
         if self.isotopic_incremental_truncation {
             processing.add_param(Param::new_key_value(
                 "isotopic_incremental_truncation",
-                "true",
+                true,
             ))
         }
         processing.order = i8::MAX;
@@ -527,8 +528,8 @@ impl MZDeiosotoper {
         writer_format: MassSpectrometryFormat,
     ) -> io::Result<()> {
         let buffer_size = self.write_buffer_size;
-        let (send_solved, recv_solved) = sync_channel(buffer_size);
-        let (send_collated, recv_collated) = sync_channel(buffer_size);
+        let (send_solved, recv_solved) = bounded(buffer_size);
+        let (send_collated, recv_collated) = bounded(buffer_size);
 
         let mut signal_params = self.signal_params.clone();
         let mut ms1_args = make_default_ms1_deconvolution_params();

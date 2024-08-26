@@ -1,4 +1,4 @@
-use std::{fs, io};
+use std::io;
 
 use mzdata;
 use mzdata::prelude::*;
