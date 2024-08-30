@@ -264,7 +264,7 @@ pub fn make_default_signal_processing_params() -> SignalParams {
     SignalParams {
         ms1_averaging: 1,
         mz_range: (80.0, 2200.0),
-        interpolation_dx: 0.005,
+        interpolation_dx: 0.002,
         ms1_denoising: 0.0,
     }
 }

@@ -186,15 +186,24 @@ impl ScaledGTestScorer {
     ) -> ScoreType {
         let total_o: f32 = experimental.iter().map(|p| p.intensity()).sum();
         let total_e: f32 = theoretical.iter().map(|p| p.intensity()).sum();
-        2.0 * experimental
-            .iter()
-            .zip(theoretical.iter())
-            .map(|(o, e)| {
-                let oi = o.intensity() / total_o;
-                let ei = e.intensity() / total_e;
-                (oi * (oi.ln() - ei.ln())) as ScoreType
-            })
-            .sum::<ScoreType>()
+        let mut score = 0.0;
+        for (o, e) in experimental.iter().zip(theoretical.iter()) {
+            let oi = o.intensity() / total_o;
+            let ei = e.intensity() / total_e;
+            let di = oi.ln() - ei.ln();
+            score = oi.mul_add(di, score)
+        }
+        return 2.0 * score;
+
+        // 2.0 * experimental
+        //     .iter()
+        //     .zip(theoretical.iter())
+        //     .map(|(o, e)| {
+        //         let oi = o.intensity() / total_o;
+        //         let ei = e.intensity() / total_e;
+        //         (oi * (oi.ln() - ei.ln())) as ScoreType
+        //     })
+        //     .sum::<ScoreType>()
     }
 }
 

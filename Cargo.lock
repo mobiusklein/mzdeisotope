@@ -53,20 +53,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "annotate_isotopic_patterns"
-version = "0.1.0"
-dependencies = [
- "clap",
- "mzdata 0.27.0",
- "mzdeisotope",
- "mzpeaks 0.19.0",
- "mzsvg",
- "tracing",
- "tracing-log",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "anstream"
 version = "0.6.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -643,9 +629,9 @@ checksum = "fea41bba32d969b513997752735605054bc0dfa92b4c56bf1189f2e174be7a10"
 
 [[package]]
 name = "dotnetrawfilereader-sys"
-version = "0.2.6"
+version = "0.2.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "55e88bdd913cd9e0c1f5a64689c0a7fb54682179e62ceb7807c3c5b4c37204e1"
+checksum = "0145c459c9699b0a9186fe7f75c42f3c3005cfc2b50a79279e8652ed469522da"
 dependencies = [
  "include_dir",
  "netcorehost",
@@ -966,9 +952,9 @@ name = "high_baseline"
 version = "0.1.0"
 dependencies = [
  "clap",
- "mzdata 0.27.0",
+ "mzdata",
  "mzdeisotope",
- "mzpeaks 0.19.0",
+ "mzpeaks 0.20.0",
  "mzsignal 0.18.0",
  "tracing",
  "tracing-log",
@@ -1372,36 +1358,9 @@ dependencies = [
 
 [[package]]
 name = "mzdata"
-version = "0.26.0"
+version = "0.28.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6bbcaf3531fc1f5592cdac8ac8c516a0d54c65e7a22728862840a21e27790529"
-dependencies = [
- "base16ct",
- "base64-simd",
- "bitflags 2.6.0",
- "bytemuck",
- "chrono",
- "flate2",
- "indexmap",
- "lazy_static",
- "log",
- "md5",
- "mzpeaks 0.19.0",
- "mzsignal 0.20.0",
- "num-traits",
- "quick-xml",
- "regex",
- "serde",
- "serde_json",
- "sha1",
- "thiserror",
-]
-
-[[package]]
-name = "mzdata"
-version = "0.27.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f18042cb1de2d3cb4361c159a4c94ab3b1d249040c9909bba5cb55a94baa981d"
+checksum = "3c4ba13aef1acd882ce413e7bbbbfc7730c3bc94bfab083a386218ad7b186231"
 dependencies = [
  "base16ct",
  "base64-simd",
@@ -1415,8 +1374,8 @@ dependencies = [
  "lazy_static",
  "log",
  "md5",
- "mzpeaks 0.19.0",
- "mzsignal 0.20.0",
+ "mzpeaks 0.20.0",
+ "mzsignal 0.21.0",
  "ndarray",
  "num-traits",
  "quick-xml",
@@ -1437,8 +1396,8 @@ dependencies = [
  "flate2",
  "identity-hash",
  "itertools",
- "mzdata 0.27.0",
- "mzpeaks 0.19.0",
+ "mzdata",
+ "mzpeaks 0.20.0",
  "num-traits",
  "rayon",
  "test-log",
@@ -1455,10 +1414,10 @@ dependencies = [
  "flate2",
  "identity-hash",
  "itertools",
- "mzdata 0.27.0",
+ "mzdata",
  "mzdeisotope",
- "mzpeaks 0.19.0",
- "mzsignal 0.20.0",
+ "mzpeaks 0.20.0",
+ "mzsignal 0.21.0",
  "num-traits",
  "rayon",
  "test-log",
@@ -1478,9 +1437,9 @@ dependencies = [
  "figment",
  "flate2",
  "itertools",
- "mzdata 0.27.0",
+ "mzdata",
  "mzdeisotope",
- "mzpeaks 0.19.0",
+ "mzpeaks 0.20.0",
  "predicates",
  "rayon",
  "serde",
@@ -1507,6 +1466,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "mzpeaks"
+version = "0.20.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6a35fa4df5792b70e4c7c24ef67efd10e665ed7c2145ad50a46bd2752e40f53d"
+dependencies = [
+ "num-traits",
+]
+
+[[package]]
 name = "mzsignal"
 version = "0.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1523,29 +1491,17 @@ dependencies = [
 
 [[package]]
 name = "mzsignal"
-version = "0.20.0"
+version = "0.21.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "11609a2a8a6b46a6ff74565c33bdcb8980f35bd2ba5fd73248cd4fc2a488c6d4"
+checksum = "f60299a5d0f44b545d794567d46feb9817243e04053368c9cd5c1d4ee8fca9ac"
 dependencies = [
  "cfg-if",
  "log",
- "mzpeaks 0.19.0",
+ "mzpeaks 0.20.0",
  "nalgebra",
  "num-traits",
  "rayon",
  "thiserror",
-]
-
-[[package]]
-name = "mzsvg"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "665403cf9ec5e7d2dfd83e6bb08d39e310ab7e69afa235a3c86212c94870dfff"
-dependencies = [
- "mzdata 0.26.0",
- "mzpeaks 0.19.0",
- "num-traits",
- "svg",
 ]
 
 [[package]]
@@ -2377,12 +2333,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 
 [[package]]
-name = "svg"
-version = "0.17.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "700efb40f3f559c23c18b446e8ed62b08b56b2bb3197b36d57e0470b4102779e"
-
-[[package]]
 name = "syn"
 version = "1.0.109"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2453,9 +2403,9 @@ dependencies = [
 
 [[package]]
 name = "thermorawfilereader"
-version = "0.2.6"
+version = "0.2.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "810ee8675e70d5443bcee0f603741b221c5f7f781cf3cf2234ec955259eab330"
+checksum = "9642c96a137dfcbd0321169536fa5dd0c3e8433a42e68781e9f8567af2302ddf"
 dependencies = [
  "bytemuck",
  "dotnetrawfilereader-sys",

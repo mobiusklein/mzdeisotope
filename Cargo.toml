@@ -2,7 +2,8 @@
 
 resolver = "2"
 
-members = [ "examples/annotate_isotopic_patterns",
+members = [
+    # "examples/annotate_isotopic_patterns",
     "examples/high_baseline",
     "mzdeisotope",
     "mzdeisotope-map",
@@ -11,8 +12,8 @@ members = [ "examples/annotate_isotopic_patterns",
 
 [workspace.dependencies]
 
-mzdata = { version = ">=0.27.0", default-features = false, features = ["mzsignal", "nalgebra"] }
-mzpeaks = { version = ">=0.19.0,<1.0.0" }
+mzdata = { version = ">=0.28.0", default-features = false, features = ["mzsignal", "nalgebra"] }
+mzpeaks = { version = ">=0.20.0,<1.0.0" }
 
 tracing = { version = "0.1.40" }
 tracing-log = { version = "0.2.0" }
