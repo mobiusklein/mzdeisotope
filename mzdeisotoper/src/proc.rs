@@ -81,6 +81,9 @@ pub fn prepare_procesing<
                     (averager.clone(), reprofiler.clone())
                 },
                 |(averager, reprofiler), (i, g)| {
+
+                    let span = tracing::debug_span!("averaging precursor", scan_id=g.precursor().map(|s| s.id()), group_idx=i);
+                    let _entered = span.enter();
                     let (mut g, arrays) = g.reprofile_with_average_with(averager, reprofiler);
                     if let Some(p) = g.precursor_mut() {
                         if tracing::enabled!(tracing::Level::TRACE) {
@@ -98,7 +101,7 @@ pub fn prepare_procesing<
                     (ms1_engine.clone(), msn_engine.clone())
                 },
                 |(ms1_engine, msn_engine), (group_idx, group)| {
-                    tracing::trace!("Processing group {group_idx}");
+                    trace!("Processing group {group_idx}");
                     deconvolution_transform(
                         ms1_engine,
                         msn_engine,

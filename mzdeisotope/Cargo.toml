@@ -29,7 +29,8 @@ num-traits = "0.2"
 
 mzdata = { workspace = true }
 mzpeaks = { workspace = true }
-chemical_elements = { version = "0.3.0", features = ['mzpeaks'] }
+chemical_elements = { workspace = true }
+
 tracing.workspace = true
 itertools = "0.12.0"
 thiserror.workspace = true

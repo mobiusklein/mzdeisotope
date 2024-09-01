@@ -598,6 +598,7 @@ impl<
         self.peak_graph.add_fit(fit, start, end)
     }
 
+    #[tracing::instrument(level="debug", skip_all)]
     fn select_best_disjoint_subgraphs(
         &mut self,
         fit_accumulator: &mut Vec<IsotopicFit>,

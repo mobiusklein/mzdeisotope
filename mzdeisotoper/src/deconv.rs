@@ -6,10 +6,10 @@ use mzdata::{io::MassSpectrometryFormat, prelude::*, spectrum::SignalContinuity,
 use mzpeaks::MZPeakSetType;
 
 use mzdeisotope::{
-    {DeconvolutionEngine, PeaksAndTargets},
     isolation::{Coisolation, PrecursorPurityEstimator},
     scorer::{IsotopicFitFilter, IsotopicPatternScorer},
     solution::DeconvolvedSolutionPeak,
+    {DeconvolutionEngine, PeaksAndTargets},
 };
 
 use crate::{
@@ -104,6 +104,7 @@ pub fn purities_of(
     purities
 }
 
+#[tracing::instrument(level="debug", skip(scan, precursor_processing, selected_mz_ranges, signal_processing_params))]
 pub fn pick_ms1_peaks(
     scan: &mut SpectrumType,
     precursor_processing: &PrecursorProcessing,
@@ -174,6 +175,20 @@ pub fn pick_msn_peaks(
     }
 }
 
+#[tracing::instrument(
+    level = "debug",
+    skip(
+        ms1_engine,
+        msn_engine,
+        ms1_deconv_params,
+        msn_deconv_params,
+        signal_processing_params,
+        group,
+        precursor_processing,
+        writer_format
+    ),
+    name = "deconvolution_transform"
+)]
 pub fn deconvolution_transform<
     S: IsotopicPatternScorer + Send + 'static,
     F: IsotopicFitFilter + Send + 'static,
@@ -216,7 +231,7 @@ pub fn deconvolution_transform<
                     "Processing {} MS{} ({:0.3})",
                     scan.id(),
                     scan.ms_level(),
-                    scan.acquisition().start_time()
+                    scan.start_time()
                 );
             }
 
@@ -228,6 +243,13 @@ pub fn deconvolution_transform<
             );
 
             if let Some(peaks) = peaks {
+                let span = tracing::debug_span!(
+                    "precursor deconvolution",
+                    scan_id = scan.id(),
+                    peak_count = peaks.len(),
+                    group_idx
+                );
+                let _entered = span.enter();
                 let has_too_many_peaks = peaks.len() >= PEAK_COUNT_THRESHOLD_WARNING;
                 if has_too_many_peaks {
                     tracing::warn!("{} has {} centroids", scan.id(), peaks.len())
@@ -245,7 +267,11 @@ pub fn deconvolution_transform<
                     )
                     .unwrap();
                 if has_too_many_peaks {
-                    tracing::warn!("{} has {} deconvolved centroids", scan.id(), deconvoluted_peaks.len())
+                    tracing::warn!(
+                        "{} has {} deconvolved centroids",
+                        scan.id(),
+                        deconvoluted_peaks.len()
+                    )
                 }
                 prog.ms1_peaks = deconvoluted_peaks.len();
                 prog.ms1_spectra += 1;
@@ -289,18 +315,27 @@ pub fn deconvolution_transform<
             msn_charge_range.1 = msn_charge_range.1.max(precursor_charge);
 
             let peaks = pick_msn_peaks(scan, signal_processing_params);
+            {
+                let span = tracing::debug_span!(
+                    "product deconvolution",
+                    scan_id = scan.id(),
+                    peak_count = peaks.len(),
+                    group_idx
+                );
+                let _entered = span.enter();
+                let deconvoluted_peaks = msn_engine
+                    .deconvolute_peaks(
+                        peaks,
+                        Tolerance::PPM(20.0),
+                        msn_charge_range,
+                        msn_deconv_params.max_missed_peaks,
+                    )
+                    .unwrap();
+                prog.msn_peaks += deconvoluted_peaks.len();
+                prog.msn_spectra += 1;
+                scan.deconvoluted_peaks = Some(deconvoluted_peaks);
+            }
 
-            let deconvoluted_peaks = msn_engine
-                .deconvolute_peaks(
-                    peaks,
-                    Tolerance::PPM(20.0),
-                    msn_charge_range,
-                    msn_deconv_params.max_missed_peaks,
-                )
-                .unwrap();
-            prog.msn_peaks += deconvoluted_peaks.len();
-            prog.msn_spectra += 1;
-            scan.deconvoluted_peaks = Some(deconvoluted_peaks);
             if is_dia {
                 if let Some(prec) = scan.precursor_mut() {
                     let (_, coisolated) = purities.remove(&scan_i).unwrap_or_default();

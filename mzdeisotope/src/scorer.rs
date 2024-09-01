@@ -68,19 +68,24 @@ impl MSDeconvScorer {
         }
         let mass_accuracy = 1.0 - (mass_error / self.error_tolerance) as ScoreType;
 
-        let ratio = (theoretical.intensity() - experimental.intensity()) / experimental.intensity();
+        let t_int = theoretical.intensity();
+        let e_int = experimental.intensity();
 
-        let abundance_diff = if experimental.intensity() < theoretical.intensity() && ratio <= 1.0 {
+        let ratio = (t_int - e_int) / e_int;
+
+        let abundance_diff = if e_int < t_int && ratio <= 1.0 {
             1.0 - ratio
-        } else if experimental.intensity() >= theoretical.intensity()
-            && (experimental.intensity() - theoretical.intensity()) / experimental.intensity()
+        } else if e_int >= t_int
+            && (e_int - t_int) / e_int
                 <= 1.0
         {
-            1.0 - (experimental.intensity() - theoretical.intensity()) / experimental.intensity()
+            // These are equivalent, though the former is as-written in the original
+            // 1.0 - (e_int - t_int) / e_int
+            1.0 + ratio
         } else {
             return 0.0;
         };
-        theoretical.intensity().sqrt() * mass_accuracy * abundance_diff
+        t_int.sqrt() * mass_accuracy * abundance_diff
     }
 
     #[inline]

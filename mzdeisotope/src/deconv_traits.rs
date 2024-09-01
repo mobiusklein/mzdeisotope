@@ -540,6 +540,7 @@ pub trait GraphDependentSearch<C: CentroidLike>: ExhaustivePeakSearch<C> {
     /// - `left_search_limit`: The number of isotopic shifts lower from each peak m/z to probe
     /// - `right_search_limit`: The number of isotopic shifts up from the each peak m/z to probe
     /// - `params`: The isotopic pattern generation parameters to use
+    #[tracing::instrument(level="debug", skip_all)]
     fn populate_graph(
         &mut self,
         error_tolerance: Tolerance,

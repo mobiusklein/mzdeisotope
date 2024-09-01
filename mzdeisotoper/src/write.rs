@@ -5,10 +5,11 @@ use crossbeam_channel::{Receiver, Sender, TryRecvError, TrySendError};
 
 use itertools::Itertools;
 use mzdata::{io::MassSpectrometryFormat, prelude::*, spectrum::bindata::BinaryCompressionType};
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, instrument};
 
 use crate::types::{CPeak, DPeak, SpectrumCollator, SpectrumGroupType, SpectrumType, BUFFER_SIZE};
 
+#[instrument(level="debug", skip(group, output_format))]
 pub(crate) fn postprocess_spectra(
     group_idx: usize,
     mut group: SpectrumGroupType,
@@ -77,6 +78,7 @@ fn drain_channel(collator: &mut SpectrumCollator, channel: &Receiver<(usize, Spe
                     break;
                 }
                 TryRecvError::Disconnected => {
+                    debug!("Work queue finished after draining {b} items from the work queue");
                     collator.done = true;
                     break;
                 }
@@ -100,33 +102,37 @@ pub fn collate_results_spectra(
             info!("Collation counter rolling over");
             i = 1;
         }
-        match receiver.try_recv() {
-            Ok((group_idx, group)) => {
-                if group_idx == 0 {
-                    if let Some(i) = group.iter().map(|s| s.index()).min() {
-                        collator.next_key = i;
+        {
+            let span = tracing::debug_span!("polling work queue", tick=i);
+            let _entered = span.enter();
+            match receiver.try_recv() {
+                Ok((group_idx, group)) => {
+                    if group_idx == 0 {
+                        if let Some(i) = group.iter().map(|s| s.index()).min() {
+                            collator.next_key = i;
+                        }
+                    }
+                    group
+                        .into_iter()
+                        .for_each(|s| collator.receive(s.index(), s));
+                    if drain_channel(&mut collator, &receiver, 1000) {
+                        if collator.done && collator.waiting.is_empty() {
+                            debug!("Setting collator loop condition to false");
+                            has_work = false;
+                        }
                     }
                 }
-                group
-                    .into_iter()
-                    .for_each(|s| collator.receive(s.index(), s));
-                if drain_channel(&mut collator, &receiver, 1000) {
-                    if collator.done && collator.waiting.is_empty() {
-                        debug!("Setting collator loop condition to false");
-                        has_work = false;
+                Err(e) => match e {
+                    TryRecvError::Empty => {}
+                    TryRecvError::Disconnected => {
+                        collator.done = true;
+                        if collator.done && collator.waiting.is_empty() {
+                            debug!("Setting collator loop condition to false");
+                            has_work = false;
+                        }
                     }
-                }
+                },
             }
-            Err(e) => match e {
-                TryRecvError::Empty => {}
-                TryRecvError::Disconnected => {
-                    collator.done = true;
-                    if collator.done && collator.waiting.is_empty() {
-                        debug!("Setting collator loop condition to false");
-                        has_work = false;
-                    }
-                }
-            },
         }
 
         let n = collator.waiting.len();
@@ -137,8 +143,10 @@ pub fn collate_results_spectra(
                     let waiting_keys: Vec<_> =
                         collator.waiting.keys().sorted().take(10).copied().collect();
                     let write_queue_size = sender.len();
+                    let work_queue_size = receiver.len();
                     tracing::info!(
-                       "Collator holding {n} entries at tick {i}, next key {} ({}), pending keys: {waiting_keys:?} with {write_queue_size} writing backlog",
+                       r#"Collator holding {n} entries at tick {i}, next key {} ({}), pending keys: {waiting_keys:?}
+with {write_queue_size} writing backlog and {work_queue_size} work waiting to collate"#,
                         collator.next_key,
                         collator.has_next()
                     );
@@ -163,8 +171,12 @@ pub fn collate_results_spectra(
                 }
             }
         } else {
+            let span = tracing::debug_span!("sending write queue", tick=i);
+            let _entered = span.enter();
             while let Some((group_idx, group)) = collator.try_next() {
                 if collator.waiting.len() >= BUFFER_SIZE {
+                    let span = tracing::debug_span!("flushing write queue", tick=i);
+                    let _entered = span.enter();
                     match sender.send((group_idx, group)) {
                         Ok(()) => {},
                         Err(e) => {
@@ -228,6 +240,8 @@ pub fn write_output_spectra<S: SpectrumWriter<CPeak, DPeak>>(
             checkpoint = group_idx;
             time_checkpoint = scan_time;
         }
+        let span = tracing::debug_span!("writing spectrum", scan_index=group_idx);
+        let _entered = span.enter();
         writer.write(&scan)?;
     }
     if time_checkpoint != scan_time {

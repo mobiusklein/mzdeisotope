@@ -21,13 +21,15 @@ num-traits = "0.2"
 
 mzdata = { workspace = true }
 mzpeaks = { workspace = true }
+mzsignal = { workspace = true }
+chemical_elements = { workspace = true }
 
-mzsignal = { version = ">= 0.21.0,<1.0.0", default-features = false, features = ["nalgebra"] }
 mzdeisotope = { path = "../mzdeisotope", version = "0.1.9" }
-chemical_elements = { version = "0.3.0", features = ['mzpeaks'] }
+
 tracing.workspace = true
-itertools = "0.12.0"
 thiserror.workspace = true
+
+itertools = "0.12.0"
 
 identity-hash = "0.1.0"
 

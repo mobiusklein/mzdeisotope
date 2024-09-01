@@ -17,7 +17,8 @@ use crate::isotopic_fit::IsotopicFit;
 const PEAK_ELIMINATION_FACTOR: f32 = 0.7;
 
 /// An integral type for storing a transformed m/z that is sufficiently unique for hashing.
-pub type Placeholder = i64;
+/// Good for m/z values up to 2_147_483.647. This should be just fine.
+pub type Placeholder = i32;
 
 
 /// A combination of traits that [`WorkingPeakSet`] needs to function.
@@ -42,7 +43,7 @@ impl Hash for PeakKey {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         match self {
             PeakKey::Matched(x) => state.write_u32(*x),
-            PeakKey::Placeholder(x) => state.write_i64(*x)
+            PeakKey::Placeholder(x) => state.write_i32(*x)
         }
     }
 }

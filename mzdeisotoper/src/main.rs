@@ -66,6 +66,5 @@ pub fn main() -> Result<(), MZDeisotoperError> {
         subscriber.init();
         args.main()?;
     }
-
     Ok(())
 }
