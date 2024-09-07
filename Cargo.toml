@@ -12,9 +12,9 @@ members = [
 
 [workspace.dependencies]
 
-mzdata = { version = ">=0.28.1", default-features = false, features = ["mzsignal", "nalgebra"] }
+mzdata = { version = ">=0.29.0", default-features = false, features = ["mzsignal", "nalgebra"] }
 mzpeaks = { version = ">=0.20.0,<1.0.0" }
-mzsignal = { version = ">= 0.21.0,<1.0.0", default-features = false, features = ["nalgebra"] }
+mzsignal = { version = ">= 0.23.0,<1.0.0", default-features = false, features = ["nalgebra", "avx"] }
 chemical_elements = { version = "0.3.0", features = ['mzpeaks'] }
 
 tracing = { version = "0.1.40" }
