@@ -526,6 +526,66 @@ impl<C: PeakLike, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: Isot
             ignore_below,
         )
     }
+
+    fn map_fit_to_target(&mut self, fit: &IsotopicFit, peak: &mut DeconvolvedSolutionPeak) {
+        self.solutions
+            .iter_mut()
+            .filter(|t| t.link.is_none())
+            .for_each(|t| {
+                if fit.experimental.contains(&t.query) {
+                    // t.link = Some(peak.clone());
+                    peak.index = match t.query {
+                        PeakKey::Matched(k) => {
+                            if k == 0 {
+                                u32::MAX
+                            } else {
+                                k
+                            }
+                        }
+                        _ => 0,
+                    }
+                }
+            })
+    }
+
+    fn build_link_table(&self) -> HashMap<PeakKey, C> {
+        let link_table: HashMap<PeakKey, C> = self
+            .solutions
+            .iter()
+            .map(|link| {
+                let c = self.get_peak(link.query);
+                (link.query, c.clone())
+            })
+            .collect();
+        link_table
+    }
+
+    fn map_targets_to_peaks(&mut self, deconvoluted_peaks: &[DeconvolvedSolutionPeak]) {
+        let link_table = self.build_link_table();
+        let mut mask = HashSet::new();
+        deconvoluted_peaks
+            .iter()
+            .filter(|p| p.index > 0)
+            .for_each(|p| {
+                self.solutions
+                    .iter_mut()
+                    .find(|t| match t.query {
+                        PeakKey::Matched(k) => k == 0 && p.index == u32::MAX || p.index == k,
+                        PeakKey::Placeholder(j) => {
+                            if !mask.contains(&j) {
+                                let c = link_table.get(&t.query).unwrap();
+                                tracing::debug!("Query peak {} is a placeholder", c.mz());
+                                mask.insert(j);
+                            }
+                            false
+                        }
+                    })
+                    .and_then(|t| -> Option<i8> {
+                        t.link = Some(p.clone());
+                        None
+                    });
+            });
+    }
 }
 
 impl<C: PeakLike, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: IsotopicFitFilter>
@@ -768,28 +828,21 @@ impl<C: PeakLike, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: Isot
                 right_search_limit,
                 isotopic_params,
             )?;
+
+            if i == 0 {
+                let min_width = self.inner.isotopic_model.largest_isotopic_width();
+                if min_width.is_finite() {
+                    let unused = self.inner.peaks.find_unused_peaks(&fits, min_width);
+                    let n_masked = self.inner.peaks.mask_peaks_in_intervals(&unused);
+                    tracing::debug!("Masked {n_masked} peaks with width {min_width} on iteration {i}");
+                }
+            }
+
             deconvoluted_peaks.extend(fits.into_iter().map(|fit| {
                 let mut peak = self.make_solution_from_fit(&fit, error_tolerance);
                 self.inner.peaks.subtract_theoretical_intensity(&fit);
                 if i == 0 {
-                    self.solutions
-                        .iter_mut()
-                        .filter(|t| t.link.is_none())
-                        .for_each(|t| {
-                            if fit.experimental.contains(&t.query) {
-                                // t.link = Some(peak.clone());
-                                peak.index = match t.query {
-                                    PeakKey::Matched(k) => {
-                                        if k == 0 {
-                                            u32::MAX
-                                        } else {
-                                            k
-                                        }
-                                    }
-                                    _ => 0,
-                                }
-                            }
-                        });
+                    self.map_fit_to_target(&fit, &mut peak);
                 }
                 peak
             }));
@@ -815,39 +868,9 @@ impl<C: PeakLike, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: Isot
             );
         }
 
-        let link_table: HashMap<PeakKey, C> = self
-            .solutions
-            .iter()
-            .map(|link| {
-                let c = self.get_peak(link.query);
-                (link.query, c.clone())
-            })
-            .collect();
-
-        let mut mask = HashSet::new();
         deconvoluted_peaks = self.merge_isobaric_peaks(deconvoluted_peaks);
-        deconvoluted_peaks
-            .iter()
-            .filter(|p| p.index > 0)
-            .for_each(|p| {
-                self.solutions
-                    .iter_mut()
-                    .find(|t| match t.query {
-                        PeakKey::Matched(k) => k == 0 && p.index == u32::MAX || p.index == k,
-                        PeakKey::Placeholder(j) => {
-                            if !mask.contains(&j) {
-                                let c = link_table.get(&t.query).unwrap();
-                                tracing::debug!("Query peak {} is a placeholder", c.mz());
-                                mask.insert(j);
-                            }
-                            false
-                        }
-                    })
-                    .and_then(|t| -> Option<i8> {
-                        t.link = Some(p.clone());
-                        None
-                    });
-            });
+        self.map_targets_to_peaks(&deconvoluted_peaks);
+
         Ok(MassPeakSetType::new(deconvoluted_peaks))
     }
 }
@@ -1003,7 +1026,7 @@ mod test {
             )
             .unwrap();
 
-        assert_eq!(dpeaks.len(), 558);
+        assert_eq!(dpeaks.len(), 604);
         let best_fit = dpeaks
             .iter()
             .max_by(|a, b| a.score.partial_cmp(&b.score).unwrap())
@@ -1079,8 +1102,8 @@ mod test {
             best_fit.intensity,
             best_fit.intensity - expected_intensity
         );
-        eprintln!("intensity {}", best_fit.intensity);
-        assert_eq!(dpeaks.len(), 567);
+
+        assert_eq!(dpeaks.len(), 599);
         Ok(())
     }
 

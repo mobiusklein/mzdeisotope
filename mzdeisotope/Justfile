@@ -3,6 +3,8 @@ set dotenv-load := true
 test:
     cargo t
 
+alias t := test
+
 docs:
     cargo doc --lib --no-deps
 

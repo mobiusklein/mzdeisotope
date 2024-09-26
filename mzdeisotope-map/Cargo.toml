@@ -35,7 +35,7 @@ identity-hash = "0.1.0"
 
 [dev-dependencies]
 flate2 = "1.0.28"
-test-log = "0.2.12 "
+test-log = { version = "0.2.12", features = ["trace"] }
 rayon = "1.7.0"
 tracing-subscriber.workspace = true
 tracing-appender = "0.2.3"

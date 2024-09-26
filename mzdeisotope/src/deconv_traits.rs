@@ -32,8 +32,13 @@ pub enum DeconvolutionError {
 /// A set of behaviors for fitting theoretical peaks to experimentally detected
 /// peak lists.
 pub trait IsotopicPatternFitter<C: CentroidLike> {
+    /// Collect references to the "real" peaks indicated by `keys`
     fn collect_for(&self, keys: &[PeakKey]) -> Vec<&C>;
 
+    /// A convenience method to fit an isotopic pattern at `peak` with charge state `charge`
+    /// using [`IsotopicPatternParams::default`].
+    ///
+    /// A simple wrapper around [`IsotopicPatternFitter::fit_theoretical_isotopic_pattern_with_params`]
     fn fit_theoretical_isotopic_pattern(
         &mut self,
         peak: PeakKey,
@@ -48,6 +53,8 @@ pub trait IsotopicPatternFitter<C: CentroidLike> {
         )
     }
 
+    /// Create an isotopic pattern for the specified `mz` at the given charge state `charge`
+    /// using the isotopic pattern constraints in `params`.
     fn create_isotopic_pattern(
         &mut self,
         mz: f64,
@@ -55,12 +62,16 @@ pub trait IsotopicPatternFitter<C: CentroidLike> {
         params: IsotopicPatternParams,
     ) -> TheoreticalIsotopicPattern;
 
+    /// Compute a score describing the quality of the match between `experimental` and `theoretical`
+    /// isotopic peaks.
     fn score_isotopic_fit(
         &self,
         experimental: &[&C],
         theoretical: &TheoreticalIsotopicPattern,
     ) -> ScoreType;
 
+    /// Fit an isotopic pattern for `peak` at charge state `charge` using the isotopic
+    /// pattern constraints in `params`.
     fn fit_theoretical_isotopic_pattern_with_params(
         &mut self,
         peak: PeakKey,
@@ -69,6 +80,8 @@ pub trait IsotopicPatternFitter<C: CentroidLike> {
         params: IsotopicPatternParams,
     ) -> IsotopicFit;
 
+    /// Incrementally truncate the isotopic pattern fit in `seed_fit` by incrementally
+    /// truncating the theoretical isotopic pattern.
     fn fit_theoretical_isotopic_pattern_incremental_from_seed(
         &self,
         seed_fit: &IsotopicFit,

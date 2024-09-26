@@ -149,6 +149,14 @@ pub trait IsotopicPatternGenerator {
     ) {
         tracing::warn!("No cache to populate");
     }
+
+    /// Get the largest width isotopic pattern this generator has created so far.
+    ///
+    /// This is useful for optimizing how wide a window must be in order to ignore peaks
+    /// but is not *necessary* to work.
+    fn largest_isotopic_width(&self) -> f64 {
+        f64::infinity()
+    }
 }
 
 /// The mass difference between isotopes `C[13]` and `C[12]`. Not precisely universal, but the
@@ -556,6 +564,18 @@ impl<'lifespan: 'transient, 'transient> CachingIsotopicModel<'lifespan> {
         self.cache.clear();
     }
 
+    pub fn largest_isotopic_width(&self) -> f64 {
+        self.cache
+            .values()
+            .map(|p| {
+                let first = p.iter().next().map(|p| p.mz).unwrap_or_default();
+                let last = p.iter().next_back().map(|p| p.mz).unwrap_or_default();
+                last - first
+            })
+            .max_by(|a, b| a.total_cmp(b))
+            .unwrap_or_default()
+    }
+
     #[inline(always)]
     fn truncate_mz(&self, mz: f64) -> f64 {
         (mz / self.cache_truncation).round() * self.cache_truncation
@@ -630,6 +650,10 @@ impl<'lifespan: 'transient, 'transient> CachingIsotopicModel<'lifespan> {
 }
 
 impl<'lifespan> IsotopicPatternGenerator for CachingIsotopicModel<'lifespan> {
+    fn largest_isotopic_width(&self) -> f64 {
+        self.largest_isotopic_width()
+    }
+
     fn isotopic_cluster(
         &mut self,
         mz: f64,

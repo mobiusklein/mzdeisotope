@@ -26,7 +26,6 @@ use chemical_elements::isotopic_pattern::TheoreticalIsotopicPattern;
 use mzpeaks::{prelude::*, IntensityMeasurementMut, MZPeakSetType, MassPeakSetType};
 use mzpeaks::{CentroidPeak, Tolerance};
 
-
 /// A variant of [`DeconvoluterType`](crate::deconvoluter::DeconvoluterType) that uses multiple
 /// isotopic pattern generators.
 #[derive(Debug)]
@@ -70,16 +69,16 @@ impl<
             scaling_method: Default::default(),
             max_missed_peaks,
             use_quick_charge,
-            current_model_index: 0 ,
+            current_model_index: 0,
             targets: Default::default(),
         }
     }
 
-    pub fn iter_isotopic_models(&self) -> impl Iterator<Item=&I> {
+    pub fn iter_isotopic_models(&self) -> impl Iterator<Item = &I> {
         self.isotopic_models.iter()
     }
 
-    pub fn iter_mut_isotopic_models(&mut self) -> impl Iterator<Item=&mut I> {
+    pub fn iter_mut_isotopic_models(&mut self) -> impl Iterator<Item = &mut I> {
         self.isotopic_models.iter_mut()
     }
 }
@@ -388,7 +387,6 @@ impl<
     }
 }
 
-
 /// A variant of [`GraphDeconvoluterType`](crate::deconvoluter::GraphDeconvoluterType) that uses multiple isotopic pattern generators.
 #[derive(Debug)]
 pub struct GraphMultiDeconvoluterType<
@@ -452,11 +450,11 @@ impl<
         }
     }
 
-    pub fn iter_isotopic_models(&self) -> impl Iterator<Item=&I> {
+    pub fn iter_isotopic_models(&self) -> impl Iterator<Item = &I> {
         self.inner.iter_isotopic_models()
     }
 
-    pub fn iter_mut_isotopic_models(&mut self) -> impl Iterator<Item=&mut I> {
+    pub fn iter_mut_isotopic_models(&mut self) -> impl Iterator<Item = &mut I> {
         self.inner.iter_mut_isotopic_models()
     }
 }
@@ -598,7 +596,7 @@ impl<
         self.peak_graph.add_fit(fit, start, end)
     }
 
-    #[tracing::instrument(level="debug", skip_all)]
+    #[tracing::instrument(level = "debug", skip_all)]
     fn select_best_disjoint_subgraphs(
         &mut self,
         fit_accumulator: &mut Vec<IsotopicFit>,
@@ -701,6 +699,18 @@ impl<
                 right_search_limit,
                 isotopic_params,
             )?;
+            if i == 0 {
+                let min_width = self
+                    .inner
+                    .isotopic_models
+                    .iter()
+                    .map(|m| m.largest_isotopic_width())
+                    .max_by(|a, b| a.total_cmp(b))
+                    .unwrap_or_default();
+                let unused = self.inner.peaks.find_unused_peaks(&fits, min_width);
+                let n_masked = self.inner.peaks.mask_peaks_in_intervals(&unused);
+                tracing::debug!("Masked {n_masked} peaks with width {min_width} on iteration {i}");
+            }
             deconvoluted_peaks.extend(fits.into_iter().map(|fit| {
                 let mut peak = self.make_solution_from_fit(&fit, error_tolerance);
                 self.inner.peaks.subtract_theoretical_intensity(&fit);
@@ -785,7 +795,6 @@ impl<
     }
 }
 
-
 pub type GraphMultiAveragineDeconvoluter<'lifespan, C> = GraphMultiDeconvoluterType<
     C,
     CachingIsotopicModel<'lifespan>,
@@ -827,15 +836,17 @@ mod test {
             false,
         );
         let isotopic_params = IsotopicPatternParams::default();
-        deconvoluter.iter_mut_isotopic_models().for_each(|i| i.populate_cache(
-            *mzs.first().unwrap(),
-            *mzs.last().unwrap(),
-            1,
-            8,
-            isotopic_params.charge_carrier,
-            isotopic_params.truncate_after,
-            isotopic_params.ignore_below,
-        ));
+        deconvoluter.iter_mut_isotopic_models().for_each(|i| {
+            i.populate_cache(
+                *mzs.first().unwrap(),
+                *mzs.last().unwrap(),
+                1,
+                8,
+                isotopic_params.charge_carrier,
+                isotopic_params.truncate_after,
+                isotopic_params.ignore_below,
+            )
+        });
         let tol = Tolerance::PPM(10.0);
         let (total_combos, total_fits, total_missed) = mzs
             .iter()

@@ -1,8 +1,11 @@
 //! Helper types for writing exhaustive deconvolution algorithms.
 
 use chemical_elements::isotopic_pattern::TheoreticalIsotopicPattern;
-use mzpeaks::prelude::*;
-use mzpeaks::{CentroidPeak, IndexType, MZPeakSetType};
+use mzpeaks::{
+    coordinate::{SimpleInterval, Span1D},
+    prelude::*,
+    CentroidPeak, IndexType, MZPeakSetType,
+};
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::hash::Hash;
@@ -20,12 +23,10 @@ const PEAK_ELIMINATION_FACTOR: f32 = 0.7;
 /// Good for m/z values up to 2_147_483.647. This should be just fine.
 pub type Placeholder = i32;
 
-
 /// A combination of traits that [`WorkingPeakSet`] needs to function.
 pub trait PeakLike: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut {}
 
 impl<T> PeakLike for T where T: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut {}
-
 
 /// Represent a sufficiently unique key for indexing or hashing
 /// peaks from a peak list, or denoting a theoretical but absent
@@ -43,7 +44,7 @@ impl Hash for PeakKey {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         match self {
             PeakKey::Matched(x) => state.write_u32(*x),
-            PeakKey::Placeholder(x) => state.write_i32(*x)
+            PeakKey::Placeholder(x) => state.write_i32(*x),
         }
     }
 }
@@ -51,7 +52,6 @@ impl Hash for PeakKey {
 impl IdentityHashable for PeakKey {}
 
 impl PeakKey {
-
     /// Check if the key corresponds to a matched peak
     pub fn is_matched(&self) -> bool {
         matches!(self, Self::Matched(_))
@@ -69,7 +69,6 @@ impl PeakKey {
         }
     }
 }
-
 
 /// A cache mapping [`Placeholder`] values to concrete [`PeakLike`] values for a single
 /// peak list deconvolution problem.
@@ -156,7 +155,6 @@ impl SliceCache {
         (i1, i2)
     }
 }
-
 
 /// A wrapper enclosing an [`MZPeakSetType`] with sets of caches that make
 /// writing deconvoluters more convenient.
@@ -258,6 +256,33 @@ impl<C: PeakLike + IntensityMeasurementMut> WorkingPeakSet<C> {
         PeakKeyIter::descending(self.peaks.len())
     }
 
+    /// Find all peaks in the specified m/z `intervals` and set their intensities
+    /// to `1.0`, making them skippable, and of equal value to placeholder peaks.
+    pub fn mask_peaks_in_intervals(&mut self, intervals: &[SimpleInterval<f64>]) -> u32 {
+        let mut masked_counter = 0;
+        for iv in intervals {
+            let peaks_in = self.peaks.between(iv.start, iv.end, Tolerance::Da(0.001));
+            let start_i = peaks_in
+                .first()
+                .map(|p| p.get_index() as usize)
+                .unwrap_or_default();
+            let end_i = peaks_in
+                .last()
+                .map(|p| p.get_index() as usize + 1)
+                .unwrap_or_default();
+            let peaks = self.peaks.as_mut_slice();
+            for i in start_i..end_i {
+                if let Some(p) = peaks.get_mut(i) {
+                    if iv.contains(&p.mz()) {
+                        masked_counter += 1;
+                        *p.intensity_mut() = 1.0;
+                    }
+                }
+            }
+        }
+        masked_counter
+    }
+
     pub fn subtract_theoretical_intensity(&mut self, fit: &IsotopicFit) {
         fit.experimental
             .iter()
@@ -288,6 +313,63 @@ impl<C: PeakLike + IntensityMeasurementMut> WorkingPeakSet<C> {
         mem::swap(&mut self.peaks, &mut peaks);
         self.clear();
         peaks
+    }
+
+    pub fn as_slice(&self) -> &[C] {
+        self.peaks.as_slice()
+    }
+
+    /// Find all peaks that are not part of the isotopic pattern fits in `fits` to find
+    /// the m/z intervals where nothing is a viable isotopic pattern.
+    ///
+    /// The intervals must be at least `3 * min_width` m/z wide to be reported.
+    pub fn find_unused_peaks(&self, fits: &[IsotopicFit], min_width: f64) -> Vec<SimpleInterval<f64>> {
+        // Build a peak index mask that is true if a peak is used in a fit, false otherwise
+        let mut mask = Vec::with_capacity(self.len());
+        mask.resize(self.len(), false);
+        for fit in fits {
+            for key in fit.experimental.iter() {
+                if let PeakKey::Matched(i) = key {
+                    mask[*i as usize] = true;
+                }
+            }
+        }
+
+        // Build series of m/z intervals spanning dead zones in the peak mask
+        let mut spans: Vec<SimpleInterval<f64>> = Vec::new();
+        let mut last_mz = Some(0.0);
+        for (peak, has_fit) in self.peaks.iter().zip(mask.into_iter()) {
+            if has_fit {
+                if last_mz.is_some() {
+                    spans.push(SimpleInterval::new(last_mz.unwrap(), peak.mz()));
+                    last_mz = None
+                }
+            } else {
+                if last_mz.is_none() {
+                    last_mz = Some(peak.mz())
+                }
+            }
+        }
+
+        if last_mz.is_some() {
+            spans.push(SimpleInterval::new(last_mz.unwrap(), f64::INFINITY));
+        }
+
+        // Truncate intervals to enforce the minimum width criterion and to "unpad" them
+        // to guarantee there is no spillage from adjacent regions.
+        let spans: Vec<_> = spans
+            .into_iter()
+            .filter_map(|mut iv| {
+                iv.start = iv.start + min_width;
+                iv.end = iv.end - min_width;
+                if (iv.end - iv.start) < min_width {
+                    None
+                } else {
+                    Some(iv)
+                }
+            })
+            .collect();
+        spans
     }
 }
 
