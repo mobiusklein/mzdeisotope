@@ -85,7 +85,7 @@ impl PeakDependenceGraph {
                     if bucket.len() == 1 {
                         continue;
                     }
-                    bucket.sort_by(|a, b| a.score.partial_cmp(&b.score).unwrap().reverse());
+                    bucket.sort_by(|a, b| a.score.total_cmp(&b.score).reverse());
                     // let best = bucket[0];
                     let rest = &bucket[1..];
                     for f in rest {
@@ -100,7 +100,7 @@ impl PeakDependenceGraph {
                     if bucket.len() == 1 {
                         continue;
                     }
-                    bucket.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap().reverse());
+                    bucket.sort_by(|a, b| b.score.total_cmp(&a.score).reverse());
                     // let best = bucket[0];
                     let rest = &bucket[1..];
                     for f in rest {
@@ -186,7 +186,7 @@ impl PeakDependenceGraph {
             self.clusters.push(cluster);
         }
         self.clusters
-            .sort_by(|a, b| a.start.partial_cmp(&b.start).unwrap());
+            .sort_by(|a, b| a.start.total_cmp(&b.start));
     }
 
     pub fn solutions(

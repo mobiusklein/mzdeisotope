@@ -13,7 +13,7 @@ thermo = ["mzdata/thermo"]
 [dependencies]
 mzdata = { workspace = true, features = ["nalgebra", "parallelism", ] }
 mzpeaks.workspace = true
-mzsignal = "0.18.0"
+mzsignal = { workspace = true }
 mzdeisotope = { path = "../../mzdeisotope" }
 
 tracing.workspace = true

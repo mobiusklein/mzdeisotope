@@ -64,11 +64,11 @@ impl DependenceCluster {
         match self.score_ordering {
             ScoreInterpretation::HigherIsBetter => {
                 self.dependencies
-                    .sort_by(|a, b| a.score.partial_cmp(&b.score).unwrap().reverse());
+                    .sort_by(|a, b| a.score.total_cmp(&b.score).reverse());
             }
             ScoreInterpretation::LowerIsBetter => {
                 self.dependencies
-                    .sort_by(|a, b| a.score.partial_cmp(&b.score).unwrap());
+                    .sort_by(|a, b| a.score.total_cmp(&b.score));
             }
         }
         let bounds = self.mz_bounds();
