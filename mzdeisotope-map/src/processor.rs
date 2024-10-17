@@ -16,7 +16,7 @@ use mzdeisotope::{
     },
     scorer::{IsotopicFitFilter, IsotopicPatternScorer, ScoreInterpretation, ScoreType},
 };
-use mzsignal::feature_mapping::FeatureGraphBuilder;
+use mzsignal::feature_mapping::graph::FeatureGraphBuilder;
 use tracing::{debug, trace};
 
 use crate::{

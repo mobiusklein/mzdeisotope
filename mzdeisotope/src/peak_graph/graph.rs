@@ -11,7 +11,6 @@ use super::cluster::{DependenceCluster, SubgraphSolverMethod};
 use super::fit::{FitGraph, FitKey, FitRef};
 use super::peak::PeakGraph;
 
-
 /// A graph relating experimental peaks to isotopic pattern fits, constructing two levels
 /// of dependence, from peaks to isotopic fits and later isotopic fits which depend upon
 /// the same experimental peaks.
@@ -185,8 +184,7 @@ impl PeakDependenceGraph {
             let cluster = DependenceCluster::new(fits, self.score_ordering);
             self.clusters.push(cluster);
         }
-        self.clusters
-            .sort_by(|a, b| a.start.total_cmp(&b.start));
+        self.clusters.sort_by(|a, b| a.start.total_cmp(&b.start));
     }
 
     pub fn solutions(
@@ -220,7 +218,6 @@ impl PeakDependenceGraph {
         accepted_fits
     }
 }
-
 
 struct BreadFirstTraversal<'a> {
     graph: &'a PeakDependenceGraph,
@@ -263,18 +260,25 @@ impl<'a> BreadFirstTraversal<'a> {
         }
     }
 
-    fn edges_from(&mut self, node: FitKey) -> HashSet<FitKey, BuildIdentityHasher<FitKey>> {
+    fn edges_from(
+        &mut self,
+        node: FitKey,
+        next_keys: &mut HashSet<FitKey, BuildIdentityHasher<FitKey>>,
+    ) {
         let fit_node = self.graph.fit_nodes.get(&node).unwrap();
-        let mut next_keys = HashSet::default();
         for peak in fit_node.peak_iter() {
             match *peak {
                 // If the peak has already been visited, skip it, otherwise
                 // add it to the mask and traverse the peak node.
                 PeakKey::Matched(i) => {
-                    if self.peak_mask[i as usize] {
+                    let peak_mask_i = self
+                        .peak_mask
+                        .get_mut(i as usize)
+                        .unwrap_or_else(|| panic!("Expected the peak mask to contain {i} values"));
+                    if *peak_mask_i {
                         continue;
                     } else {
-                        self.peak_mask[i as usize] = true;
+                        *peak_mask_i = true;
                     }
                 }
                 PeakKey::Placeholder(_) => {
@@ -292,14 +296,14 @@ impl<'a> BreadFirstTraversal<'a> {
                     .copied(),
             );
         }
-        next_keys
     }
 
     fn visit(&mut self, node: FitKey) -> HashSet<FitKey, BuildIdentityHasher<FitKey>> {
         let mut component: HashSet<FitKey, BuildIdentityHasher<FitKey>> = HashSet::default();
 
-        let mut nodes = VecDeque::from(vec![node]);
-
+        let mut nodes = VecDeque::from([node]);
+        // Accumulator to collect edges to re-use from successive nodes
+        let mut edge_acc: HashSet<FitKey, BuildIdentityHasher<FitKey>> = HashSet::default();
         while !nodes.is_empty() {
             let node = nodes.pop_front().unwrap();
             // If we've already visited this node, it's not there to be removed
@@ -308,16 +312,17 @@ impl<'a> BreadFirstTraversal<'a> {
                 continue;
             }
             component.insert(node);
-            nodes.extend(self.edges_from(node));
+            self.edges_from(node, &mut edge_acc);
+            nodes.extend(edge_acc.drain());
         }
         component
     }
 
     fn next_component(&mut self) -> Option<HashSet<FitKey, BuildIdentityHasher<FitKey>>> {
-        if let Some(node) = self.nodes.iter().next().copied() {
-            Some(self.visit(node))
-        } else {
-            None
-        }
+        self.nodes
+            .iter()
+            .next()
+            .copied()
+            .map(|node| self.visit(node))
     }
 }

@@ -161,10 +161,10 @@ impl ChargeIterator for ChargeRangeIter {}
 ///
 /// # References
 /// - [1]: <https://doi.org/10.1021/ac0700833>
-///   Hoopmann, M. R., Finney, G. L., MacCoss, M. J., Michael R. Hoopmann, Gregory L. Finney,
-///   and, MacCoss*, M. J., … MacCoss, M. J. (2007). "High-speed data reduction, feature detection
-///   and MS/MS spectrum quality assessment of shotgun proteomics data sets using high-resolution
-///   Mass Spectrometry". Analytical Chemistry, 79(15), 5620–5632. <https://doi.org/10.1021/ac0700833>
+///        Hoopmann, M. R., Finney, G. L., MacCoss, M. J., Michael R. Hoopmann, Gregory L. Finney,
+///        and, MacCoss*, M. J., … MacCoss, M. J. (2007). "High-speed data reduction, feature detection
+///        and MS/MS spectrum quality assessment of shotgun proteomics data sets using high-resolution
+///        Mass Spectrometry". Analytical Chemistry, 79(15), 5620–5632. <https://doi.org/10.1021/ac0700833>
 ///
 pub fn quick_charge<C: CentroidLike, const N: usize>(
     peaks: &[C],

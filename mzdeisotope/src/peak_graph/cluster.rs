@@ -1,7 +1,6 @@
-use crate::scorer::ScoreInterpretation;
 use identity_hash::BuildIdentityHasher;
-use itertools::Itertools;
 
+use crate::scorer::ScoreInterpretation;
 use super::fit::{FitKey, FitNode, FitNodeGraphInner, FitRef};
 
 pub type SubgraphSolution = Vec<FitRef>;
@@ -139,12 +138,18 @@ impl SubgraphSelection {
     pub fn build_edges(&mut self) {
         let mut nodes: Vec<&mut FitNode> = self.nodes.values_mut().collect();
 
-        (0..nodes.len()).tuple_combinations().for_each(|(i, j)| {
-            let mut it = nodes.iter_mut().skip(i);
-            let node_i = it.next().unwrap();
-            let node_j = it.nth(j - (i + 1)).unwrap();
-            node_i.visit(node_j);
-        });
+        let n = nodes.len();
+        let nodes = &mut nodes[0..n];
+
+        for i in 0..n {
+            for j in (i + 1)..n {
+                unsafe {
+                    let node_i = nodes.get_unchecked_mut(i) as *mut &mut FitNode;
+                    let node_j = nodes.get_unchecked_mut(j) as *mut &mut FitNode;
+                    (*node_i).visit(*node_j);
+                }
+            }
+        }
     }
 
     pub fn greedy(&self) -> SubgraphSolution {

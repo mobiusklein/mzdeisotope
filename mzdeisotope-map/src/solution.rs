@@ -13,7 +13,7 @@ use mzpeaks::{
     IonMobility, Mass, MZ,
 };
 
-use mzsignal::feature_mapping::{ChargeAwareFeatureMerger, FeatureGraphBuilder};
+use mzsignal::feature_mapping::graph::{ChargeAwareFeatureMerger, FeatureGraphBuilder, FeatureNode};
 
 use mzdata::spectrum::bindata::{
     ArrayRetrievalError, ArrayType, BinaryArrayMap3D, BuildArrayMap3DFrom, BuildFromArrayMap3D, DataArray
@@ -221,6 +221,10 @@ impl<Y0: Clone> TimeInterval<Y0> for DeconvolvedSolutionFeature<Y0> {
 impl<Y0: Clone> TimeArray<Y0> for DeconvolvedSolutionFeature<Y0> {
     fn time_view(&self) -> &[f64] {
         self.inner.time_view()
+    }
+
+    fn intensity_view(&self) -> &[f32] {
+        self.inner.intensity_view()
     }
 }
 
@@ -468,7 +472,7 @@ impl<Y: Clone + Default> FeatureGraphBuilder<Mass, Y, DeconvolvedSolutionFeature
         features: &mzpeaks::feature_map::FeatureMap<Mass, Y, DeconvolvedSolutionFeature<Y>>,
         mass_error_tolerance: Tolerance,
         maximum_gap_size: f64,
-    ) -> Vec<mzsignal::feature_mapping::FeatureNode> {
+    ) -> Vec<FeatureNode> {
         self.inner
             .build_graph(features, mass_error_tolerance, maximum_gap_size)
     }

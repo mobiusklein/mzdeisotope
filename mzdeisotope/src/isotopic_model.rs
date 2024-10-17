@@ -63,10 +63,10 @@ impl<'a> FractionalComposition<'a> {
     }
 
     #[inline]
-    pub fn get<Q: ?Sized>(&self, k: &Q) -> Option<&f64>
+    pub fn get<Q>(&self, k: &Q) -> Option<&f64>
     where
         ElementSpecification<'a>: std::borrow::Borrow<Q>,
-        Q: hash::Hash + Eq,
+        Q: hash::Hash + Eq + ?Sized,
     {
         self.0.get(k)
     }
@@ -95,10 +95,10 @@ impl<'a> FractionalComposition<'a> {
         self.0.is_empty()
     }
 
-    pub fn contains_key<Q: ?Sized>(&self, k: &Q) -> bool
+    pub fn contains_key<Q>(&self, k: &Q) -> bool
     where
         ElementSpecification<'a>: std::borrow::Borrow<Q>,
-        Q: hash::Hash + Eq,
+        Q: hash::Hash + Eq + ?Sized,
     {
         self.0.contains_key(k)
     }
@@ -235,9 +235,10 @@ impl IsotopicPatternParams {
 ///
 /// # References
 /// - [1]: <https://doi.org/10.1016/1044-0305(95)00017-8>
-///     Senko M, Beu S, McLafferty F: Determination of Monoisotopic Masses and Ion
-///     Populations for Large Biomolecules from Resolved Isotopic Distributions.
-///     Journal of the American Society for Mass Spectrometry 1995, 6:229-233
+///        Senko M, Beu S, McLafferty F: Determination of Monoisotopic Masses and Ion
+///        Populations for Large Biomolecules from Resolved Isotopic Distributions.
+///        Journal of the American Society for Mass Spectrometry 1995, 6:229-233
+///        <https://doi.org/10.1016/1044-0305(95)00017-8>
 #[derive(Debug, Clone)]
 pub struct IsotopicModel<'lifespan> {
     /// The "average" monomer composition

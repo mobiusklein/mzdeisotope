@@ -46,12 +46,13 @@ pub trait IsotopicPatternScorer {
 /// ```
 /// # References
 /// - [1]: <https://doi.org/10.1074/mcp.M110.002766>
-///     Liu, X., Inbar, Y., Dorrestein, P. C., Wynne, C., Edwards, N., Souda, P., …
-///     Pevzner, P. A. (2010). Deconvolution and database search of complex tandem
-///     mass spectra of intact proteins: a combinatorial approach. Molecular & Cellular
-///     Proteomics : MCP, 9(12), 2772–2782.
+///        Liu, X., Inbar, Y., Dorrestein, P. C., Wynne, C., Edwards, N., Souda, P., …
+///        Pevzner, P. A. (2010). Deconvolution and database search of complex tandem
+///        mass spectra of intact proteins: a combinatorial approach. Molecular & Cellular
+///        Proteomics : MCP, 9(12), 2772–2782. <https://doi.org/10.1074/mcp.M110.002766>
 #[derive(Debug, Clone, Copy)]
 pub struct MSDeconvScorer {
+    /// The error tolerance term $`d`$ that scales the penalty for deviation from the theoretical m/z
     pub error_tolerance: f64,
 }
 
@@ -198,7 +199,7 @@ impl ScaledGTestScorer {
             let di = oi.ln() - ei.ln();
             score = oi.mul_add(di, score)
         }
-        return 2.0 * score;
+        2.0 * score
 
         // 2.0 * experimental
         //     .iter()

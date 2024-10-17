@@ -344,15 +344,13 @@ impl<C: PeakLike + IntensityMeasurementMut> WorkingPeakSet<C> {
                     spans.push(SimpleInterval::new(last_mz.unwrap(), peak.mz()));
                     last_mz = None
                 }
-            } else {
-                if last_mz.is_none() {
-                    last_mz = Some(peak.mz())
-                }
+            } else if last_mz.is_none() {
+                last_mz = Some(peak.mz())
             }
         }
 
-        if last_mz.is_some() {
-            spans.push(SimpleInterval::new(last_mz.unwrap(), f64::INFINITY));
+        if let Some(last_mz) = last_mz {
+            spans.push(SimpleInterval::new(last_mz, f64::INFINITY));
         }
 
         // Truncate intervals to enforce the minimum width criterion and to "unpad" them
@@ -360,8 +358,8 @@ impl<C: PeakLike + IntensityMeasurementMut> WorkingPeakSet<C> {
         let spans: Vec<_> = spans
             .into_iter()
             .filter_map(|mut iv| {
-                iv.start = iv.start + min_width;
-                iv.end = iv.end - min_width;
+                iv.start += min_width;
+                iv.end -= min_width;
                 if (iv.end - iv.start) < min_width {
                     None
                 } else {
