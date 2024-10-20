@@ -12,8 +12,9 @@ use chemical_elements::{
     neutral_mass, ChemicalComposition, ElementSpecification, PROTON as _PROTON,
 };
 
-use mzpeaks::CentroidLike;
+use mzpeaks::{CentroidLike, IntensityMeasurement};
 use num_traits::Float;
+use tracing::trace;
 
 pub(crate) fn isclose<T: Float>(a: T, b: T, delta: T) -> bool {
     (a - b).abs() < delta
@@ -535,7 +536,22 @@ pub struct CachingIsotopicModel<'lifespan> {
     cache_truncation: f64,
     inner: IsotopicModel<'lifespan>,
     cache: BTreeMap<IsotopicPatternSpec, TheoreticalIsotopicPattern>, // See TODO for [`IsotopicPatternSpec`]
+    largest_isotopic_width: Option<f64>,
 }
+
+fn isotopic_pattern_width(tid: &TheoreticalIsotopicPattern) -> f64 {
+    let peaks = &tid.peaks;
+    let n = peaks.len();
+    if n < 2 {
+        return 0.0;
+    }
+    unsafe {
+        let first = peaks.get_unchecked(0).mz;
+        let last = peaks.get_unchecked(n.saturating_sub(1)).mz;
+        last - first
+    }
+}
+
 
 impl<'lifespan: 'transient, 'transient> CachingIsotopicModel<'lifespan> {
     pub fn new<C: Into<FractionalComposition<'lifespan>>>(
@@ -546,6 +562,7 @@ impl<'lifespan: 'transient, 'transient> CachingIsotopicModel<'lifespan> {
             inner: IsotopicModel::new(base_composition),
             cache: BTreeMap::new(),
             cache_truncation,
+            largest_isotopic_width: Some(0.0),
         }
     }
 
@@ -565,16 +582,16 @@ impl<'lifespan: 'transient, 'transient> CachingIsotopicModel<'lifespan> {
         self.cache.clear();
     }
 
-    pub fn largest_isotopic_width(&self) -> f64 {
+    fn get_largest_isotopic_width(&self) -> f64 {
         self.cache
             .values()
-            .map(|p| {
-                let first = p.iter().next().map(|p| p.mz).unwrap_or_default();
-                let last = p.iter().next_back().map(|p| p.mz).unwrap_or_default();
-                last - first
-            })
+            .map(isotopic_pattern_width)
             .max_by(|a, b| a.total_cmp(b))
             .unwrap_or_default()
+    }
+
+    pub fn largest_isotopic_width(&self) -> f64 {
+        self.largest_isotopic_width.unwrap_or_else(|| self.get_largest_isotopic_width())
     }
 
     #[inline(always)]
@@ -629,21 +646,19 @@ impl<'lifespan: 'transient, 'transient> CachingIsotopicModel<'lifespan> {
         ignore_below: f64,
     ) {
         let sign = min_charge / min_charge.abs();
-        tracing::trace!("Starting isotopic cache population");
-        FloatRange::new(min_mz, max_mz, 0.1)
-            .into_iter()
-            .for_each(|mz| {
-                (min_charge.abs()..max_charge.abs()).for_each(|charge| {
-                    self.isotopic_cluster(
-                        mz,
-                        charge * sign,
-                        charge_carrier,
-                        truncate_after,
-                        ignore_below,
-                    );
-                });
-            });
-        tracing::trace!(
+        trace!("Starting isotopic cache population");
+        for mz in FloatRange::new(min_mz, max_mz, 0.1) {
+            for charge in min_charge.abs()..max_charge.abs() {
+                self.isotopic_cluster(
+                    mz,
+                    charge * sign,
+                    charge_carrier,
+                    truncate_after,
+                    ignore_below,
+                );
+            }
+        }
+        trace!(
             "Finished isotopic cache population, {} entries created",
             self.len()
         );
@@ -681,6 +696,15 @@ impl<'lifespan> IsotopicPatternGenerator for CachingIsotopicModel<'lifespan> {
                 );
                 let offset = mz - res.origin;
                 let out = ent.insert(res).clone_shifted(offset);
+                let width = isotopic_pattern_width(&out);
+                match &mut self.largest_isotopic_width {
+                    Some(w) => {
+                        *w = w.max(width);
+                    },
+                    None => {
+                        self.largest_isotopic_width = Some(width);
+                    }
+                }
                 out
             }
         }
@@ -784,6 +808,38 @@ pub enum TheoreticalIsotopicDistributionScalingMethod {
 }
 
 impl TheoreticalIsotopicDistributionScalingMethod {
+    #[inline]
+    fn find_top_3_peaks<T: IntensityMeasurement>(&self, peaks: &[T]) -> ((usize, usize, usize), (f32, f32, f32)) {
+        let mut t1_index: usize = 0;
+        let mut t2_index: usize = 0;
+        let mut t3_index: usize = 0;
+        let mut t1 = 0.0f32;
+        let mut t2 = 0.0f32;
+        let mut t3 = 0.0f32;
+
+        for (i, p) in peaks.iter().enumerate() {
+            let y = p.intensity();
+            if y > t1 {
+                t3 = t2;
+                t2 = t1;
+                t1 = y;
+                t3_index = t2_index;
+                t2_index = t1_index;
+                t1_index = i;
+            } else if y > t2 {
+                t3_index = t2_index;
+                t3 = t2;
+                t2 = y;
+                t2_index = i;
+            } else if y > t3 {
+                t3_index = i;
+                t3 = y;
+            }
+        }
+
+        ((t1_index, t2_index, t3_index), (t1, t2, t3))
+    }
+
     pub fn scale<C: CentroidLike>(
         &self,
         experimental: &[C],
@@ -806,48 +862,19 @@ impl TheoreticalIsotopicDistributionScalingMethod {
                     .max_by(|a, b| a.1.intensity().total_cmp(&b.1.intensity()))
                     .map(|(i, p)| (i, p.intensity()))
                     .unwrap();
-                // let (index, peak) = experimental
-                //     .iter()
-                //     .enumerate()
-                //     .max_by(|a, b| a.1.intensity().partial_cmp(&b.1.intensity()).unwrap())
-                //     .unwrap();
-                // let scale = peak.intensity() / experimental[index].intensity();
                 let scale = experimental[index].intensity() / theo_max;
                 theoretical
                     .iter_mut()
                     .for_each(|p| p.intensity *= scale as f64);
             }
             Self::Top3 => {
-                let mut t1_index: usize = 0;
-                let mut t2_index: usize = 0;
-                let mut t3_index: usize = 0;
-                let mut t1 = 0.0f32;
-                let mut t2 = 0.0f32;
-                let mut t3 = 0.0f32;
-
-                for (i, p) in experimental.iter().enumerate() {
-                    let y = p.intensity();
-                    if y > t1 {
-                        t3 = t2;
-                        t2 = t1;
-                        t1 = y;
-                        t3_index = t2_index;
-                        t2_index = t1_index;
-                        t1_index = i;
-                    } else if y > t2 {
-                        t3_index = t2_index;
-                        t3 = t2;
-                        t2 = y;
-                        t2_index = i;
-                    } else if y > t3 {
-                        t3_index = i;
-                        t3 = y;
-                    }
-                }
-
-                let mut scale = experimental[t1_index].intensity() / t1;
-                scale += experimental[t2_index].intensity() / t2;
-                scale += experimental[t3_index].intensity() / t3;
+                let ((t1_index, t2_index, t3_index), (t1, t2, t3)) = self.find_top_3_peaks(&theoretical.peaks);
+                let scale = unsafe {
+                    let mut scale = experimental.get_unchecked(t1_index).intensity() / t1;
+                    scale += experimental.get_unchecked(t2_index).intensity() / t2;
+                    scale += experimental.get_unchecked(t3_index).intensity() / t3;
+                    scale
+                };
                 theoretical
                     .iter_mut()
                     .for_each(|p| p.intensity *= scale as f64);

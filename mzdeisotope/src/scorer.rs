@@ -76,10 +76,7 @@ impl MSDeconvScorer {
 
         let abundance_diff = if e_int < t_int && ratio <= 1.0 {
             1.0 - ratio
-        } else if e_int >= t_int
-            && (e_int - t_int) / e_int
-                <= 1.0
-        {
+        } else if e_int >= t_int && ratio.abs() <= 1.0 {
             // These are equivalent, though the former is as-written in the original
             // 1.0 - (e_int - t_int) / e_int
             1.0 + ratio
@@ -200,16 +197,6 @@ impl ScaledGTestScorer {
             score = oi.mul_add(di, score)
         }
         2.0 * score
-
-        // 2.0 * experimental
-        //     .iter()
-        //     .zip(theoretical.iter())
-        //     .map(|(o, e)| {
-        //         let oi = o.intensity() / total_o;
-        //         let ei = e.intensity() / total_e;
-        //         (oi * (oi.ln() - ei.ln())) as ScoreType
-        //     })
-        //     .sum::<ScoreType>()
     }
 }
 

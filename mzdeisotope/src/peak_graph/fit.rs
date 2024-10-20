@@ -6,6 +6,8 @@ use std::hash::Hash;
 
 use identity_hash::{IdentityHashable, BuildIdentityHasher};
 
+use mzpeaks::coordinate::Span1D;
+
 use crate::isotopic_fit::IsotopicFit;
 use crate::peaks::PeakKey;
 use crate::scorer::ScoreType;
@@ -38,11 +40,23 @@ impl Display for FitKey {
 pub struct FitNode {
     pub key: FitKey,
     pub edges: HashSet<FitKey, BuildIdentityHasherFitKey>,
-    pub overlap_edges: HashSet<FitKey, BuildIdentityHasherFitKey>,
+    // pub overlap_edges: HashSet<FitKey, BuildIdentityHasherFitKey>,
     pub peak_indices: HashSet<PeakKey, BuildIdentityHasher<PeakKey>>,
     pub score: ScoreType,
     pub start: f64,
     pub end: f64,
+}
+
+impl Span1D for FitNode {
+    type DimType = f64;
+
+    fn start(&self) -> Self::DimType {
+        self.start
+    }
+
+    fn end(&self) -> Self::DimType {
+        self.end
+    }
 }
 
 impl FitNode {
@@ -53,7 +67,7 @@ impl FitNode {
         Self {
             key,
             score: fit.score,
-            overlap_edges: HashSet::default(),
+            // overlap_edges: HashSet::default(),
             edges: HashSet::default(),
             peak_indices,
             start,
@@ -62,7 +76,11 @@ impl FitNode {
     }
 
     pub fn is_disjoint(&self, other: &FitNode) -> bool {
-        self.peak_indices.is_disjoint(&other.peak_indices)
+        if Span1D::overlaps(&self, &other) {
+            self.peak_indices.is_disjoint(&other.peak_indices)
+        } else {
+            true
+        }
     }
 
     pub fn overlaps(&self, other: &FitNode) -> bool {
@@ -74,8 +92,8 @@ impl FitNode {
             self.edges.insert(other.key);
             other.edges.insert(self.key);
         } else {
-            self.overlap_edges.insert(other.key);
-            other.overlap_edges.insert(self.key);
+            // self.overlap_edges.insert(other.key);
+            // other.overlap_edges.insert(self.key);
         }
     }
 
@@ -275,9 +293,10 @@ impl FitGraph {
 
             let (solution, mut nodes) = subgraph.solve(method);
             // Prevent dependencies that are omitted from solution from being considered
-            cluster.dependencies.retain(|f| solution.contains(f));
+            // cluster.dependencies.retain(|f| solution.contains(f));
+            cluster.dependencies = solution.clone();
             // Re-absorb solved sub-graph
-            self.nodes.extend(nodes.drain());
+            self.nodes.extend(nodes.into_iter());
             solutions.push((cluster, solution));
         }
         solutions

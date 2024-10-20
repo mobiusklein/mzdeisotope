@@ -80,7 +80,7 @@ impl PeakDependenceGraph {
 
         match ordering {
             ScoreInterpretation::HigherIsBetter => {
-                for (_key, mut bucket) in by_peaks.drain() {
+                for (_key, mut bucket) in by_peaks {
                     if bucket.len() == 1 {
                         continue;
                     }
@@ -95,7 +95,7 @@ impl PeakDependenceGraph {
                 }
             }
             ScoreInterpretation::LowerIsBetter => {
-                for (_key, mut bucket) in by_peaks.drain() {
+                for (_key, mut bucket) in by_peaks {
                     if bucket.len() == 1 {
                         continue;
                     }
@@ -197,8 +197,8 @@ impl PeakDependenceGraph {
 
         let accepted_fits: Vec<(DependenceCluster, Vec<(FitRef, IsotopicFit)>)> = solutions
             .into_iter()
-            .map(|(cluster, sols)| {
-                let fits_of: Vec<(FitRef, IsotopicFit)> = sols
+            .map(|(cluster, _sols)| {
+                let fits_of: Vec<(FitRef, IsotopicFit)> = cluster.dependencies.iter().copied()
                     .into_iter()
                     .map(
                         |fit_ref| match self.fit_nodes.dependencies.remove(&fit_ref.key) {
@@ -222,7 +222,7 @@ impl PeakDependenceGraph {
 struct BreadFirstTraversal<'a> {
     graph: &'a PeakDependenceGraph,
     /// The fit node keys that have not yet been visited
-    nodes: HashSet<FitKey>,
+    nodes: HashSet<FitKey, BuildIdentityHasher<FitKey>>,
     /// A record of the peaks that have been visited already
     peak_mask: Vec<bool>,
 }
