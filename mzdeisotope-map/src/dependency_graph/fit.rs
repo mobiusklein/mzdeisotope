@@ -7,6 +7,7 @@ use std::{
 
 use identity_hash::{BuildIdentityHasher, IdentityHashable};
 use mzdeisotope::scorer::ScoreType;
+use mzpeaks::coordinate::Span2D;
 
 use crate::{FeatureSetFit, MapCoordinate};
 
@@ -38,11 +39,24 @@ impl Display for FitKey {
 pub struct FitNode {
     pub key: FitKey,
     pub edges: HashSet<FitKey, BuildIdentityHasherFitKey>,
-    pub overlap_edges: HashSet<FitKey, BuildIdentityHasherFitKey>,
     pub feature_indices: HashSet<FeatureKey, BuildIdentityHasher<usize>>,
     pub score: ScoreType,
     pub start: MapCoordinate,
     pub end: MapCoordinate,
+}
+
+impl Span2D for FitNode {
+    type DimType1 = f64;
+
+    type DimType2 = f64;
+
+    fn start(&self) -> (Self::DimType1, Self::DimType2) {
+        (self.start.coord, self.start.time)
+    }
+
+    fn end(&self) -> (Self::DimType1, Self::DimType2) {
+        (self.end.coord, self.end.time)
+    }
 }
 
 impl FitNode {
@@ -64,7 +78,6 @@ impl FitNode {
         Self {
             key,
             score: fit.score,
-            overlap_edges: HashSet::default(),
             edges: HashSet::default(),
             feature_indices,
             start,
@@ -73,10 +86,11 @@ impl FitNode {
     }
 
     pub fn is_disjoint(&self, other: &FitNode) -> bool {
+        // Can't use coordinate overlaps here, bounding box isn't precise
         self.feature_indices.is_disjoint(&other.feature_indices)
     }
 
-    pub fn overlaps(&self, other: &FitNode) -> bool {
+    pub fn intersects(&self, other: &FitNode) -> bool {
         !self.is_disjoint(other)
     }
 
@@ -84,9 +98,6 @@ impl FitNode {
         if self.is_disjoint(other) {
             self.edges.insert(other.key);
             other.edges.insert(self.key);
-        } else {
-            self.overlap_edges.insert(other.key);
-            other.overlap_edges.insert(self.key);
         }
     }
 

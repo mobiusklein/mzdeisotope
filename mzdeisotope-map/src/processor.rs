@@ -580,7 +580,7 @@ impl<
                 if let (Some(j), terr) = feature_to_reduce.find_time(time) {
                     if let Some((mz_at, time_at, int_at)) = feature_to_reduce.at_mut(j) {
                         if terr.abs() > 1e-3 {
-                            let terr = *time_at - time;
+                            let terr = time_at - time;
                             trace!(
                                 "Did not find a coordinate {mz_of} for {time} ({time_at} {terr} {j}) in {i} ({tstart:0.3}-{tend:0.3})",
                             );

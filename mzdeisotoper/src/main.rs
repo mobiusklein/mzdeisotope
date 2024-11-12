@@ -1,5 +1,6 @@
 use std::fs;
 use std::io;
+use std::marker::PhantomData;
 use std::path::PathBuf;
 
 use clap::Parser;
@@ -8,22 +9,50 @@ use figment::{
     Figment,
 };
 
-use tracing_subscriber::{fmt, prelude::*, EnvFilter};
+use tracing_subscriber::fmt::format::FmtSpan;
+use tracing_subscriber::{
+    field::MakeVisitor,
+    fmt::{
+        self,
+        format::{DefaultVisitor, Writer},
+    },
+    prelude::*,
+    EnvFilter,
+};
 
 use mzdeisotoper::{MZDeiosotoper, MZDeisotoperError};
 
+// See https://github.com/tokio-rs/tracing/issues/3065#issuecomment-2318179647
+struct CustomFormatter<T>{
+    _t: PhantomData<T>
+}
+
+impl<T> CustomFormatter<T> {
+    fn new() -> Self {
+        Self { _t: PhantomData }
+    }
+}
+
+impl<'a, T> MakeVisitor<Writer<'a>> for CustomFormatter<T> {
+    type Visitor = DefaultVisitor<'a>;
+
+    #[inline]
+    fn make_visitor(&self, target: Writer<'a>) -> Self::Visitor {
+        DefaultVisitor::new(target, true)
+    }
+}
+
 pub fn main() -> Result<(), MZDeisotoperError> {
-    let subscriber = tracing_subscriber::registry()
-        .with(
-            fmt::layer()
-                .with_timer(fmt::time::ChronoLocal::rfc_3339())
-                .with_writer(io::stderr)
-                .with_filter(
-                    EnvFilter::builder()
-                        .with_default_directive(tracing::Level::INFO.into())
-                        .from_env_lossy(),
-                ),
-        );
+    let subscriber = tracing_subscriber::registry().with(
+        fmt::layer()
+            .with_timer(fmt::time::ChronoLocal::rfc_3339())
+            .with_writer(io::stderr)
+            .with_filter(
+                EnvFilter::builder()
+                    .with_default_directive(tracing::Level::INFO.into())
+                    .from_env_lossy(),
+            ),
+    );
 
     let mut config = Figment::new();
     let args = MZDeiosotoper::parse();
@@ -49,6 +78,8 @@ pub fn main() -> Result<(), MZDeisotoperError> {
         let (log_file, _guard) = tracing_appender::non_blocking(log_file);
         let subscriber = subscriber.with(
             fmt::layer()
+                .fmt_fields(CustomFormatter::<fs::File>::new())
+                .with_span_events(FmtSpan::ACTIVE)
                 .with_timer(fmt::time::ChronoLocal::rfc_3339())
                 .with_ansi(false)
                 .with_writer(log_file)

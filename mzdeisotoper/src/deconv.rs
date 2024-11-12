@@ -158,6 +158,7 @@ pub fn pick_ms1_peaks(
     }
 }
 
+#[tracing::instrument(level="debug", skip(scan, _signal_processing_params))]
 pub fn pick_msn_peaks(
     scan: &mut SpectrumType,
     _signal_processing_params: &SignalParams,

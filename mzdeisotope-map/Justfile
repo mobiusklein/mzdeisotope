@@ -1,7 +1,7 @@
 set dotenv-load := true
 
 test:
-    cargo t
+    cargo t -- --nocapture
 
 docs:
     cargo doc --lib --no-deps

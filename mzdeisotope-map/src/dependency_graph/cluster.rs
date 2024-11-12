@@ -164,7 +164,7 @@ impl SubgraphSelection {
             for layer in layers.iter_mut() {
                 let mut collision = false;
                 for member in layer.iter() {
-                    if node.overlaps(member) {
+                    if node.intersects(member) {
                         collision = true;
                         break;
                     }
