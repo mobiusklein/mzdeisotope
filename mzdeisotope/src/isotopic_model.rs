@@ -395,6 +395,7 @@ impl hash::Hash for IsotopicPatternSpec {
     }
 }
 
+#[cfg(feature = "experimental-partition-key")]
 #[allow(unused)]
 mod partition {
     use super::*;
@@ -873,8 +874,9 @@ impl TheoreticalIsotopicDistributionScalingMethod {
                     let mut scale = experimental.get_unchecked(t1_index).intensity() / t1;
                     scale += experimental.get_unchecked(t2_index).intensity() / t2;
                     scale += experimental.get_unchecked(t3_index).intensity() / t3;
-                    scale
+                    scale / 3.0
                 };
+                eprintln!("Scale term: {scale}");
                 theoretical
                     .iter_mut()
                     .for_each(|p| p.intensity *= scale as f64);
@@ -953,6 +955,8 @@ impl<I: IsotopicPatternGenerator> BasePeakToMonoisotopicOffsetEstimator<I> {
 
 #[cfg(test)]
 mod test {
+    use mzpeaks::{CentroidPeak, MZPeakSetType};
+
     use super::*;
     use std::hash::{Hash, Hasher};
 
@@ -999,6 +1003,33 @@ mod test {
     }
 
     #[test]
+    fn test_scale() {
+        let mut isomod: IsotopicModel = IsotopicModels::Heparin.into();
+        let mut ref_tid = isomod.isotopic_cluster(1500.0, 2, PROTON, 0.95, 0.1);
+        ref_tid = ref_tid.scale_by(1000.0);
+        let eid: MZPeakSetType<_> = ref_tid.iter().map(|p| CentroidPeak::new(p.mz(), p.intensity(), 0)).collect();
+
+        let mut tid = isomod.isotopic_cluster(1500.0, 2, PROTON, 0.95, 0.1);
+        TheoreticalIsotopicDistributionScalingMethod::Sum.scale(eid.as_slice(), &mut tid);
+
+        let tic_ref: f32 = ref_tid.iter().map(|p| p.intensity()).sum();
+        let tic_sum: f32 = tid.iter().map(|p| p.intensity()).sum();
+        assert!((tic_ref - tic_sum).abs() < 1e-3);
+
+        let mut tid = isomod.isotopic_cluster(1500.0, 2, PROTON, 0.95, 0.1);
+        TheoreticalIsotopicDistributionScalingMethod::Max.scale(eid.as_slice(), &mut tid);
+
+        let tic_max: f32 = tid.iter().map(|p| p.intensity()).sum();
+        assert!((tic_ref - tic_max).abs() < 1e-3);
+
+        let mut tid = isomod.isotopic_cluster(1500.0, 2, PROTON, 0.95, 0.1);
+        TheoreticalIsotopicDistributionScalingMethod::Top3.scale(eid.as_slice(), &mut tid);
+
+        let tic_top3: f32 = tid.iter().map(|p| p.intensity()).sum();
+        assert!((tic_ref - tic_top3).abs() < 1e-3, "Observed TIC {tic_top3}, expected TIC {tic_ref}, delta: {}", tic_ref - tic_top3);
+    }
+
+    #[test]
     fn test_cache_key() {
         let model: CachingIsotopicModel = IsotopicModels::Peptide.into();
         let key1 = model.make_cache_key(1000.0, 2, PROTON, 0.95, 0.001);
@@ -1014,6 +1045,30 @@ mod test {
         let v1 = hasher1.finish();
         let v2 = hasher2.finish();
         assert_eq!(v1, v2);
+    }
+
+    #[test]
+    fn test_conversion_for_frac_composition() {
+        let parts = [
+            ("H", 10.667),
+            ("C", 6.0),
+            ("S", 1.333),
+            ("O", 9.0),
+            ("N", 0.667),
+        ];
+        let parts = parts.map(|(e, c)| {
+            (e.parse::<ElementSpecification>().unwrap(), c)
+        });
+        let hash_map: HashMap<_, _> = parts.clone().into_iter().collect();
+        let frac_comp: FractionalComposition = hash_map.into();
+        let hs_isomod: IsotopicModel = IsotopicModels::HeparanSulfate.into();
+        assert_eq!(hs_isomod.base_composition, frac_comp);
+
+        let frac_comp: FractionalComposition = parts.clone().into_iter().collect();
+        assert_eq!(hs_isomod.base_composition, frac_comp);
+
+        let frac_comp: FractionalComposition = parts.to_vec().into();
+        assert_eq!(hs_isomod.base_composition, frac_comp);
     }
 
     #[test]

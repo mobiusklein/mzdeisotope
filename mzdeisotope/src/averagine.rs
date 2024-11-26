@@ -4,7 +4,7 @@ use mzdeisotope::isotopic_model::{
 use std::env;
 
 fn main() {
-    let mut args = env::args().skip(2);
+    let mut args = env::args().skip(1);
     let mut model: IsotopicModel = IsotopicModels::Peptide.into();
     let mz = args
         .next()

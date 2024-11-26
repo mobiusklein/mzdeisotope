@@ -430,7 +430,7 @@ impl<C: PeakLike, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: Isot
             );
             deconvoluted_peaks.extend(fits.into_iter().map(|fit| {
                 let peak = self.make_solution_from_fit(&fit, error_tolerance);
-                self.peaks.subtract_theoretical_intensity(&fit);
+                self.subtract_theoretical_intensity(&fit);
                 peak
             }));
             let after_tic = self.peaks.tic();
@@ -840,7 +840,7 @@ impl<C: PeakLike, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: Isot
 
             deconvoluted_peaks.extend(fits.into_iter().map(|fit| {
                 let mut peak = self.make_solution_from_fit(&fit, error_tolerance);
-                self.inner.peaks.subtract_theoretical_intensity(&fit);
+                self.subtract_theoretical_intensity(&fit);
                 if i == 0 {
                     self.map_fit_to_target(&fit, &mut peak);
                 }

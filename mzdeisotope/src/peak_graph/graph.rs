@@ -53,14 +53,10 @@ impl PeakDependenceGraph {
         self.clusters.clear();
     }
 
-    pub fn add_peak(&mut self, key: PeakKey) {
-        self.peak_nodes.add_peak(key)
-    }
-
     pub fn add_fit(&mut self, fit: IsotopicFit, start: f64, end: f64) {
         let node = self.fit_nodes.add_fit(fit, start, end);
         for key in node.peak_iter() {
-            let pn = self.peak_nodes.get_or_create_mute(*key);
+            let pn = self.peak_nodes.get_or_create_mut(*key);
             pn.links.insert(node.key, node.score);
         }
     }

@@ -22,6 +22,9 @@ path = "src/averagine.rs"
 [[example]]
 name = "deisotoper"
 
+[features]
+
+experimental-partition-key = []
 
 [dependencies]
 

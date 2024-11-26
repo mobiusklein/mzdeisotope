@@ -65,12 +65,6 @@ impl PeakGraph {
         self.peak_nodes.clear();
     }
 
-    pub fn add_peak(&mut self, key: PeakKey) {
-        self.peak_nodes
-            .entry(key)
-            .or_insert_with(|| PeakNode::new(key));
-    }
-
     pub fn get(&self, key: &PeakKey) -> Option<&PeakNode> {
         self.peak_nodes.get(key)
     }
@@ -79,7 +73,7 @@ impl PeakGraph {
         self.peak_nodes.get_mut(key)
     }
 
-    pub fn get_or_create_mute(&mut self, key: PeakKey) -> &mut PeakNode {
+    pub fn get_or_create_mut(&mut self, key: PeakKey) -> &mut PeakNode {
         match self.peak_nodes.entry(key) {
             Entry::Occupied(o) => o.into_mut(),
             Entry::Vacant(v) => v.insert(PeakNode::new(key)),
