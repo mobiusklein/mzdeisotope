@@ -1,5 +1,5 @@
 test-units:
-    cargo test
+    cargo nextest run
 
 alias t := test-units
 

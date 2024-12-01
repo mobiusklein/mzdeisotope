@@ -1573,9 +1573,9 @@ dependencies = [
 
 [[package]]
 name = "mzdata"
-version = "0.36.0"
+version = "0.39.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8b07b3acac062e5066b76136fef05e1a976675fc263087c2ac1fe12afd90abab"
+checksum = "927876dbd058419e3be4479cc90d12f1007a9032d942276112334fdb1622e533"
 dependencies = [
  "base16ct",
  "base64-simd",
@@ -1587,7 +1587,6 @@ dependencies = [
  "hdf5-sys",
  "identity-hash",
  "indexmap 2.6.0",
- "lazy_static",
  "log",
  "md5",
  "mzpeaks",
