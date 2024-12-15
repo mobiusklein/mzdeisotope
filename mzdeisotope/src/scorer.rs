@@ -367,7 +367,7 @@ mod test {
     use chemical_elements::isotopic_pattern::{Peak, TheoreticalIsotopicPattern};
     use mzpeaks::CentroidPeak;
 
-    use super::{GTestScorer, MSDeconvScorer, ScaledGTestScorer};
+    use super::*;
 
     fn make_experimental_peaks() -> Vec<CentroidPeak> {
         vec![
@@ -406,33 +406,43 @@ mod test {
         )
     }
 
-    #[test]
-    fn test_msdeconv() {
+    fn eval_scorer<T: IsotopicPatternScorer>(scorer: &T) -> ScoreType {
         let eid = make_experimental_peaks();
         let tid = make_theoretical();
+        scorer.score(&eid, &tid)
+    }
 
+    #[test]
+    fn test_penalized_msdeconv() {
+        let scorer = PenalizedMSDeconvScorer::default();
+        assert_eq!(scorer.penalty_factor, 2.0);
+        let score = eval_scorer(&scorer);
+        assert!((score - 292.9601).abs() < 1e-3);
+        assert!(matches!(scorer.interpretation(), ScoreInterpretation::HigherIsBetter));
+        eprintln!("{score}");
+    }
+
+    #[test]
+    fn test_msdeconv() {
         let scorer = MSDeconvScorer::new(0.02);
-        let score = scorer.score(&eid, &tid);
+        let score = eval_scorer(&scorer);
         assert!((score - 292.960_27).abs() < 1e-3);
+        assert!(matches!(scorer.interpretation(), ScoreInterpretation::HigherIsBetter));
     }
 
     #[test]
     fn test_gtest() {
-        let eid = make_experimental_peaks();
-        let tid = make_theoretical();
-
         let scorer = GTestScorer::default();
-        let score = scorer.score(&eid, &tid);
+        let score = eval_scorer(&scorer);
         assert!((score - 1.556_16).abs() < 1e-3);
+        assert!(matches!(scorer.interpretation(), ScoreInterpretation::LowerIsBetter));
     }
 
     #[test]
     fn test_scaled_gtest() {
-        let eid = make_experimental_peaks();
-        let tid = make_theoretical();
-
         let scorer = ScaledGTestScorer::default();
-        let score = scorer.score(&eid, &tid);
+        let score = eval_scorer(&scorer);
         assert!((score - 6.593_764e-5).abs() < 1e-3);
+        assert!(matches!(scorer.interpretation(), ScoreInterpretation::LowerIsBetter));
     }
 }

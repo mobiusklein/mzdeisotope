@@ -1,4 +1,4 @@
-use std::collections::hash_map::{Entry, Iter, IterMut, Keys};
+use std::collections::hash_map::{Entry, Keys};
 use std::collections::HashMap;
 
 use identity_hash::BuildIdentityHasher;
@@ -10,6 +10,7 @@ use super::fit::FitKey;
 
 #[derive(Debug)]
 pub struct PeakNode {
+    #[allow(unused)]
     pub key: PeakKey,
     pub links: HashMap<FitKey, ScoreType, BuildIdentityHasher<usize>>,
 }
@@ -32,17 +33,6 @@ impl PeakNode {
     }
 }
 
-impl PartialEq for PeakNode {
-    fn eq(&self, other: &Self) -> bool {
-        self.key == other.key
-    }
-}
-impl Eq for PeakNode {}
-impl std::hash::Hash for PeakNode {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.key.hash(state);
-    }
-}
 
 #[derive(Debug, Default)]
 pub(crate) struct PeakGraph {
@@ -69,10 +59,6 @@ impl PeakGraph {
         self.peak_nodes.get(key)
     }
 
-    pub fn get_mut(&mut self, key: &PeakKey) -> Option<&mut PeakNode> {
-        self.peak_nodes.get_mut(key)
-    }
-
     pub fn get_or_create_mut(&mut self, key: PeakKey) -> &mut PeakNode {
         match self.peak_nodes.entry(key) {
             Entry::Occupied(o) => o.into_mut(),
@@ -80,24 +66,8 @@ impl PeakGraph {
         }
     }
 
-    pub fn len(&self) -> usize {
-        self.peak_nodes.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.peak_nodes.is_empty()
-    }
-
     pub fn keys(&self) -> Keys<PeakKey, PeakNode> {
         self.peak_nodes.keys()
-    }
-
-    pub fn iter(&self) -> Iter<PeakKey, PeakNode> {
-        self.peak_nodes.iter()
-    }
-
-    pub fn iter_mut(&mut self) -> IterMut<PeakKey, PeakNode> {
-        self.peak_nodes.iter_mut()
     }
 
     pub fn drop_fit_dependence<'a, I: Iterator<Item = &'a PeakKey>>(

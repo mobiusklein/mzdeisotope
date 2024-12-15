@@ -834,7 +834,9 @@ impl<C: PeakLike, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: Isot
                 if min_width.is_finite() {
                     let unused = self.inner.peaks.find_unused_peaks(&fits, min_width);
                     let n_masked = self.inner.peaks.mask_peaks_in_intervals(&unused);
-                    tracing::debug!("Masked {n_masked} peaks with width {min_width} on iteration {i}");
+                    tracing::debug!(
+                        "Masked {n_masked} peaks with width {min_width} on iteration {i}"
+                    );
                 }
             }
 
@@ -896,6 +898,31 @@ mod test {
     use super::*;
 
     #[test]
+    fn test_builder() {
+        let deconv: AveragineDeconvoluter = DeconvoluterBuilder::new()
+            .filter(MaximizingFitFilter::default())
+            .isotopic_model(IsotopicModels::Peptide.into())
+            .missed_peaks(3)
+            .use_quick_charge(true)
+            .scoring(MSDeconvScorer::default())
+            .create();
+
+        assert_eq!(deconv.max_missed_peaks, 3);
+        assert!(deconv.use_quick_charge());
+
+        let deconv: GraphAveragineDeconvoluter<CentroidPeak> = DeconvoluterBuilder::new()
+            .filter(MaximizingFitFilter::default())
+            .isotopic_model(IsotopicModels::Peptide.into())
+            .missed_peaks(3)
+            .use_quick_charge(true)
+            .scoring(MSDeconvScorer::default())
+            .create_graph();
+
+        assert_eq!(deconv.inner.max_missed_peaks, 3);
+        assert!(deconv.use_quick_charge());
+    }
+
+    #[test]
     fn test_mut() {
         let peaks = vec![
             CentroidPeak::new(300.0, 150.0, 0),
@@ -915,6 +942,13 @@ mod test {
         let fit1 = task.fit_theoretical_isotopic_pattern(p, 1, tol);
         let fit2 = task.fit_theoretical_isotopic_pattern(p, 2, tol);
         assert!(fit1.score > fit2.score);
+
+        let link = task.targeted_deconvolution(PeakKey::Matched(0), tol, (1, 8), 2, 2, IsotopicPatternParams::default());
+        let solution =
+            task.deconvolve(tol, (1, 8), 2, 2, IsotopicPatternParams::default(), 1e-3, 1).unwrap();
+        assert_eq!(solution.len(), 2);
+        let resolved = task.resolve_target(&solution, &link);
+        assert!(resolved.is_none());
     }
 
     #[test]
