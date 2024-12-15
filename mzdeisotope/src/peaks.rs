@@ -10,7 +10,7 @@ use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::mem;
-use std::ops::{Index, Range};
+use std::ops::Range;
 
 use identity_hash::{BuildIdentityHasher, IdentityHashable};
 
@@ -368,25 +368,6 @@ impl<C: PeakLike + IntensityMeasurementMut> WorkingPeakSet<C> {
             })
             .collect();
         spans
-    }
-}
-
-impl<C: PeakLike + IntensityMeasurementMut> Index<usize> for WorkingPeakSet<C> {
-    type Output = C;
-
-    fn index(&self, index: usize) -> &Self::Output {
-        &self.peaks[index]
-    }
-}
-
-impl<C: PeakLike + IntensityMeasurementMut> Index<PeakKey> for WorkingPeakSet<C> {
-    type Output = C;
-
-    fn index(&self, index: PeakKey) -> &Self::Output {
-        match index {
-            PeakKey::Matched(i) => self.peaks.index(i as usize),
-            PeakKey::Placeholder(i) => self.placeholders.get_key(&i),
-        }
     }
 }
 

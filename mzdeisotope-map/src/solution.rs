@@ -233,7 +233,7 @@ impl<Y0: Clone> FeatureLike<Mass, Y0> for DeconvolvedSolutionFeature<Y0> {
         <ChargedFeature<Mass, Y0> as FeatureLike<Mass, Y0>>::len(&self.inner)
     }
 
-    fn iter(&self) -> impl Iterator<Item = (&f64, &f64, &f32)> {
+    fn iter(&self) -> impl Iterator<Item = (f64, f64, f32)> {
         <ChargedFeature<Mass, Y0> as FeatureLike<Mass, Y0>>::iter(&self.inner)
     }
 }
@@ -548,9 +548,9 @@ impl BuildArrayMapFrom for DeconvolvedSolutionFeature<IonMobility> {
             summary_score_array.extend(f.score.to_le_bytes());
             f.iter().enumerate().for_each(|(j, (mass, im, inten))| {
                 acc.push((
-                    mass_charge_ratio(*mass, f.charge()),
-                    *im,
-                    *inten,
+                    mass_charge_ratio(mass, f.charge()),
+                    im,
+                    inten,
                     f.charge(),
                     f.scores[j],
                     i,

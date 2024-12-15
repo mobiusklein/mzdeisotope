@@ -1,6 +1,6 @@
 //! Types and operations on deconvolution solutions
 
-use std::{cmp, mem};
+use std::mem;
 
 use itertools::multizip;
 

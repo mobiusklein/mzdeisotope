@@ -5,9 +5,11 @@ use std::collections::btree_map::{self, BTreeMap, Entry as BEntry};
 use std::collections::hash_map::{self, Entry, HashMap};
 use std::hash;
 
-use chemical_elements::isotopic_pattern::{
-    BafflingRecursiveIsotopicPatternGenerator, TheoreticalIsotopicPattern,
+#[doc(hidden)]
+pub use chemical_elements::isotopic_pattern::{
+    BafflingRecursiveIsotopicPatternGenerator, TheoreticalIsotopicPattern, Peak as TheorteicalPeak
 };
+
 use chemical_elements::{
     neutral_mass, ChemicalComposition, ElementSpecification, PROTON as _PROTON,
 };
@@ -148,7 +150,7 @@ pub trait IsotopicPatternGenerator {
         truncate_after: f64,
         ignore_below: f64,
     ) {
-        tracing::warn!("No cache to populate");
+        tracing::trace!("No cache to populate");
     }
 
     /// Get the largest width isotopic pattern this generator has created so far.
@@ -960,6 +962,27 @@ mod test {
     use super::*;
     use std::hash::{Hash, Hasher};
 
+    macro_rules! assert_is_close {
+        ($t1:expr, $t2:expr, $tol:expr, $label:literal) => {
+            assert!(
+                ($t1 - $t2).abs() < $tol,
+                "Observed {} {}, expected {}, difference {}",
+                $label,
+                $t1,
+                $t2,
+                $t1 - $t2,
+            );
+        };
+    }
+
+    #[test]
+    fn test_fc() {
+        let model: IsotopicModel = IsotopicModels::Peptide.into();
+        assert!(model.base_composition.contains_key("C"));
+        assert_eq!(model.base_composition.get("C").copied(), Some(4.9384));
+        assert_eq!(model.base_composition.len(), 5);
+    }
+
     #[test]
     fn test_tid() {
         let mut model: IsotopicModel = IsotopicModels::Peptide.into();
@@ -1079,6 +1102,25 @@ mod test {
         assert_eq!(x, 1000.0);
         let x = model.truncate_mz(1000.1);
         assert_eq!(x, 1000.0);
+    }
+
+    #[test]
+    fn test_cache() {
+        let mut model: CachingIsotopicModel = IsotopicModels::Peptide.into();
+        assert_eq!(model.get_largest_isotopic_width(), 0.0);
+        assert!(model.is_empty());
+
+        model.populate_cache(200.0, 400.0, 2, 4, PROTON, 0.95, 0.001);
+        assert_is_close!(model.get_largest_isotopic_width(), 1.0027695470485014, 1e-6, "width");
+
+        model.clear();
+        assert_eq!(model.get_largest_isotopic_width(), 0.0);
+        assert!(model.is_empty());
+
+        let mut model: IsotopicModel = IsotopicModels::Peptide.into();
+        assert_eq!(model.largest_isotopic_width(), f64::INFINITY);
+        model.populate_cache(200.0, 400.0, 2, 4, PROTON, 0.95, 0.001);
+        assert_eq!(model.largest_isotopic_width(), f64::INFINITY);
     }
 
     #[test]

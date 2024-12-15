@@ -298,9 +298,9 @@ impl<
                 .flatten()
                 .map(|f| {
                     let pt = f.iter().next().unwrap();
-                    let start = MapCoordinate::new(*pt.0, *pt.1);
+                    let start = MapCoordinate::new(pt.0, pt.1);
                     let pt = f.iter().last().unwrap();
-                    let end = MapCoordinate::new(*pt.0, *pt.1);
+                    let end = MapCoordinate::new(pt.0, pt.1);
                     (start, end)
                 })
                 .next()
