@@ -9,73 +9,12 @@ use mzpeaks::prelude::*;
 pub type ChargeRange = (i32, i32);
 
 #[doc(hidden)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ChargeRangeV2(pub i32, pub i32);
-
-impl From<ChargeRangeV2> for ChargeRange {
-    fn from(value: ChargeRangeV2) -> Self {
-        (value.0, value.1)
-    }
-}
-
-#[doc(hidden)]
 #[derive(Debug, Clone, Copy, PartialEq, Error)]
 pub enum ChargeRangeError {
     #[error("Charge range cannot span zero")]
     ChargeCannotBeZero,
     #[error("Both min and max charge state must have the same sign")]
     SignsMustMatch,
-}
-
-impl TryFrom<(i32, i32)> for ChargeRangeV2 {
-    type Error = ChargeRangeError;
-
-    fn try_from(value: (i32, i32)) -> Result<Self, Self::Error> {
-        let (a, b) = value;
-        if a.signum() != b.signum() {
-            Err(ChargeRangeError::SignsMustMatch)
-        } else if a == 0 || b == 0 {
-            Err(ChargeRangeError::ChargeCannotBeZero)
-        } else if a.abs() < b.abs() {
-            Ok(ChargeRangeV2(a, b))
-        } else {
-            Ok(ChargeRangeV2(b, a))
-        }
-    }
-}
-
-impl ChargeRangeV2 {
-    pub fn new(low: i32, high: i32) -> Result<Self, ChargeRangeError> {
-        (low, high).try_into()
-    }
-
-    pub fn iter(&self) -> ChargeRangeIter {
-        ChargeRangeIter::new(self.0, self.1)
-    }
-
-    pub fn abs(&self) -> ChargeRangeV2 {
-        Self::new(self.0.abs(), self.1.abs()).unwrap()
-    }
-}
-
-impl IntoIterator for ChargeRangeV2 {
-    type Item = i32;
-
-    type IntoIter = ChargeRangeIter;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.iter()
-    }
-}
-
-impl IntoIterator for &ChargeRangeV2 {
-    type Item = i32;
-
-    type IntoIter = ChargeRangeIter;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.iter()
-    }
 }
 
 /// A marker trait indicating that an iterator can be used to produce charge states
@@ -131,13 +70,82 @@ impl From<ChargeRange> for ChargeRangeIter {
     }
 }
 
+impl ChargeIterator for ChargeRangeIter {}
+
+#[cfg(feature = "charge-v2")]
+mod v2 {
+    use super::*;
+
+
+#[doc(hidden)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ChargeRangeV2(pub i32, pub i32);
+
+impl From<ChargeRangeV2> for ChargeRange {
+    fn from(value: ChargeRangeV2) -> Self {
+        (value.0, value.1)
+    }
+}
+
+
+impl TryFrom<(i32, i32)> for ChargeRangeV2 {
+    type Error = ChargeRangeError;
+
+    fn try_from(value: (i32, i32)) -> Result<Self, Self::Error> {
+        let (a, b) = value;
+        if a.signum() != b.signum() {
+            Err(ChargeRangeError::SignsMustMatch)
+        } else if a == 0 || b == 0 {
+            Err(ChargeRangeError::ChargeCannotBeZero)
+        } else if a.abs() < b.abs() {
+            Ok(ChargeRangeV2(a, b))
+        } else {
+            Ok(ChargeRangeV2(b, a))
+        }
+    }
+}
+
+impl ChargeRangeV2 {
+    pub fn new(low: i32, high: i32) -> Result<Self, ChargeRangeError> {
+        (low, high).try_into()
+    }
+
+    pub fn iter(&self) -> ChargeRangeIter {
+        ChargeRangeIter::new(self.0, self.1)
+    }
+
+    pub fn abs(&self) -> ChargeRangeV2 {
+        Self::new(self.0.abs(), self.1.abs()).unwrap()
+    }
+}
+
+impl IntoIterator for ChargeRangeV2 {
+    type Item = i32;
+
+    type IntoIter = ChargeRangeIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+impl IntoIterator for &ChargeRangeV2 {
+    type Item = i32;
+
+    type IntoIter = ChargeRangeIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
 impl From<ChargeRangeV2> for ChargeRangeIter {
     fn from(value: ChargeRangeV2) -> Self {
         value.into_iter()
     }
 }
 
-impl ChargeIterator for ChargeRangeIter {}
+}
 
 /// Hoopman's [QuickCharge][1] algorithm to quickly estimate the charge states to actually try
 /// fitting a given seed peak with.
@@ -267,51 +275,18 @@ pub fn quick_charge_w<C: CentroidLike>(
     position: usize,
     charge_range: ChargeRange,
 ) -> ChargeListIter {
-    match charge_range.1 {
-        4 => quick_charge::<C, 4>(peaks, position, charge_range),
-        5 => quick_charge::<C, 5>(peaks, position, charge_range),
-        6 => quick_charge::<C, 6>(peaks, position, charge_range),
-        7 => quick_charge::<C, 7>(peaks, position, charge_range),
-        8 => quick_charge::<C, 8>(peaks, position, charge_range),
-        9 => quick_charge::<C, 9>(peaks, position, charge_range),
-        10 => quick_charge::<C, 10>(peaks, position, charge_range),
-        11 => quick_charge::<C, 11>(peaks, position, charge_range),
-        12 => quick_charge::<C, 12>(peaks, position, charge_range),
-        13 => quick_charge::<C, 13>(peaks, position, charge_range),
-        14 => quick_charge::<C, 14>(peaks, position, charge_range),
-        15 => quick_charge::<C, 15>(peaks, position, charge_range),
-        16 => quick_charge::<C, 16>(peaks, position, charge_range),
-        i if i > 16 && i < 33 => quick_charge::<C, 32>(peaks, position, charge_range),
-        i if i > 32 && i < 65 => quick_charge::<C, 64>(peaks, position, charge_range),
-        i if i > 64 && i < 129 => quick_charge::<C, 128>(peaks, position, charge_range),
-        _ => quick_charge::<C, 256>(peaks, position, charge_range),
-    }
-}
-
-#[doc(hidden)]
-#[allow(unused)]
-#[derive(Debug, Clone, Copy, Default)]
-pub(crate) enum ChargeStrategy {
-    #[default]
-    ChargeRange,
-    QuickCharge,
-}
-
-#[allow(unused)]
-impl ChargeStrategy {
-    pub fn for_peak<C: CentroidLike>(
-        &self,
-        peaks: &[C],
-        position: usize,
-        charge_range: ChargeRange,
-    ) -> Box<dyn ChargeIterator> {
-        match self {
-            ChargeStrategy::ChargeRange => {
-                Box::from(ChargeRangeIter::new(charge_range.0, charge_range.1))
+    macro_rules! match_i {
+        ($($i:literal, )*) => {
+            match charge_range.1 {
+                $($i => quick_charge::<C, $i>(peaks, position, charge_range),)*
+                i if i > 16 && i < 33 => quick_charge::<C, 32>(peaks, position, charge_range),
+                i if i > 32 && i < 65 => quick_charge::<C, 64>(peaks, position, charge_range),
+                i if i > 64 && i < 129 => quick_charge::<C, 128>(peaks, position, charge_range),
+                _ => quick_charge::<C, 256>(peaks, position, charge_range),
             }
-            ChargeStrategy::QuickCharge => Box::new(quick_charge_w(peaks, position, charge_range)),
-        }
+        };
     }
+    match_i!(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,)
 }
 
 #[cfg(test)]

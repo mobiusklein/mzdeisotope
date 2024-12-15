@@ -26,6 +26,7 @@ name = "deisotoper"
 [features]
 
 experimental-partition-key = []
+charge-v2 = []
 
 [dependencies]
 
