@@ -35,6 +35,7 @@ num-traits = "0.2"
 mzdata = { workspace = true }
 mzpeaks = { workspace = true }
 chemical_elements = { workspace = true }
+serde = { workspace = true, optional = true }
 
 tracing.workspace = true
 itertools = "0.12.0"

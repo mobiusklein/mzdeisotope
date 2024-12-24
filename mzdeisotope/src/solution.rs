@@ -23,6 +23,7 @@ pub type Envelope = Vec<MZPoint>;
 /// also carries a deconvolution score and an isotopic peak envelope recording
 /// experimental peak m/z and intensity used to fit it.
 #[derive(Debug, Default, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DeconvolvedSolutionPeak {
     /// The neutral mass of the monoisototopic peak for this ion's isotopic pattern
     pub neutral_mass: f64,
