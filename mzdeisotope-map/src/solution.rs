@@ -25,6 +25,7 @@ use mzdata::{
 };
 
 #[derive(Default, Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MZPointSeries {
     mz: Vec<f64>,
     intensity: Vec<f32>,
@@ -97,6 +98,7 @@ impl<'a> MZPointSeries {
 }
 
 #[derive(Debug, Default, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DeconvolvedSolutionFeature<Y: Clone> {
     inner: ChargedFeature<Mass, Y>,
     pub score: ScoreType,
@@ -117,6 +119,14 @@ impl<Y: Clone> DeconvolvedSolutionFeature<Y> {
             scores,
             envelope,
         }
+    }
+
+    pub fn as_inner(&self) -> &ChargedFeature<Mass, Y> {
+        &self.inner
+    }
+
+    pub fn into_inner(self) -> (ChargedFeature<Mass, Y>, Vec<ScoreType>, Box<[MZPointSeries]>) {
+        (self.inner, self.scores, self.envelope)
     }
 
     pub fn len(&self) -> usize {
@@ -179,6 +189,15 @@ impl<Y0: Clone> AsMut<ChargedFeature<Mass, Y0>> for DeconvolvedSolutionFeature<Y
 }
 
 impl<Y0: Clone> FeatureLikeMut<Mass, Y0> for DeconvolvedSolutionFeature<Y0> {
+
+    fn clear(&mut self) {
+        self.inner.clear();
+        for e in self.envelope.iter_mut() {
+            e.intensity.clear();
+            e.mz.clear();
+        }
+    }
+
     fn iter_mut(&mut self) -> impl Iterator<Item = (&mut f64, &mut f64, &mut f32)> {
         <ChargedFeature<Mass, Y0> as FeatureLikeMut<Mass, Y0>>::iter_mut(&mut self.inner)
     }
@@ -257,6 +276,12 @@ impl<Y: Clone> PartialEq for DeconvolvedSolutionFeature<Y> {
 impl<Y0: Clone> CoordinateLike<Mass> for DeconvolvedSolutionFeature<Y0> {
     fn coordinate(&self) -> f64 {
         <ChargedFeature<Mass, Y0> as CoordinateLike<Mass>>::coordinate(&self.inner)
+    }
+}
+
+impl<Y0: Clone> CoordinateLike<MZ> for DeconvolvedSolutionFeature<Y0> {
+    fn coordinate(&self) -> f64 {
+        <ChargedFeature<Mass, Y0> as CoordinateLike<MZ>>::coordinate(&self.inner)
     }
 }
 

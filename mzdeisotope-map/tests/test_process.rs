@@ -1,6 +1,8 @@
 use std::io;
 
 use mzdata::prelude::*;
+use mzdata::spectrum::bindata::BinaryArrayMap3D;
+
 use mzpeaks::feature::Feature;
 use mzpeaks::feature_map::FeatureMap;
 use mzpeaks::{Mass, Time, Tolerance, MZ};
@@ -40,8 +42,7 @@ fn prepare_feature_map() -> io::Result<FeatureMap<MZ, Time, Feature<MZ, Time>>> 
     Ok(features)
 }
 
-#[test]
-fn test_map() -> io::Result<()> {
+fn init_logging() {
     let subscriber = tracing_subscriber::registry().with(
         fmt::layer().compact().with_writer(io::stderr).with_filter(
             EnvFilter::builder()
@@ -63,6 +64,109 @@ fn test_map() -> io::Result<()> {
     //         ),
     // );
     subscriber.init();
+}
+
+#[allow(unused)]
+fn write_feature_table<'a, Y, T: FeatureLike<MZ, Y> + 'a>(
+    features: impl IntoIterator<Item = &'a T>,
+    mut writer: impl io::Write,
+) -> io::Result<()> {
+    writeln!(writer, "feature_id,mz,time,intensity")?;
+    for (i, feature) in features.into_iter().enumerate() {
+        for (x, y, z) in feature.iter() {
+            writeln!(writer, "{i},{x},{y},{z}")?
+        }
+    }
+    Ok(())
+}
+
+#[allow(unused)]
+fn write_3d_array(arrays: &BinaryArrayMap3D, mut writer: impl io::Write) -> io::Result<()> {
+    writeln!(writer, "mz,time,intensity")?;
+    for (time, arrays) in arrays.iter() {
+        let mzs = arrays.mzs()?;
+        let ints = arrays.intensities()?;
+        for (mz, int) in mzs.into_iter().copied().zip(ints.into_iter().copied()) {
+            writeln!(writer, "{mz},{time},{int}")?
+        }
+    }
+    Ok(())
+}
+
+
+
+#[test]
+fn test_map_im() -> io::Result<()> {
+    init_logging();
+
+    let sid = "merged=42926 frame=9728 scanStart=1 scanEnd=705";
+    let mut frame = mzdata::mz_read!("../test/data/20200204_BU_8B8egg_1ug_uL_7charges_60_min_Slot2-11_1_244.mzML.gz".as_ref(), reader => {
+        let mut reader = mzdata::io::Generic3DIonMobilityFrameSource::new(reader);
+        let frame: mzdata::spectrum::MultiLayerIonMobilityFrame = reader.get_frame_by_id(sid).unwrap();
+        frame
+    })?;
+
+    // write_3d_array(frame.arrays.as_ref().unwrap(), fs::File::create("./raw_arrays.csv")?)?;
+
+    frame.extract_features_simple(Tolerance::PPM(15.0), 2, 0.1, None)?;
+    frame.features.as_mut().unwrap().iter_mut().for_each(|f| {
+        let sig = f.intensity_view();
+        let mut smoothed_sig = sig.to_vec();
+        mzsignal::smooth::moving_average_dyn(&sig, &mut smoothed_sig, 3);
+        f.iter_mut().zip(smoothed_sig).for_each(|(pt, y)| {
+            *pt.2 = y;
+        });
+    });
+
+    frame.features = frame.features.as_mut().map(|fm| {
+        fm.iter().flat_map(|f| f.split_sparse(0.1)).map(|f| {
+            f.to_owned()
+        }).collect()
+    });
+
+    // mzsignal::text::write_feature_table("raw_features.txt", frame.features.as_ref().unwrap().iter())?;
+    let mut deconv = FeatureProcessor::new(
+        frame.features.clone().unwrap(),
+        CachingIsotopicModel::from(IsotopicModels::Glycopeptide),
+        PenalizedMSDeconvScorer::new(0.04, 2.0),
+        MaximizingFitFilter::new(1.0),
+        2,
+        0.02,
+        5.0,
+        true,
+    );
+
+    let params = FeatureSearchParams {
+        truncate_after: 0.95,
+        max_missed_peaks: 2,
+        threshold_scale: 0.3,
+        detection_threshold: 0.1,
+    };
+
+    let deconv_map = deconv
+        .deconvolve(Tolerance::PPM(20.0), (1, 8), 1, 1, &params, 1e-3, 10)
+        .unwrap();
+
+    // mzsignal::text::write_feature_table(
+    //     "processed_features.txt",
+    //     deconv_map.iter().map(|s| s.as_inner().as_inner().0),
+    // )?;
+
+    let features_at = deconv_map.all_features_for(3602.55817059969, Tolerance::PPM(10.0));
+    let charges: Vec<_> = features_at.iter().map(|f| f.charge()).collect();
+    assert!(charges.contains(&3));
+
+    // #[cfg(feature = "serde")]
+    // {
+    //     serde_json::to_writer_pretty(std::fs::File::create("../processed_features.json").unwrap(), &deconv_map).unwrap();
+    // }
+
+    Ok(())
+}
+
+#[test]
+fn test_map() -> io::Result<()> {
+    init_logging();
 
     let features = prepare_feature_map()?;
     tracing::debug!("{} raw features", features.len());

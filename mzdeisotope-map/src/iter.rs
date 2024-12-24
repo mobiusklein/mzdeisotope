@@ -47,7 +47,7 @@ impl<'a, Y> FeatureSetIter<'a, Y> {
         let mut start_time: f64 = 0.0;
         let mut end_time: f64 = f64::INFINITY;
 
-        features.iter().for_each(|f| {
+        for f in features.iter() {
             if let Some(f) = f {
                 if let Some(t) = f.start_time() {
                     if start_time < t {
@@ -60,7 +60,11 @@ impl<'a, Y> FeatureSetIter<'a, Y> {
                     }
                 }
             }
-        });
+        }
+
+        if end_time < start_time {
+            std::mem::swap(&mut start_time, &mut end_time);
+        }
 
         Self::new_with_time_interval(features, start_time, end_time)
     }

@@ -669,7 +669,14 @@ impl<
                         solution
                     })
                     .filter(|f| !f.is_empty())
-                    .map(|f| f.split_sparse(max_gap_size))
+                    .map(|f| {
+                        let parts = f.split_sparse(max_gap_size);
+                        if tracing::enabled!(tracing::Level::DEBUG) {
+                            let zs: Vec<_> = parts.iter().map(|p| p.len()).collect();
+                            debug!("{}@{} split into {} units of sizes {zs:?}", f.mz(), f.charge(), parts.len())
+                        }
+                        parts
+                    })
                     .flatten()
                     .filter(|fit| fit.len() >= minimum_size),
             );
@@ -697,6 +704,10 @@ impl<
         }
 
         let map = FeatureMap::new(deconvoluted_features);
+        debug!(
+            "Building merge graph over {} features",
+            map.len()
+        );
         let merger = FeatureMerger::<Y>::default();
         let map_merged =
             merger.bridge_feature_gaps(&map, Tolerance::PPM(2.0), self.maximum_time_gap);
