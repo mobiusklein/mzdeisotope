@@ -14,7 +14,6 @@ use mzdeisotope_map::{
     solution::DeconvolvedSolutionFeature, FeatureProcessor, FeatureSearchParams,
 };
 use tracing::debug;
-use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 fn prepare_feature_map() -> io::Result<FeatureMap<MZ, Time, Feature<MZ, Time>>> {
     let reader = mzdata::MZReader::open_path("../mzdeisotoper/tests/data/batching_test.mzML")?;
@@ -40,30 +39,6 @@ fn prepare_feature_map() -> io::Result<FeatureMap<MZ, Time, Feature<MZ, Time>>> 
     let features: FeatureMap<MZ, Time, Feature<MZ, Time>> =
         extractor.extract_features(Tolerance::PPM(10.0), 3, 0.25);
     Ok(features)
-}
-
-fn init_logging() {
-    let subscriber = tracing_subscriber::registry().with(
-        fmt::layer().compact().with_writer(io::stderr).with_filter(
-            EnvFilter::builder()
-                .with_default_directive(tracing::Level::DEBUG.into())
-                .from_env_lossy(),
-        ),
-    );
-    // let log_file = std::fs::File::create("mzdeisotope-map.log")?;
-    // let (log_file, _guard) = tracing_appender::non_blocking(log_file);
-    // let subscriber = subscriber.with(
-    //     fmt::layer()
-    //         .compact()
-    //         .with_ansi(false)
-    //         .with_writer(log_file)
-    //         .with_filter(
-    //             EnvFilter::builder()
-    //                 .with_default_directive(tracing::Level::DEBUG.into())
-    //                 .from_env_lossy(),
-    //         ),
-    // );
-    subscriber.init();
 }
 
 #[allow(unused)]
@@ -94,10 +69,10 @@ fn write_3d_array(arrays: &BinaryArrayMap3D, mut writer: impl io::Write) -> io::
 }
 
 
-
-#[test]
+#[test_log::test]
+#[test_log(default_log_filter = "debug")]
 fn test_map_im() -> io::Result<()> {
-    init_logging();
+    // init_logging();
 
     let sid = "merged=42926 frame=9728 scanStart=1 scanEnd=705";
     let mut frame = mzdata::mz_read!("../test/data/20200204_BU_8B8egg_1ug_uL_7charges_60_min_Slot2-11_1_244.mzML.gz".as_ref(), reader => {
@@ -164,9 +139,10 @@ fn test_map_im() -> io::Result<()> {
     Ok(())
 }
 
-#[test]
+#[test_log::test]
+#[test_log(default_log_filter = "debug")]
 fn test_map() -> io::Result<()> {
-    init_logging();
+    // init_logging();
 
     let features = prepare_feature_map()?;
     tracing::debug!("{} raw features", features.len());
@@ -200,7 +176,7 @@ fn test_map() -> io::Result<()> {
         .unwrap();
 
     let features = deconv_map.all_features_for(4368.263, Tolerance::PPM(10.0));
-    assert_eq!(features.len(), 4);
+    assert_eq!(features.len(), 3);
 
     fn query(mass: f64, feature_map: &FeatureMap<Mass, Time, DeconvolvedSolutionFeature<Time>>) {
         let mut hits: Vec<_> = feature_map

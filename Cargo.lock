@@ -1636,8 +1636,6 @@ dependencies = [
  "test-log",
  "thiserror 2.0.9",
  "tracing",
- "tracing-appender",
- "tracing-subscriber",
 ]
 
 [[package]]
