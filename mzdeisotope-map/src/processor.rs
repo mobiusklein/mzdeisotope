@@ -2,7 +2,7 @@ use chemical_elements::{isotopic_pattern::TheoreticalIsotopicPattern, neutral_ma
 
 use itertools::Itertools;
 use mzpeaks::{
-    coordinate::{CoordinateRange, Span1D},
+    coordinate::{BoundingBox, CoordinateRange, QuadTree, Span1D},
     feature::{ChargedFeature, Feature, TimeInterval},
     feature_map::FeatureMap,
     prelude::*,
@@ -94,7 +94,13 @@ pub struct FeatureProcessorBuilder<
     pub minimum_intensity: f32,
 }
 
-impl<Y: Clone + Default, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: IsotopicFitFilter> FeatureProcessorBuilder<Y, I, S, F> {
+impl<
+        Y: Clone + Default,
+        I: IsotopicPatternGenerator,
+        S: IsotopicPatternScorer,
+        F: IsotopicFitFilter,
+    > FeatureProcessorBuilder<Y, I, S, F>
+{
     pub fn feature_map(&mut self, feature_map: FeatureMap<MZ, Y, Feature<MZ, Y>>) -> &mut Self {
         self.feature_map = feature_map;
         self
@@ -124,7 +130,7 @@ impl<Y: Clone + Default, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, 
             self.minimum_size,
             self.maximum_time_gap,
             self.minimum_intensity,
-            self.prefer_multiply_charged
+            self.prefer_multiply_charged,
         )
     }
 }
@@ -601,6 +607,39 @@ impl<
         }
     }
 
+    fn find_unused_features(&self, fits: &[FeatureSetFit], min_width_mz: f64, min_width_time: f64) -> Vec<usize> {
+        let quads: QuadTree<f64, f64, BoundingBox<f64, f64>> = fits
+            .iter()
+            .map(|f| {
+                BoundingBox::new(
+                    (f.start.coord - min_width_mz, f.start.time - min_width_time),
+                    (f.end.coord + min_width_mz, f.end.time + min_width_time),
+                )
+            })
+            .collect();
+        self.feature_map
+            .iter()
+            .enumerate()
+            .filter(|(_, f)| {
+                let bb_f = BoundingBox::new(
+                    (f.mz(), f.start_time().unwrap()),
+                    (f.mz(), f.end_time().unwrap()),
+                );
+                quads.overlaps(&bb_f).is_empty()
+            })
+            .map(|(i, _)| i)
+            .collect()
+    }
+
+    fn mask_features_at(&mut self, indices_to_mask: &[usize]) {
+        for i in indices_to_mask.iter().copied() {
+            let f = &mut self.feature_map[i];
+            for (_, _, z) in f.iter_mut() {
+                *z = 1.0;
+            }
+        }
+    }
+
     fn remove_dead_points(&mut self) {
         let n_before = self.feature_map.len();
         let n_points_before: usize = self.feature_map.iter().map(|f| f.len()).sum();
@@ -671,15 +710,27 @@ impl<
                     .filter(|f| !f.is_empty())
                     .map(|f| {
                         let parts = f.split_sparse(max_gap_size);
-                        if tracing::enabled!(tracing::Level::DEBUG) {
+                        if tracing::enabled!(tracing::Level::DEBUG) && f.charge().abs() > 1 {
                             let zs: Vec<_> = parts.iter().map(|p| p.len()).collect();
-                            debug!("{}@{} split into {} units of sizes {zs:?}", f.mz(), f.charge(), parts.len())
+                            debug!(
+                                "{}@{} split into {} units of sizes {zs:?}",
+                                f.mz(),
+                                f.charge(),
+                                parts.len()
+                            )
                         }
                         parts
                     })
                     .flatten()
                     .filter(|fit| fit.len() >= minimum_size),
             );
+
+            if i == 0 {
+                let min_width_mz = self.isotopic_model.largest_isotopic_width();
+                let indices_to_mask = self.find_unused_features(&fits, min_width_mz, max_gap_size);
+                debug!("{} features unused", indices_to_mask.len());
+                self.mask_features_at(&indices_to_mask);
+            }
 
             let after_tic = self.feature_map.iter().map(|f| f.total_intensity()).sum();
             convergence_check = (before_tic - after_tic) / after_tic;
@@ -703,11 +754,11 @@ impl<
             );
         }
 
-        let map = FeatureMap::new(deconvoluted_features);
-        debug!(
-            "Building merge graph over {} features",
-            map.len()
-        );
+        let map: FeatureMap<_, _, _> = deconvoluted_features
+            .into_iter()
+            .filter(|f| self.fit_filter.test_score(f.score))
+            .collect();
+        debug!("Building merge graph over {} features", map.len());
         let merger = FeatureMerger::<Y>::default();
         let map_merged =
             merger.bridge_feature_gaps(&map, Tolerance::PPM(2.0), self.maximum_time_gap);

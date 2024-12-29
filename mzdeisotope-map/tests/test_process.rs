@@ -13,7 +13,10 @@ use mzdeisotope::scorer::{MaximizingFitFilter, PenalizedMSDeconvScorer};
 use mzdeisotope_map::{
     solution::DeconvolvedSolutionFeature, FeatureProcessor, FeatureSearchParams,
 };
+use rayon::prelude::*;
 use tracing::debug;
+
+use mzsignal::feature_statistics::FeatureTransform;
 
 fn prepare_feature_map() -> io::Result<FeatureMap<MZ, Time, Feature<MZ, Time>>> {
     let reader = mzdata::MZReader::open_path("../mzdeisotoper/tests/data/batching_test.mzML")?;
@@ -36,8 +39,12 @@ fn prepare_feature_map() -> io::Result<FeatureMap<MZ, Time, Feature<MZ, Time>>> 
             .map(|s| (s.start_time(), s.peaks.unwrap())),
     );
 
-    let features: FeatureMap<MZ, Time, Feature<MZ, Time>> =
+    let mut features: FeatureMap<MZ, Time, Feature<MZ, Time>> =
         extractor.extract_features(Tolerance::PPM(10.0), 3, 0.25);
+
+    features.iter_mut().par_bridge().for_each(|f| {
+        f.smooth(1);
+    });
     Ok(features)
 }
 
@@ -72,7 +79,6 @@ fn write_3d_array(arrays: &BinaryArrayMap3D, mut writer: impl io::Write) -> io::
 #[test_log::test]
 #[test_log(default_log_filter = "debug")]
 fn test_map_im() -> io::Result<()> {
-    // init_logging();
 
     let sid = "merged=42926 frame=9728 scanStart=1 scanEnd=705";
     let mut frame = mzdata::mz_read!("../test/data/20200204_BU_8B8egg_1ug_uL_7charges_60_min_Slot2-11_1_244.mzML.gz".as_ref(), reader => {
@@ -81,30 +87,25 @@ fn test_map_im() -> io::Result<()> {
         frame
     })?;
 
-    // write_3d_array(frame.arrays.as_ref().unwrap(), fs::File::create("./raw_arrays.csv")?)?;
+    // write_3d_array(frame.arrays.as_ref().unwrap(), std::fs::File::create("./raw_arrays.csv")?)?;
 
-    frame.extract_features_simple(Tolerance::PPM(15.0), 2, 0.1, None)?;
-    frame.features.as_mut().unwrap().iter_mut().for_each(|f| {
-        let sig = f.intensity_view();
-        let mut smoothed_sig = sig.to_vec();
-        mzsignal::smooth::moving_average_dyn(&sig, &mut smoothed_sig, 3);
-        f.iter_mut().zip(smoothed_sig).for_each(|(pt, y)| {
-            *pt.2 = y;
-        });
-    });
-
-    frame.features = frame.features.as_mut().map(|fm| {
-        fm.iter().flat_map(|f| f.split_sparse(0.1)).map(|f| {
-            f.to_owned()
-        }).collect()
-    });
+    frame.extract_features_simple(Tolerance::PPM(15.0), 2, 0.01, None)?;
+    frame.features.as_mut().map(|fmap| {
+        let mut alt = Default::default();
+        std::mem::swap(&mut alt, fmap);
+        *fmap = alt.into_iter().filter(|f| f.len() > 1).map(|mut f| {
+            f.smooth(1);
+            f
+        }).collect();
+        fmap
+    }).unwrap();
 
     // mzsignal::text::write_feature_table("raw_features.txt", frame.features.as_ref().unwrap().iter())?;
     let mut deconv = FeatureProcessor::new(
         frame.features.clone().unwrap(),
         CachingIsotopicModel::from(IsotopicModels::Glycopeptide),
         PenalizedMSDeconvScorer::new(0.04, 2.0),
-        MaximizingFitFilter::new(1.0),
+        MaximizingFitFilter::new(5.0),
         2,
         0.02,
         5.0,
@@ -119,7 +120,7 @@ fn test_map_im() -> io::Result<()> {
     };
 
     let deconv_map = deconv
-        .deconvolve(Tolerance::PPM(20.0), (1, 8), 1, 1, &params, 1e-3, 10)
+        .deconvolve(Tolerance::PPM(15.0), (1, 8), 1, 1, &params, 1e-3, 10)
         .unwrap();
 
     // mzsignal::text::write_feature_table(
@@ -141,8 +142,7 @@ fn test_map_im() -> io::Result<()> {
 
 #[test_log::test]
 #[test_log(default_log_filter = "debug")]
-fn test_map() -> io::Result<()> {
-    // init_logging();
+fn test_map_rt() -> io::Result<()> {
 
     let features = prepare_feature_map()?;
     tracing::debug!("{} raw features", features.len());

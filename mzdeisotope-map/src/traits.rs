@@ -340,7 +340,7 @@ pub trait GraphFeatureDeconvolution<Y>: FeatureIsotopicFitter<Y> {
                 }
             }
         }
-        if !holdout.is_some() && best_fit_charge == 1 {
+        if holdout.is_some() && best_fit_charge == 1 {
             for fit in holdout.unwrap() {
                 counter += 1;
                 self.add_fit_to_graph(fit);
@@ -357,7 +357,7 @@ pub trait GraphFeatureDeconvolution<Y>: FeatureIsotopicFitter<Y> {
     ) -> Result<(), DeconvolutionError> {
         let mut fits: HashMap<FitKey, FeatureSetFit, BuildIdentityHasher<FitKey>> =
             fits.into_iter().map(|(k, v)| (k.key, v)).collect();
-        for best_fit_key in cluster.iter().take(5000) {
+        for best_fit_key in cluster.iter().take(1) {
             if let Some(fit) = fits.remove(&best_fit_key.key) {
                 fit_accumulator.push(fit);
             } else {
