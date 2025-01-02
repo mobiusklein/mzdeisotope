@@ -28,7 +28,7 @@ miniz_oxide = ["mzdata/miniz_oxide"]
 
 
 [dependencies]
-mzdeisotope = { path = "../mzdeisotope", version = "0.2.2" }
+mzdeisotope = { path = "../mzdeisotope", version = "0.2.3" }
 mzdata = { workspace = true }
 mzpeaks = { workspace = true }
 
