@@ -1060,7 +1060,7 @@ mod test {
             )
             .unwrap();
 
-        assert_eq!(dpeaks.len(), 558);
+        assert_eq!(dpeaks.len(), 472);
         let best_fit = dpeaks
             .iter()
             .max_by(|a, b| a.score.partial_cmp(&b.score).unwrap())
@@ -1137,7 +1137,7 @@ mod test {
             best_fit.intensity - expected_intensity
         );
 
-        assert_eq!(dpeaks.len(), 567);
+        assert_eq!(dpeaks.len(), 469);
         Ok(())
     }
 

@@ -290,8 +290,10 @@ impl<C: PeakLike + IntensityMeasurementMut> WorkingPeakSet<C> {
             .for_each(|(e, t)| {
                 if let Some(peak) = self.get_mut(e) {
                     let threshold = peak.intensity() * PEAK_ELIMINATION_FACTOR;
+                    let eliminate_peak = t.intensity() >= threshold;
                     let new = peak.intensity() - t.intensity();
-                    if (new - threshold).abs() < 1e-3 || new < 0.0 {
+
+                    if eliminate_peak || new < 0.0 {
                         *peak.intensity_mut() = 1.0;
                     } else {
                         *peak.intensity_mut() = new;
