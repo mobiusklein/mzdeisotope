@@ -5,6 +5,7 @@ use std::mem;
 use itertools::multizip;
 
 use mzdata::spectrum::{BinaryArrayMap, BinaryDataArrayType, DataArray};
+use mzdata::utils::neutral_mass;
 use mzpeaks::peak::MZPoint;
 use mzpeaks::prelude::*;
 use mzpeaks;
@@ -137,9 +138,9 @@ impl BuildFromArrayMap for DeconvolvedSolutionPeak {
                 score_array.iter(),
                 envelopes_acc.into_iter(),
             ))
-            .map(|(neutral_mass, intensity, charge, score, envelope)| {
+            .map(|(mz, intensity, charge, score, envelope)| {
                 DeconvolvedSolutionPeak::new(
-                    *neutral_mass,
+                    neutral_mass(*mz, *charge),
                     *intensity,
                     *charge,
                     0,

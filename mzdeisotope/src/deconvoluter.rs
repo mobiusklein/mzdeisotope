@@ -1138,6 +1138,16 @@ mod test {
         );
 
         assert_eq!(dpeaks.len(), 469);
+
+        let arrays = mzdata::spectrum::bindata::BuildArrayMapFrom::as_arrays(dpeaks.as_slice());
+        let rebuild: Vec<DeconvolvedSolutionPeak> = mzdata::spectrum::bindata::BuildFromArrayMap::from_arrays(&arrays);
+        let rebuild=  MassPeakSetType::new(rebuild);
+        assert_eq!(rebuild.len(), dpeaks.len());
+
+        for (a, b) in dpeaks.iter().zip(rebuild.iter()) {
+            assert_eq!(a, b);
+        }
+
         Ok(())
     }
 
