@@ -81,6 +81,16 @@ const DECONVOLUTION_SCORE_ARRAY_NAME: &str = "deconvolution score array";
 const ISOTOPIC_ENVELOPE_ARRAY_NAME: &str = "isotopic envelopes array";
 
 impl BuildFromArrayMap for DeconvolvedSolutionPeak {
+    fn arrays_required() -> Option<Vec<ArrayType>> {
+        Some(vec![
+            ArrayType::MZArray,
+            ArrayType::IntensityArray,
+            ArrayType::ChargeArray,
+            ArrayType::nonstandard(DECONVOLUTION_SCORE_ARRAY_NAME),
+            ArrayType::nonstandard(ISOTOPIC_ENVELOPE_ARRAY_NAME)
+        ])
+    }
+
     fn try_from_arrays(arrays: &BinaryArrayMap) -> Result<Vec<Self>, ArrayRetrievalError> {
         let mz_array = arrays.mzs()?;
 
