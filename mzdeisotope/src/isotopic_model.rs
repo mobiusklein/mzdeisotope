@@ -191,6 +191,7 @@ pub fn isotopic_shift(charge: i32) -> f64 {
 
 /// A package of parameters used to generate isotopic patterns
 #[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct IsotopicPatternParams {
     /// The cumulative abundance percentage of isotopic signal to retain
     pub truncate_after: f64,
@@ -745,6 +746,7 @@ impl<'a> From<IsotopicModel<'a>> for CachingIsotopicModel<'a> {
 /// for biomolecules. Variants convert to [`IsotopicModel`]
 /// and [`CachingIsotopicModel`].
 #[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum IsotopicModels {
     Peptide,
     Glycan,
@@ -800,6 +802,7 @@ impl From<IsotopicModels> for CachingIsotopicModel<'_> {
 /// Strategies for scaling a theoretical isotopic pattern to pair with an experimental
 /// isotopic pattern expected to follow the same distribution.
 #[derive(Debug, Clone, Copy, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum TheoreticalIsotopicDistributionScalingMethod {
     #[default]
     /// Assume that the sum of all experimental peaks' intensities are contributed by the same isotopic pattern

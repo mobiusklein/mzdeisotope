@@ -27,6 +27,7 @@ name = "deisotoper"
 
 experimental-partition-key = []
 charge-v2 = []
+serde = ["dep:serde", "mzpeaks/serde"]
 
 [dependencies]
 

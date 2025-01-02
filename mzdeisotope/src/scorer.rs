@@ -9,6 +9,7 @@ use crate::isotopic_fit::IsotopicFit;
 pub type ScoreType = f32;
 
 #[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ScoreInterpretation {
     HigherIsBetter,
     LowerIsBetter,
@@ -51,6 +52,7 @@ pub trait IsotopicPatternScorer {
 ///        mass spectra of intact proteins: a combinatorial approach. Molecular & Cellular
 ///        Proteomics : MCP, 9(12), 2772–2782. <https://doi.org/10.1074/mcp.M110.002766>
 #[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MSDeconvScorer {
     /// The error tolerance term $`d`$ that scales the penalty for deviation from the theoretical m/z
     pub error_tolerance: f64,
@@ -134,6 +136,7 @@ impl IsotopicPatternScorer for MSDeconvScorer {
 ///
 /// The G statistic is on the scale of the signal used.
 #[derive(Default, Debug, Clone, Copy)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct GTestScorer {}
 
 impl GTestScorer {
@@ -178,6 +181,7 @@ impl IsotopicPatternScorer for GTestScorer {
 /// where $`o_i`$ is the intensity of the ith experimental peak and $`e_i`$ is the
 /// intensity of the ith theoretical peak.
 #[derive(Default, Debug, Clone, Copy)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ScaledGTestScorer {}
 
 impl ScaledGTestScorer {
@@ -223,6 +227,7 @@ impl IsotopicPatternScorer for ScaledGTestScorer {
 /// ```
 /// where $`w`$ is [`PenalizedMSDeconvScorer::penalty_factor`]
 #[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct PenalizedMSDeconvScorer {
     msdeconv: MSDeconvScorer,
     penalizer: ScaledGTestScorer,
@@ -298,6 +303,7 @@ pub trait IsotopicFitFilter {
 /// A [`IsotopicFitFilter`] that has a minimum score threshold and
 /// prefers larger scores. The default form uses a threshold of `0.0`.
 #[derive(Debug, Clone, Copy, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MaximizingFitFilter {
     pub threshold: ScoreType,
 }
@@ -328,6 +334,7 @@ impl IsotopicFitFilter for MaximizingFitFilter {
 /// A [`IsotopicFitFilter`] that has a maximum score threshold and
 /// prefers smaller scores. The default form uses a threshold of `1.0`.
 #[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MinimizingFitFilter {
     pub threshold: ScoreType,
 }
