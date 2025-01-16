@@ -18,7 +18,13 @@ pub enum ChargeRangeError {
 }
 
 /// A marker trait indicating that an iterator can be used to produce charge states
-pub trait ChargeIterator: Iterator<Item = i32> {}
+pub trait ChargeIterator: Iterator<Item = i32> {
+
+    /// Sets produced charge polarity
+    fn set_polarity(self, sign: i32) -> PolarityFlipChargeIterator<Self> where Self: Sized {
+        PolarityFlipChargeIterator::new(self, sign)
+    }
+}
 
 /// An iterator for a series of contiguous charge states within a range
 #[derive(Debug, Clone)]
@@ -267,6 +273,34 @@ impl From<Vec<i32>> for ChargeListIter {
 }
 
 impl ChargeIterator for std::vec::IntoIter<i32> {}
+
+pub struct PolarityFlipChargeIterator<T: ChargeIterator> {
+    iter: T,
+    sign: i32,
+}
+
+impl<T: ChargeIterator> Iterator for PolarityFlipChargeIterator<T> {
+    type Item = i32;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.next_charge()
+    }
+}
+
+impl<T: ChargeIterator> ChargeIterator for PolarityFlipChargeIterator<T> {}
+
+impl<T: ChargeIterator> PolarityFlipChargeIterator<T> {
+    pub fn new(iter: T, sign: i32) -> Self {
+        Self { iter, sign }
+    }
+
+    pub fn next_charge(&mut self) -> Option<i32> {
+        let i = self.iter.next();
+        i.map(|i| i.abs() * self.sign)
+    }
+}
+
+
 
 /// An wrapper around [`quick_charge`] which dispatches to an appropriate staticly compiled
 /// variant with minimal stack allocation.

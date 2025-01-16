@@ -1,11 +1,12 @@
-use std::io;
+#[allow(unused)]
+use std::{fs, io, io::prelude::*};
 
-use mzdata::prelude::*;
-use mzdata::spectrum::bindata::BinaryArrayMap3D;
+use mzdata::spectrum::bindata::{BinaryArrayMap3D, BuildFromArrayMap3D};
+use mzdata::{prelude::*, MzMLWriter};
 
 use mzpeaks::feature::Feature;
 use mzpeaks::feature_map::FeatureMap;
-use mzpeaks::{Mass, Time, Tolerance, MZ};
+use mzpeaks::{IonMobility, Mass, Time, Tolerance, MZ};
 use mzsignal::feature_mapping::{FeatureExtracter, FeatureExtracterType};
 
 use mzdeisotope::isotopic_model::{CachingIsotopicModel, IsotopicModels};
@@ -17,6 +18,30 @@ use rayon::prelude::*;
 use tracing::debug;
 
 use mzsignal::feature_statistics::FeatureTransform;
+
+macro_rules! assert_is_close {
+    ($t1:expr, $t2:expr, $tol:expr, $label:literal) => {
+        assert!(
+            ($t1 - $t2).abs() < $tol,
+            "Observed {} {}, expected {}, difference {}",
+            $label,
+            $t1,
+            $t2,
+            $t1 - $t2,
+        );
+    };
+    ($t1:expr, $t2:expr, $tol:expr, $label:literal, $obj:ident) => {
+        assert!(
+            ($t1 - $t2).abs() < $tol,
+            "Observed {} {}, expected {}, difference {} from {:?}",
+            $label,
+            $t1,
+            $t2,
+            $t1 - $t2,
+            $obj
+        );
+    };
+}
 
 fn prepare_feature_map() -> io::Result<FeatureMap<MZ, Time, Feature<MZ, Time>>> {
     let reader = mzdata::MZReader::open_path("../mzdeisotoper/tests/data/batching_test.mzML")?;
@@ -75,30 +100,41 @@ fn write_3d_array(arrays: &BinaryArrayMap3D, mut writer: impl io::Write) -> io::
     Ok(())
 }
 
-
 #[test_log::test]
 #[test_log(default_log_filter = "debug")]
 fn test_map_im() -> io::Result<()> {
-
     let sid = "merged=42926 frame=9728 scanStart=1 scanEnd=705";
-    let mut frame = mzdata::mz_read!("../test/data/20200204_BU_8B8egg_1ug_uL_7charges_60_min_Slot2-11_1_244.mzML.gz".as_ref(), reader => {
+
+    #[allow(unexpected_cfgs)]
+    let mut frame: mzdata::spectrum::MultiLayerIonMobilityFrame<
+        _,
+        DeconvolvedSolutionFeature<IonMobility>,
+    > = mzdata::mz_read!("../test/data/20200204_BU_8B8egg_1ug_uL_7charges_60_min_Slot2-11_1_244.mzML.gz".as_ref(), reader => {
         let mut reader = mzdata::io::Generic3DIonMobilityFrameSource::new(reader);
-        let frame: mzdata::spectrum::MultiLayerIonMobilityFrame = reader.get_frame_by_id(sid).unwrap();
+        let frame: mzdata::spectrum::MultiLayerIonMobilityFrame<_, DeconvolvedSolutionFeature<IonMobility>> = reader.get_frame_by_id(sid).unwrap();
         frame
     })?;
 
     // write_3d_array(frame.arrays.as_ref().unwrap(), std::fs::File::create("./raw_arrays.csv")?)?;
 
     frame.extract_features_simple(Tolerance::PPM(15.0), 2, 0.01, None)?;
-    frame.features.as_mut().map(|fmap| {
-        let mut alt = Default::default();
-        std::mem::swap(&mut alt, fmap);
-        *fmap = alt.into_iter().filter(|f| f.len() > 1).map(|mut f| {
-            f.smooth(1);
-            f
-        }).collect();
-        fmap
-    }).unwrap();
+    frame
+        .features
+        .as_mut()
+        .map(|fmap| {
+            let mut alt = Default::default();
+            std::mem::swap(&mut alt, fmap);
+            *fmap = alt
+                .into_iter()
+                .filter(|f| f.len() > 1)
+                .map(|mut f| {
+                    f.smooth(1);
+                    f
+                })
+                .collect();
+            fmap
+        })
+        .unwrap();
 
     // mzsignal::text::write_feature_table("raw_features.txt", frame.features.as_ref().unwrap().iter())?;
     let mut deconv = FeatureProcessor::new(
@@ -137,13 +173,85 @@ fn test_map_im() -> io::Result<()> {
     //     serde_json::to_writer_pretty(std::fs::File::create("../processed_features.json").unwrap(), &deconv_map).unwrap();
     // }
 
+    frame.deconvoluted_features = Some(deconv_map);
+
+    let mut buffer: Vec<u8> = Vec::new();
+    let write_cursor = io::Cursor::new(&mut buffer);
+
+    let mut writer = MzMLWriter::new(write_cursor);
+    writer.set_spectrum_count(1);
+    writer.write_frame(&frame)?;
+    writer.close()?;
+    drop(writer);
+
+    let read_cursor = io::Cursor::new(buffer);
+    let reader = mzdata::MZReader::open_read_seek(read_cursor)?;
+    let mut reader: mzdata::io::Generic3DIonMobilityFrameSource<
+        _,
+        _,
+        _,
+        mzpeaks::feature::Feature<MZ, IonMobility>,
+        DeconvolvedSolutionFeature<IonMobility>,
+    > = mzdata::io::Generic3DIonMobilityFrameSource::new(reader);
+    let dup_frame: mzdata::spectrum::MultiLayerIonMobilityFrame<
+        _,
+        DeconvolvedSolutionFeature<IonMobility>,
+    > = reader.get_frame_by_id(sid).unwrap();
+
+    let dup_features = FeatureMap::new(
+        DeconvolvedSolutionFeature::try_from_arrays_3d(&dup_frame.arrays.as_ref().unwrap())
+            .unwrap(),
+    );
+
+    for (fb, fa) in dup_features
+        .iter()
+        .zip(frame.deconvoluted_features.as_ref().unwrap().iter())
+    {
+        let envelope_a = fa.envelope();
+        let envelope_b = fb.envelope();
+        debug!(
+            "Comparing {:0.3}@{:0.3}/{} to {:0.3}@{:0.3}/{}",
+            fa.neutral_mass(),
+            fa.start_time().unwrap(),
+            fa.len(),
+
+            fb.neutral_mass(),
+            fb.start_time().unwrap(),
+            fb.len()
+        );
+        assert_eq!(envelope_a[0].len(), envelope_b[0].len());
+        assert_is_close!(fa.neutral_mass(), fb.neutral_mass(), 1e-3, "neutral_mass");
+        // assert_eq!(fa.len(), fb.len());
+        assert_eq!(fa.charge(), fb.charge());
+        assert_is_close!(
+            fa.start_time().unwrap(),
+            fb.start_time().unwrap(),
+            1e-3,
+            "start_time"
+        );
+        assert_is_close!(
+            fa.end_time().unwrap(),
+            fb.end_time().unwrap(),
+            1e-3,
+            "end_time"
+        );
+
+        // let key = (fa.neutral_mass(), fb.neutral_mass());
+        // for (ea, eb) in envelope_a.iter().zip(envelope_b.iter()) {
+        //     for (ia, ib) in ea.iter().zip(eb.iter()) {
+        //         assert_is_close!(ia.0, ib.0, 1e-3, "envelope_mz", key);
+        //         assert_is_close!(ia.1, ib.1, 1e-3, "envelope_im", key);
+        //         assert_is_close!(ia.2, ib.2, 1e-3, "envelope_int", key);
+        //     }
+        // }
+    }
+
     Ok(())
 }
 
 #[test_log::test]
 #[test_log(default_log_filter = "debug")]
 fn test_map_rt() -> io::Result<()> {
-
     let features = prepare_feature_map()?;
     tracing::debug!("{} raw features", features.len());
     tracing::debug!(

@@ -22,8 +22,7 @@ use tracing::{debug, trace};
 use crate::{
     dependency_graph::FeatureDependenceGraph,
     feature_fit::{FeatureSetFit, MapCoordinate},
-    solution::FeatureMerger,
-    solution::{DeconvolvedSolutionFeature, MZPointSeries},
+    solution::{reflow_feature, DeconvolvedSolutionFeature, FeatureMerger, MZPointSeries},
     traits::{
         DeconvolutionError, FeatureIsotopicFitter, FeatureMapMatch, FeatureSearchParams,
         GraphFeatureDeconvolution,
@@ -607,7 +606,12 @@ impl<
         }
     }
 
-    fn find_unused_features(&self, fits: &[FeatureSetFit], min_width_mz: f64, min_width_time: f64) -> Vec<usize> {
+    fn find_unused_features(
+        &self,
+        fits: &[FeatureSetFit],
+        min_width_mz: f64,
+        min_width_time: f64,
+    ) -> Vec<usize> {
         let quads: QuadTree<f64, f64, BoundingBox<f64, f64>> = fits
             .iter()
             .map(|f| {
@@ -760,8 +764,11 @@ impl<
             .collect();
         debug!("Building merge graph over {} features", map.len());
         let merger = FeatureMerger::<Y>::default();
-        let map_merged =
-            merger.bridge_feature_gaps(&map, Tolerance::PPM(2.0), self.maximum_time_gap);
+        let map_merged = merger
+            .bridge_feature_gaps(&map, Tolerance::PPM(2.0), self.maximum_time_gap)
+            .into_iter()
+            .map(reflow_feature)
+            .collect();
         Ok(map_merged)
     }
 }

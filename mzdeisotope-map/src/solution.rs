@@ -1,9 +1,12 @@
 use itertools::multizip;
 use mzdeisotope::{scorer::ScoreType, solution::DeconvolvedSolutionPeak};
+use num_traits::Zero;
 use std::{
     boxed::Box,
+    cmp::Ordering,
     ops::{Bound, RangeBounds},
 };
+use tracing::warn;
 
 use mzpeaks::{
     feature::{ChargedFeature, FeatureView, TimeArray},
@@ -13,15 +16,21 @@ use mzpeaks::{
     IonMobility, Mass, MZ,
 };
 
-use mzsignal::feature_mapping::graph::{ChargeAwareFeatureMerger, FeatureGraphBuilder, FeatureNode};
-
-use mzdata::spectrum::bindata::{
-    ArrayRetrievalError, ArrayType, BinaryArrayMap3D, BuildArrayMap3DFrom, BuildFromArrayMap3D, DataArray
+use mzsignal::feature_mapping::graph::{
+    ChargeAwareFeatureMerger, FeatureGraphBuilder, FeatureNode,
 };
+
 use mzdata::{
     prelude::*,
     spectrum::{BinaryArrayMap, BinaryDataArrayType},
     utils::mass_charge_ratio,
+};
+use mzdata::{
+    spectrum::bindata::{
+        ArrayRetrievalError, ArrayType, BinaryArrayMap3D, BuildArrayMap3DFrom, BuildFromArrayMap3D,
+        DataArray,
+    },
+    utils::neutral_mass,
 };
 
 #[derive(Default, Debug, Clone)]
@@ -89,6 +98,10 @@ impl<'a> MZPointSeries {
         }
     }
 
+    pub fn iter(&self) -> std::iter::Zip<std::slice::Iter<'_, f64>, std::slice::Iter<'_, f32>> {
+        self.mz.iter().zip(self.intensity.iter())
+    }
+
     pub fn as_feature_view<Y>(&'a self, time: &'a [f64]) -> FeatureView<'a, MZ, Y> {
         let start = 0;
         let end = time.len().min(self.len());
@@ -104,6 +117,12 @@ pub struct DeconvolvedSolutionFeature<Y: Clone> {
     pub score: ScoreType,
     pub scores: Vec<ScoreType>,
     envelope: Box<[MZPointSeries]>,
+}
+
+impl<Y: Clone> KnownChargeMut for DeconvolvedSolutionFeature<Y> {
+    fn charge_mut(&mut self) -> &mut i32 {
+        &mut self.inner.charge
+    }
 }
 
 impl<Y: Clone> DeconvolvedSolutionFeature<Y> {
@@ -125,7 +144,13 @@ impl<Y: Clone> DeconvolvedSolutionFeature<Y> {
         &self.inner
     }
 
-    pub fn into_inner(self) -> (ChargedFeature<Mass, Y>, Vec<ScoreType>, Box<[MZPointSeries]>) {
+    pub fn into_inner(
+        self,
+    ) -> (
+        ChargedFeature<Mass, Y>,
+        Vec<ScoreType>,
+        Box<[MZPointSeries]>,
+    ) {
         (self.inner, self.scores, self.envelope)
     }
 
@@ -159,12 +184,41 @@ impl<Y: Clone> DeconvolvedSolutionFeature<Y> {
     }
 
     pub fn push_peak(&mut self, peak: &DeconvolvedSolutionPeak, time: f64) {
+        let n_before = self.inner.len();
         self.inner.push_raw(peak.neutral_mass, time, peak.intensity);
-        self.scores.push(peak.score);
-        self.envelope
-            .iter_mut()
-            .zip(peak.envelope.iter())
-            .for_each(|(ev, pt)| ev.push(pt));
+        let did_resize = self.len() != n_before;
+        if did_resize {
+            self.scores.push(peak.score);
+            if self.envelope.is_empty() {
+                let mut env_set = Vec::new();
+                for pt in peak.envelope.iter() {
+                    let mut series = MZPointSeries::default();
+                    series.push(pt);
+                    env_set.push(series);
+                }
+                self.envelope = env_set.into_boxed_slice();
+            } else {
+                self.envelope
+                    .iter_mut()
+                    .zip(peak.envelope.iter())
+                    .for_each(|(ev, pt)| ev.push(pt));
+            }
+        } else {
+            let q = self.scores.last_mut().unwrap();
+            *q = peak.score.max(*q);
+            self.envelope
+                .iter_mut()
+                .zip(peak.envelope.iter())
+                .for_each(|(ev, pt)| {
+                    let last_int = *ev.intensity.last().unwrap();
+                    let int = last_int + pt.intensity;
+                    let last_mz = *ev.mz.last().unwrap();
+                    let mz =
+                        ((pt.mz * pt.intensity as f64) + (last_mz * last_int as f64)) / int as f64;
+                    *ev.mz.last_mut().unwrap() = mz;
+                    *ev.intensity.last_mut().unwrap() = int
+                });
+        }
     }
 
     pub fn envelope(&self) -> Vec<FeatureView<MZ, Y>> {
@@ -189,7 +243,6 @@ impl<Y0: Clone> AsMut<ChargedFeature<Mass, Y0>> for DeconvolvedSolutionFeature<Y
 }
 
 impl<Y0: Clone> FeatureLikeMut<Mass, Y0> for DeconvolvedSolutionFeature<Y0> {
-
     fn clear(&mut self) {
         self.inner.clear();
         for e in self.envelope.iter_mut() {
@@ -258,12 +311,17 @@ impl<Y0: Clone> FeatureLike<Mass, Y0> for DeconvolvedSolutionFeature<Y0> {
 }
 
 impl<Y: Clone> PartialOrd for DeconvolvedSolutionFeature<Y> {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        match self.inner.partial_cmp(&other.inner) {
-            Some(core::cmp::Ordering::Equal) => {}
-            ord => return ord,
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        if self == other {
+            return Some(Ordering::Equal);
         }
-        self.score.partial_cmp(&other.score)
+        match self.neutral_mass().total_cmp(&other.neutral_mass()) {
+            Ordering::Equal => {}
+            x => return Some(x),
+        };
+        self.start_time()
+            .partial_cmp(&other.start_time())
+            .map(|c| c.then(self.score.total_cmp(&other.score)))
     }
 }
 
@@ -482,6 +540,18 @@ impl<'a, Y: Clone> Iterator for EnvelopeIter<'a, Y> {
     }
 }
 
+// Collapse features that somehow have repeated time points
+pub(crate) fn reflow_feature<Y: Clone + Default>(feature: DeconvolvedSolutionFeature<Y>) -> DeconvolvedSolutionFeature<Y> {
+    let mut sink = DeconvolvedSolutionFeature::default();
+    *sink.charge_mut() = feature.charge();
+    sink.score = feature.score;
+
+    for (peak, time) in feature.iter_peaks() {
+        sink.push_peak(&peak, time);
+    }
+    sink
+}
+
 #[derive(Default)]
 pub struct FeatureMerger<Y: Clone + Default> {
     inner: ChargeAwareFeatureMerger<Mass, Y, DeconvolvedSolutionFeature<Y>>,
@@ -517,8 +587,10 @@ impl<Y: Clone + Default> FeatureGraphBuilder<Mass, Y, DeconvolvedSolutionFeature
                 .map(|i| features.get_item(i))
                 .collect();
             features_of.sort_by(|a, b| a.start_time().unwrap().total_cmp(&b.start_time().unwrap()));
-            let mut acc = (*features_of[0]).clone();
-            for f in &features_of[1..] {
+            let mut acc: DeconvolvedSolutionFeature<Y> = DeconvolvedSolutionFeature::default();
+            acc.inner.charge = features_of[0].charge();
+            for f in features_of.iter() {
+                acc.score = acc.score.max(f.score);
                 debug_assert_eq!(acc.charge(), f.charge());
                 for (peak, time) in f.iter_peaks() {
                     acc.push_peak(&peak, time);
@@ -531,22 +603,32 @@ impl<Y: Clone + Default> FeatureGraphBuilder<Mass, Y, DeconvolvedSolutionFeature
     }
 }
 
+const DECONVOLUTION_SCORE_ARRAY_NAME: &str = "deconvolution score array";
+const SUMMARY_SCORE_ARRAY_NAME: &str = "summary deconvolution score array";
+const ISOTOPIC_ENVELOPE_ARRAY_NAME: &str = "isotopic envelopes array";
+const FEATURE_IDENTIFIER_ARRAY_NAME: &str = "feature identifier array";
+
 impl BuildArrayMapFrom for DeconvolvedSolutionFeature<IonMobility> {
     fn arrays_included(&self) -> Option<Vec<ArrayType>> {
         Some(vec![
             ArrayType::MZArray,
             ArrayType::IntensityArray,
             ArrayType::ChargeArray,
-            ArrayType::IonMobilityArray,
-            ArrayType::nonstandard("summary deconvolution score array"),
-            ArrayType::nonstandard("deconvolution score array"),
-            ArrayType::nonstandard("feature identifier array"),
+            ArrayType::DeconvolutedIonMobilityArray,
+            ArrayType::nonstandard(SUMMARY_SCORE_ARRAY_NAME),
+            ArrayType::nonstandard(DECONVOLUTION_SCORE_ARRAY_NAME),
+            ArrayType::nonstandard(FEATURE_IDENTIFIER_ARRAY_NAME),
         ])
     }
 
     fn as_arrays(source: &[Self]) -> BinaryArrayMap {
         let m = source.len();
         let n: usize = source.iter().map(|f| f.len()).sum();
+        let n_envelope = source
+            .iter()
+            .map(|f| f.envelope.iter().map(|e| e.len() + 2).sum::<usize>())
+            .sum::<usize>()
+            * 2;
 
         let mut mz_array: Vec<u8> = Vec::with_capacity(n * BinaryDataArrayType::Float64.size_of());
 
@@ -568,8 +650,26 @@ impl BuildArrayMapFrom for DeconvolvedSolutionFeature<IonMobility> {
         let mut marker_array: Vec<u8> =
             Vec::with_capacity(n * BinaryDataArrayType::Int32.size_of());
 
+        let mut isotopic_envelope_array: Vec<u8> =
+            Vec::with_capacity(n_envelope * BinaryDataArrayType::Float32.size_of());
+
         let mut acc = Vec::with_capacity(n);
         source.iter().enumerate().for_each(|(i, f)| {
+            let envelope = &f.envelope;
+            let n_env = envelope.len() as f32;
+            let m_env = envelope.first().map(|f| f.len()).unwrap_or_default() as f32;
+
+            isotopic_envelope_array.extend_from_slice(&n_env.to_le_bytes());
+            isotopic_envelope_array.extend_from_slice(&m_env.to_le_bytes());
+            for env in envelope.iter() {
+                for (x, y) in env.iter() {
+                    isotopic_envelope_array.extend_from_slice(&((*x) as f32).to_le_bytes());
+                    isotopic_envelope_array.extend_from_slice(&(*y).to_le_bytes());
+                }
+                isotopic_envelope_array.extend_from_slice(&(0.0f32).to_le_bytes());
+                isotopic_envelope_array.extend_from_slice(&(0.0f32).to_le_bytes());
+            }
+
             summary_score_array.extend(f.score.to_le_bytes());
             f.iter().enumerate().for_each(|(j, (mass, im, inten))| {
                 acc.push((
@@ -617,24 +717,29 @@ impl BuildArrayMapFrom for DeconvolvedSolutionFeature<IonMobility> {
             charge_array,
         ));
         map.add(DataArray::wrap(
-            &ArrayType::IonMobilityArray,
+            &ArrayType::DeconvolutedIonMobilityArray,
             BinaryDataArrayType::Float64,
             ion_mobility_array,
         ));
         map.add(DataArray::wrap(
-            &ArrayType::nonstandard("summary deconvolution score array"),
+            &ArrayType::nonstandard(SUMMARY_SCORE_ARRAY_NAME),
             BinaryDataArrayType::Float32,
             summary_score_array,
         ));
         map.add(DataArray::wrap(
-            &ArrayType::nonstandard("deconvolution score array"),
+            &ArrayType::nonstandard(DECONVOLUTION_SCORE_ARRAY_NAME),
             BinaryDataArrayType::Float32,
             score_array,
         ));
         map.add(DataArray::wrap(
-            &ArrayType::nonstandard("feature identifier array"),
+            &ArrayType::nonstandard(FEATURE_IDENTIFIER_ARRAY_NAME),
             BinaryDataArrayType::Int32,
             marker_array,
+        ));
+        map.add(DataArray::wrap(
+            &ArrayType::nonstandard(ISOTOPIC_ENVELOPE_ARRAY_NAME),
+            BinaryDataArrayType::Float32,
+            isotopic_envelope_array,
         ));
 
         map
@@ -644,6 +749,18 @@ impl BuildArrayMapFrom for DeconvolvedSolutionFeature<IonMobility> {
 impl BuildArrayMap3DFrom for DeconvolvedSolutionFeature<IonMobility> {}
 
 impl BuildFromArrayMap for DeconvolvedSolutionFeature<IonMobility> {
+    fn arrays_required() -> Option<Vec<ArrayType>> {
+        Some(vec![
+            ArrayType::MZArray,
+            ArrayType::IntensityArray,
+            ArrayType::ChargeArray,
+            ArrayType::DeconvolutedIonMobilityArray,
+            ArrayType::nonstandard(SUMMARY_SCORE_ARRAY_NAME),
+            ArrayType::nonstandard(DECONVOLUTION_SCORE_ARRAY_NAME),
+            ArrayType::nonstandard(FEATURE_IDENTIFIER_ARRAY_NAME),
+        ])
+    }
+
     fn try_from_arrays(arrays: &BinaryArrayMap) -> Result<Vec<Self>, ArrayRetrievalError> {
         let arrays_3d = arrays.try_into()?;
         Self::try_from_arrays_3d(&arrays_3d)
@@ -652,7 +769,7 @@ impl BuildFromArrayMap for DeconvolvedSolutionFeature<IonMobility> {
 
 impl BuildFromArrayMap3D for DeconvolvedSolutionFeature<IonMobility> {
     fn try_from_arrays_3d(arrays: &BinaryArrayMap3D) -> Result<Vec<Self>, ArrayRetrievalError> {
-        let key = ArrayType::nonstandard("feature identifier array");
+        let key = ArrayType::nonstandard(FEATURE_IDENTIFIER_ARRAY_NAME);
         let mut n: usize = 0;
         for (_, arr) in arrays.iter() {
             if arr.is_empty() {
@@ -665,14 +782,16 @@ impl BuildFromArrayMap3D for DeconvolvedSolutionFeature<IonMobility> {
             }
         }
 
-        let score_array_key = ArrayType::nonstandard("deconvolution score array");
+        let isotopic_envelope_array_key = ArrayType::nonstandard(ISOTOPIC_ENVELOPE_ARRAY_NAME);
+        let score_array_key = ArrayType::nonstandard(DECONVOLUTION_SCORE_ARRAY_NAME);
+        let summary_score_array_key = ArrayType::nonstandard(SUMMARY_SCORE_ARRAY_NAME);
 
         if n == 0 {
             return Ok(Vec::new());
         }
 
-        let mut index = Vec::with_capacity(n);
-        index.resize(n, Self::default());
+        let mut index = Vec::with_capacity(n + 1);
+        index.resize(n + 1, Self::default());
 
         for (im, arr) in arrays.iter() {
             if arr.is_empty() {
@@ -703,15 +822,52 @@ impl BuildFromArrayMap3D for DeconvolvedSolutionFeature<IonMobility> {
                     f.inner.charge = *charge;
                 }
                 f.score += *score;
-                f.push_raw(*mz, im, *inten);
+                f.push_raw(neutral_mass(*mz, *charge), im, *inten);
                 f.scores.push(*score);
             }
         }
 
-        for f in index.iter_mut() {
-            f.score /= f.scores.len() as ScoreType;
+        if let Some(isotopic_envelopes_array) =
+            arrays.additional_arrays.get(&isotopic_envelope_array_key)
+        {
+            let mut isotopic_envelopes = Vec::new();
+            let isotopic_envelopes_array = isotopic_envelopes_array.to_f32()?;
+            let mut chunks = isotopic_envelopes_array.chunks_exact(2);
+            while let Some((n_traces, _trace_size)) = chunks.next().map(|header| {
+                let n_traces = header[0];
+                let trace_size = header[1];
+                (n_traces as usize, trace_size as usize)
+            }) {
+                let mut traces: Vec<MZPointSeries> = Vec::with_capacity(n_traces);
+                let mut current_trace = MZPointSeries::default();
+                while traces.len() < n_traces {
+                    while let Some(block) = chunks.next() {
+                        let mz = block[0] as f64;
+                        let intensity = block[1];
+                        if mz.is_zero() && intensity.is_zero() {
+                            break;
+                        }
+                        current_trace.push(MZPoint::new(mz, intensity));
+                    }
+                    if current_trace.len() == 0 {
+                        warn!("Empty trace detected");
+                    }
+                    traces.push(current_trace);
+                    current_trace = MZPointSeries::default();
+                }
+                isotopic_envelopes.push(Some(traces));
+            }
+            for (i, f) in index.iter_mut().enumerate() {
+                f.envelope = isotopic_envelopes[i].take().unwrap().into_boxed_slice();
+            }
         }
 
+        if let Some(summary_score_array) = arrays.additional_arrays.get(&summary_score_array_key) {
+            let summary_scores = summary_score_array.to_f32()?;
+            for (score, f) in summary_scores.iter().zip(index.iter_mut()) {
+                f.score = *score;
+            }
+        }
         Ok(index)
     }
 }
