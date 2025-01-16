@@ -9,7 +9,7 @@ use mzdeisotope::{
     isolation::{Coisolation, PrecursorPurityEstimator},
     scorer::{IsotopicFitFilter, IsotopicPatternScorer},
     solution::DeconvolvedSolutionPeak,
-    {DeconvolutionEngine, PeaksAndTargets},
+    DeconvolutionEngine, PeaksAndTargets,
 };
 
 use crate::{
@@ -104,7 +104,15 @@ pub fn purities_of(
     purities
 }
 
-#[tracing::instrument(level="debug", skip(scan, precursor_processing, selected_mz_ranges, signal_processing_params))]
+#[tracing::instrument(
+    level = "debug",
+    skip(
+        scan,
+        precursor_processing,
+        selected_mz_ranges,
+        signal_processing_params
+    )
+)]
 pub fn pick_ms1_peaks(
     scan: &mut SpectrumType,
     precursor_processing: &PrecursorProcessing,
@@ -158,7 +166,7 @@ pub fn pick_ms1_peaks(
     }
 }
 
-#[tracing::instrument(level="debug", skip(scan, _signal_processing_params))]
+#[tracing::instrument(level = "debug", skip(scan, _signal_processing_params))]
 pub fn pick_msn_peaks(
     scan: &mut SpectrumType,
     _signal_processing_params: &SignalParams,
@@ -243,6 +251,22 @@ pub fn deconvolution_transform<
                 signal_processing_params,
             );
 
+            let charge_range = match scan.polarity() {
+                mzdata::spectrum::ScanPolarity::Unknown
+                | mzdata::spectrum::ScanPolarity::Positive => {
+                    let (mut low, mut high) = ms1_deconv_params.charge_range;
+                    low = low.abs();
+                    high = high.abs();
+                    (low.min(high), high.max(low))
+                }
+                mzdata::spectrum::ScanPolarity::Negative => {
+                    let (mut low, mut high) = ms1_deconv_params.charge_range;
+                    low = low.abs() * -1;
+                    high = high.abs() * -1;
+                    (low.min(high), high.max(low))
+                }
+            };
+
             if let Some(peaks) = peaks {
                 let span = tracing::debug_span!(
                     "precursor deconvolution",
@@ -262,7 +286,7 @@ pub fn deconvolution_transform<
                     .deconvolute_peaks_with_targets(
                         peaks,
                         Tolerance::PPM(20.0),
-                        ms1_deconv_params.charge_range,
+                        charge_range,
                         ms1_deconv_params.max_missed_peaks,
                         &precursor_mz,
                     )
@@ -313,7 +337,26 @@ pub fn deconvolution_transform<
                 .unwrap_or(msn_deconv_params.charge_range.1);
 
             let mut msn_charge_range = msn_deconv_params.charge_range;
-            msn_charge_range.1 = msn_charge_range.1.max(precursor_charge);
+
+            if precursor_charge.abs() < msn_charge_range.1.abs() {
+                msn_charge_range.1 = precursor_charge;
+            }
+
+            msn_charge_range = match scan.polarity() {
+                mzdata::spectrum::ScanPolarity::Unknown
+                | mzdata::spectrum::ScanPolarity::Positive => {
+                    let (mut low, mut high) = msn_charge_range;
+                    low = low.abs();
+                    high = high.abs();
+                    (low.min(high), high.max(low))
+                }
+                mzdata::spectrum::ScanPolarity::Negative => {
+                    let (mut low, mut high) = msn_charge_range;
+                    low = low.abs() * -1;
+                    high = high.abs() * -1;
+                    (low.min(high), high.max(low))
+                }
+            };
 
             let peaks = pick_msn_peaks(scan, signal_processing_params);
             {
