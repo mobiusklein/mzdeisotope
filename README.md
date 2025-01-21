@@ -3,6 +3,7 @@
 ## Components
 
 - `mzdeisotope` - A Rust library with tools for deconvolution of peak lists
+- `mzdeisotope-map` - A Rust library that expands `mzdeisotope` for processing ion mobility frames and LC-MS feature maps
 - `mzdeisotoper` - An executable tool for applying the deconvolution process whole mass spectrometry data files
 
 ## Library Usage
@@ -106,6 +107,15 @@ Options:
           Print version
 ```
 
+### Input Files
+
 `mzdeisotoper` can read mzML, MGF, and if built with the `mzmlb` feature, mzMLb from the file
 system. The program can also receive mzML or MGF over STDIN, letting you pipe the output of a
 tool like `msconvert` or `curl` into it.
+
+| Format | Read Files | Read Pipe | Feature<br>Requirements |
+|:------ | ---------- | --------- | :--------------------: |
+| mzML   | :white_check_mark: | :white_check_mark: | Always |
+| MGF    | :white_check_mark: | :white_check_mark: | Always |
+| mzMLb  | :white_check_mark: | :x: | `mzmlb` |
+| Thermo | :white_check_mark: | :x: | `thermo` |

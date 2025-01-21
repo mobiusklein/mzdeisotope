@@ -67,7 +67,7 @@ fn prepare_feature_map() -> io::Result<FeatureMap<MZ, Time, Feature<MZ, Time>>> 
     let mut features: FeatureMap<MZ, Time, Feature<MZ, Time>> =
         extractor.extract_features(Tolerance::PPM(10.0), 3, 0.25);
 
-    features.iter_mut().par_bridge().for_each(|f| {
+    features.par_iter_mut().for_each(|f| {
         f.smooth(1);
     });
     Ok(features)
@@ -115,28 +115,18 @@ fn test_map_im() -> io::Result<()> {
         frame
     })?;
 
-    // write_3d_array(frame.arrays.as_ref().unwrap(), std::fs::File::create("./raw_arrays.csv")?)?;
-
     frame.extract_features_simple(Tolerance::PPM(15.0), 2, 0.01, None)?;
-    frame
+    frame.features = frame
         .features
-        .as_mut()
-        .map(|fmap| {
-            let mut alt = Default::default();
-            std::mem::swap(&mut alt, fmap);
-            *fmap = alt
-                .into_iter()
-                .filter(|f| f.len() > 1)
-                .map(|mut f| {
-                    f.smooth(1);
-                    f
-                })
-                .collect();
+        .map(|mut fmap| {
+            let vfmap: Vec<_> = fmap.into_par_iter().filter(|f| f.len() > 1).map(| mut f| {
+                f.smooth(1);
+                f
+            }).collect();
+            fmap = FeatureMap::new(vfmap);
             fmap
-        })
-        .unwrap();
+        });
 
-    // mzsignal::text::write_feature_table("raw_features.txt", frame.features.as_ref().unwrap().iter())?;
     let mut deconv = FeatureProcessor::new(
         frame.features.clone().unwrap(),
         CachingIsotopicModel::from(IsotopicModels::Glycopeptide),
@@ -159,19 +149,9 @@ fn test_map_im() -> io::Result<()> {
         .deconvolve(Tolerance::PPM(15.0), (1, 8), 1, 1, &params, 1e-3, 10)
         .unwrap();
 
-    // mzsignal::text::write_feature_table(
-    //     "processed_features.txt",
-    //     deconv_map.iter().map(|s| s.as_inner().as_inner().0),
-    // )?;
-
     let features_at = deconv_map.all_features_for(3602.55817059969, Tolerance::PPM(10.0));
     let charges: Vec<_> = features_at.iter().map(|f| f.charge()).collect();
     assert!(charges.contains(&3));
-
-    // #[cfg(feature = "serde")]
-    // {
-    //     serde_json::to_writer_pretty(std::fs::File::create("../processed_features.json").unwrap(), &deconv_map).unwrap();
-    // }
 
     frame.deconvoluted_features = Some(deconv_map);
 
@@ -214,7 +194,6 @@ fn test_map_im() -> io::Result<()> {
             fa.neutral_mass(),
             fa.start_time().unwrap(),
             fa.len(),
-
             fb.neutral_mass(),
             fb.start_time().unwrap(),
             fb.len()

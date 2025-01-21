@@ -5,6 +5,7 @@ resolver = "2"
 members = [
     # "examples/annotate_isotopic_patterns",
     "examples/high_baseline",
+    "examples/ims_map",
     "mzdeisotope",
     "mzdeisotope-map",
     "mzdeisotoper"
@@ -16,7 +17,7 @@ version = "0.2.6"
 [workspace.dependencies]
 
 mzdata = { version = ">=0.41.0", default-features = false, features = ["mzsignal", "nalgebra"] }
-mzpeaks = { version = ">=1.0.1,<1.1.0" }
+mzpeaks = { version = ">=1.0.2,<1.1.0" }
 mzsignal = { version = ">= 1.0.3,<1.1.0", default-features = false, features = ["nalgebra", "avx"] }
 chemical_elements = { version = "0.5.0", features = ['mzpeaks'] }
 

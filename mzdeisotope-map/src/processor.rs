@@ -228,11 +228,7 @@ impl<
             .enumerate();
         let mut snapped_tid: TheoreticalIsotopicPattern;
         let mut fits = Vec::new();
-        for (i, features) in fgi {
-            if i > MAX_COMBINATIONS {
-                break;
-            }
-
+        for (i, features) in fgi.take(MAX_COMBINATIONS) {
             if i % 100 == 0 && i > 0 {
                 debug!("... Considering combination {i} of {n_real} features for {mz}@{charge}");
             }
