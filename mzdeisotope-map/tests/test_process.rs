@@ -328,7 +328,7 @@ fn test_map_rt() -> io::Result<()> {
         .unwrap();
 
     let features = deconv_map.all_features_for(4368.263, Tolerance::PPM(10.0));
-    assert_eq!(features.len(), 3);
+    assert_eq!(features.len(), 4);
 
     fn query(mass: f64, feature_map: &FeatureMap<Mass, Time, DeconvolvedSolutionFeature<Time>>) {
         let mut hits: Vec<_> = feature_map

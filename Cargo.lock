@@ -1666,7 +1666,9 @@ dependencies = [
 
 [[package]]
 name = "mzdata"
-version = "0.45.0"
+version = "0.44.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d1a7bcd32a89fdbc5d026229cfe3382d03ed0857d0f269cc9e7a9d0706efc71c"
 dependencies = [
  "base16ct",
  "base64-simd",
@@ -1755,6 +1757,7 @@ dependencies = [
  "rayon",
  "serde",
  "thiserror 2.0.11",
+ "toml",
  "tracing",
  "tracing-appender",
  "tracing-log",

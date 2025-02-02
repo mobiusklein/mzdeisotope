@@ -113,6 +113,10 @@ pub struct MZDeiosotoper {
     #[arg(long = "config-file")]
     pub config_file: Option<PathBuf>,
 
+    /// Write TOML configuration to this file
+    #[arg(long)]
+    pub write_config_file: Option<PathBuf>,
+
     /// The size of the buffer for queueing writing of results to the output stream.
     ///
     /// Making this longer consumes more memory but reduces the odds of
@@ -347,6 +351,13 @@ impl MZDeiosotoper {
         );
         info!("Input: {}", self.input_file);
         info!("Output: {}", self.output_file.display());
+
+        if let Some(path) = self.write_config_file.as_ref() {
+            debug!("Writing config file to {}", path.display());
+            let config_text = toml::to_string_pretty(&self).unwrap();
+            fs::write(path, config_text)?;
+        }
+
         self.create_threadpool().install(|| self.reader_then())
     }
 

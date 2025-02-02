@@ -249,7 +249,7 @@ pub fn prepare_procesing_im<
     let (ms1_deconv_params, ms1_engine) = build_ms1_engine.join().unwrap();
     let (msn_deconv_params, msn_engine) = build_msn_engine.join().unwrap();
 
-    let mut grouper = group_iter
+    let grouper = group_iter
         .track_precursors(2.0, Tolerance::PPM(5.0))
         .enumerate()
         .take_while(|(_, g)| {
