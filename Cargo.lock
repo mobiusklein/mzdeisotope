@@ -29,6 +29,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "ahash"
+version = "0.8.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e89da841a80418a9b391ebaea17f5c112ffaaa96f621d2c285b5174da76b9011"
+dependencies = [
+ "cfg-if",
+ "once_cell",
+ "version_check",
+ "zerocopy",
+]
+
+[[package]]
 name = "aho-corasick"
 version = "1.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -634,6 +646,17 @@ dependencies = [
 
 [[package]]
 name = "displaydoc"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "adc2ab4d5a16117f9029e9a6b5e4e79f4c67f6519bc134210d4d4a04ba31f41b"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
+]
+
+[[package]]
+name = "displaydoc"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "97369cbbc041bc366949bc74d34658d6cda5621039731c6310521892a3a20ae0"
@@ -674,9 +697,9 @@ checksum = "fea41bba32d969b513997752735605054bc0dfa92b4c56bf1189f2e174be7a10"
 
 [[package]]
 name = "dotnetrawfilereader-sys"
-version = "0.4.0"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8681dac6bb5547a1a2ffb53d58d01ae0a001a81bef95abb20357eb465dc88f76"
+checksum = "8aa617a5390fd3e8459dd968086b872b89d849bc7d4a8e34b1a154bdb50b2b73"
 dependencies = [
  "include_dir",
  "netcorehost",
@@ -767,6 +790,18 @@ dependencies = [
  "cc",
  "libc",
 ]
+
+[[package]]
+name = "fallible-iterator"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2acce4a10f12dc2fb14a218589d4f1f62ef011b2d0cc4b3cb1bba8e94da14649"
+
+[[package]]
+name = "fallible-streaming-iterator"
+version = "0.1.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7360491ce676a36bf9bb3c56c1aa791658183a54d2744120f27285738d90465a"
 
 [[package]]
 name = "fastrand"
@@ -926,9 +961,27 @@ checksum = "8a9ee70c43aaf417c914396645a0fa852624801b24ebb7ae78fe8272889ac888"
 
 [[package]]
 name = "hashbrown"
+version = "0.14.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e5274423e17b7c9fc20b6e7e208532f9b19825d82dfd615708b70edd83df41f1"
+dependencies = [
+ "ahash",
+]
+
+[[package]]
+name = "hashbrown"
 version = "0.15.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bf151400ff0baff5465007dd2f3e717f3fe502074ca563069ce3a6629d07b289"
+
+[[package]]
+name = "hashlink"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6ba4ff7128dee98c7dc9794b6a411377e1404dba1c97deb8d1a55297bd25d8af"
+dependencies = [
+ "hashbrown 0.14.5",
+]
 
 [[package]]
 name = "hdf5"
@@ -947,7 +1000,7 @@ dependencies = [
  "libc",
  "lzf-sys",
  "ndarray",
- "parking_lot",
+ "parking_lot 0.11.2",
  "paste",
 ]
 
@@ -1160,7 +1213,7 @@ version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "db2fa452206ebee18c4b5c2274dbf1de17008e874b4dc4f0aea9d01ca79e4526"
 dependencies = [
- "displaydoc",
+ "displaydoc 0.2.5",
  "yoke",
  "zerofrom",
  "zerovec",
@@ -1172,7 +1225,7 @@ version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "13acbb8371917fc971be86fc8057c41a64b521c184808a698c02acc242dbf637"
 dependencies = [
- "displaydoc",
+ "displaydoc 0.2.5",
  "litemap",
  "tinystr",
  "writeable",
@@ -1185,7 +1238,7 @@ version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "01d11ac35de8e40fdeda00d9e1e9d92525f3f9d887cdd7aa81d727596788b54e"
 dependencies = [
- "displaydoc",
+ "displaydoc 0.2.5",
  "icu_locid",
  "icu_locid_transform_data",
  "icu_provider",
@@ -1205,7 +1258,7 @@ version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "19ce3e0da2ec68599d193c93d088142efd7f9c5d6fc9b803774855747dc6a84f"
 dependencies = [
- "displaydoc",
+ "displaydoc 0.2.5",
  "icu_collections",
  "icu_normalizer_data",
  "icu_properties",
@@ -1229,7 +1282,7 @@ version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "93d6020766cfc6302c15dbbc9c8778c37e62c14427cb7f6e601d849e092aeef5"
 dependencies = [
- "displaydoc",
+ "displaydoc 0.2.5",
  "icu_collections",
  "icu_locid_transform",
  "icu_properties_data",
@@ -1250,7 +1303,7 @@ version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6ed421c8a8ef78d3e2dbc98a973be2f3770cb42b606e3ab18d6237c4dfde68d9"
 dependencies = [
- "displaydoc",
+ "displaydoc 0.2.5",
  "icu_locid",
  "icu_provider_macros",
  "stable_deref_trait",
@@ -1459,6 +1512,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8355be11b20d696c8f18f6cc018c4e372165b1fa8126cef092399c9951984ffa"
 
 [[package]]
+name = "libsqlite3-sys"
+version = "0.28.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0c10584274047cb335c23d3e61bcef8e323adae7c5c8c760540f73610177fc3f"
+dependencies = [
+ "cc",
+ "pkg-config",
+ "vcpkg",
+]
+
+[[package]]
 name = "libz-sys"
 version = "1.1.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1469,6 +1533,16 @@ dependencies = [
  "libc",
  "pkg-config",
  "vcpkg",
+]
+
+[[package]]
+name = "linreg"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f8c6fd2f0b9338b6d298dbcee4b4ec2a6ec2e88dc0a5f6f92d5cecd65afdf445"
+dependencies = [
+ "displaydoc 0.1.7",
+ "num-traits",
 ]
 
 [[package]]
@@ -1556,6 +1630,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "78ca9ab1a0babb1e7d5695e3530886289c18cf2f87ec19a575a0abdce112e3a3"
 
 [[package]]
+name = "memmap2"
+version = "0.9.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fd3f7eed9d3848f8b98834af67102b720745c4ec028fcd0aa0239277e7de374f"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "mime"
 version = "0.3.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1583,9 +1666,7 @@ dependencies = [
 
 [[package]]
 name = "mzdata"
-version = "0.41.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b2ff6f5c6f039879ca86ee4fc4bd67f97f0d1f18fad6a79c3dbbbe74d5e875d7"
+version = "0.45.0"
 dependencies = [
  "base16ct",
  "base64-simd",
@@ -1603,19 +1684,22 @@ dependencies = [
  "mzsignal",
  "ndarray",
  "num-traits",
+ "parking_lot 0.12.3",
  "quick-xml",
  "rayon",
  "regex",
+ "rusqlite",
  "serde",
  "serde_json",
  "sha1",
  "thermorawfilereader",
  "thiserror 2.0.11",
+ "timsrust",
 ]
 
 [[package]]
 name = "mzdeisotope"
-version = "0.2.6"
+version = "0.2.7"
 dependencies = [
  "chemical_elements",
  "flate2",
@@ -1634,7 +1718,7 @@ dependencies = [
 
 [[package]]
 name = "mzdeisotope-map"
-version = "0.2.6"
+version = "0.2.7"
 dependencies = [
  "chemical_elements",
  "flate2",
@@ -1655,7 +1739,7 @@ dependencies = [
 
 [[package]]
 name = "mzdeisotoper"
-version = "0.2.6"
+version = "0.2.7"
 dependencies = [
  "assert_cmd",
  "clap",
@@ -1665,6 +1749,7 @@ dependencies = [
  "itertools",
  "mzdata",
  "mzdeisotope",
+ "mzdeisotope-map",
  "mzpeaks",
  "predicates",
  "rayon",
@@ -1678,20 +1763,21 @@ dependencies = [
 
 [[package]]
 name = "mzpeaks"
-version = "1.0.2"
+version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "684e4a200c8afaba33aae0820d222ef65b67b980ded188571e31c965ed3da79c"
+checksum = "c361010b79d772eca8797ef147817e66ddd5e73033135b41d741c43f9985bd26"
 dependencies = [
  "num-traits",
  "rayon",
  "serde",
+ "serde-big-array",
 ]
 
 [[package]]
 name = "mzsignal"
-version = "1.0.7"
+version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fb66ac2d5c6eb66dc5a1c6bf654020b1ff982ad3319a136a996d6ea65b2366f1"
+checksum = "5cdcea4141e3535f86ed17bf9c918d17c2582750bcdb6d3399428d5a75945365"
 dependencies = [
  "cfg-if",
  "libm",
@@ -1904,7 +1990,17 @@ checksum = "7d17b78036a60663b797adeaee46f5c9dfebb86948d1255007a1d6be0271ff99"
 dependencies = [
  "instant",
  "lock_api",
- "parking_lot_core",
+ "parking_lot_core 0.8.6",
+]
+
+[[package]]
+name = "parking_lot"
+version = "0.12.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f1bf18183cf54e8d6059647fc3063646a1801cf30896933ec2311622cc4b9a27"
+dependencies = [
+ "lock_api",
+ "parking_lot_core 0.9.10",
 ]
 
 [[package]]
@@ -1916,9 +2012,22 @@ dependencies = [
  "cfg-if",
  "instant",
  "libc",
- "redox_syscall",
+ "redox_syscall 0.2.16",
  "smallvec",
  "winapi",
+]
+
+[[package]]
+name = "parking_lot_core"
+version = "0.9.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1e401f977ab385c9e4e3ab30627d6f26d00e2c73eef317493c4ec6d468726cf8"
+dependencies = [
+ "cfg-if",
+ "libc",
+ "redox_syscall 0.5.8",
+ "smallvec",
+ "windows-targets",
 ]
 
 [[package]]
@@ -2188,6 +2297,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "redox_syscall"
+version = "0.5.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "03a862b389f93e68874fbf580b9de08dd02facb9a788ebadaf4a3fd33cf58834"
+dependencies = [
+ "bitflags 2.8.0",
+]
+
+[[package]]
 name = "regex"
 version = "1.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2288,6 +2406,20 @@ dependencies = [
  "spin",
  "untrusted",
  "windows-sys 0.52.0",
+]
+
+[[package]]
+name = "rusqlite"
+version = "0.31.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b838eba278d213a8beaf485bd313fd580ca4505a00d5871caeb1457c55322cae"
+dependencies = [
+ "bitflags 2.8.0",
+ "fallible-iterator",
+ "fallible-streaming-iterator",
+ "hashlink",
+ "libsqlite3-sys",
+ "smallvec",
 ]
 
 [[package]]
@@ -2407,6 +2539,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "02fc4265df13d6fa1d00ecff087228cc0a2b5f3c0e87e258d8b94a156e984c70"
 dependencies = [
  "serde_derive",
+]
+
+[[package]]
+name = "serde-big-array"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "11fc7cc2c76d73e0f27ee52abbd64eec84d46f370c88371120433196934e4b7f"
+dependencies = [
+ "serde",
 ]
 
 [[package]]
@@ -2663,9 +2804,9 @@ dependencies = [
 
 [[package]]
 name = "thermorawfilereader"
-version = "0.3.1"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "263307a8f6521a9aad904670c80659ad48d6e2b7d787e1f9e703ae298cbe3596"
+checksum = "23672085e9b1b63c8e0c30c71d7087f0e60b631e934014fbfba85a62daaec3da"
 dependencies = [
  "bytemuck",
  "dotnetrawfilereader-sys",
@@ -2755,12 +2896,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "timsrust"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4e6cc90c026b287bcea09d4a68231ee81dc3ec773447894134ad226fff006a20"
+dependencies = [
+ "bytemuck",
+ "linreg",
+ "memmap2",
+ "rayon",
+ "rusqlite",
+ "thiserror 1.0.69",
+ "zstd",
+]
+
+[[package]]
 name = "tinystr"
 version = "0.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9117f5d4db391c1cf6927e7bea3db74b9a1c1add8f7eda9ffd5364f40f57b82f"
 dependencies = [
- "displaydoc",
+ "displaydoc 0.2.5",
  "zerovec",
 ]
 
@@ -3466,7 +3622,7 @@ dependencies = [
  "crc32fast",
  "crossbeam-utils",
  "deflate64",
- "displaydoc",
+ "displaydoc 0.2.5",
  "flate2",
  "hmac",
  "indexmap 2.7.1",

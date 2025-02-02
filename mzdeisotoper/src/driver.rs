@@ -24,6 +24,8 @@ use tracing::{debug, info, warn};
 
 #[cfg(feature = "mzmlb")]
 use mzdata::io::mzmlb::{MzMLbReaderType, MzMLbWriterBuilder};
+#[cfg(feature = "bruker_tdf")]
+use mzdata::io::tdf::TDFSpectrumReaderType;
 #[cfg(feature = "thermo")]
 use mzdata::io::thermo::ThermoRawReaderType;
 use mzdata::io::{
@@ -40,13 +42,15 @@ use mzdeisotope::scorer::ScoreType;
 
 use crate::args::{
     make_default_ms1_deconvolution_params, make_default_msn_deconvolution_params, ArgChargeRange,
-    ArgIsotopicModels, PrecursorProcessing, SignalParams
+    ArgIsotopicModels, PrecursorProcessing, SignalParams,
 };
-use crate::proc::prepare_procesing;
-use crate::time_range::TimeRange;
-use crate::types::{CPeak, DPeak, SpectrumType, BUFFER_SIZE};
-use crate::write::collate_results_spectra;
-use crate::write::write_output_spectra;
+use crate::{
+    make_default_ms1_feature_extraction_params, make_default_msn_feature_extraction_params,
+    proc::{prepare_procesing, prepare_procesing_im},
+    time_range::TimeRange,
+    types::{CFeature, CPeak, DFeature, DPeak, FrameType, SpectrumType, BUFFER_SIZE},
+    write::{collate_results_spectra, write_output_frames, write_output_spectra},
+};
 
 fn non_negative_float_f32(s: &str) -> Result<f32, String> {
     let value = s.parse::<f32>().map_err(|e| e.to_string())?;
@@ -69,8 +73,16 @@ pub enum MZDeisotoperError {
     FormatUnknownOrNotSupportedError(String, MassSpectrometryFormat),
     #[error("The input file format from STDIN was either unknown or not supported ({0:?})")]
     FormatUnknownOrNotSupportedErrorStdIn(MassSpectrometryFormat),
+
     #[error("The output file format for {0} was either unknown or not supported ({1:?})")]
     OutputFormatUnknownOrNotSupportedError(String, MassSpectrometryFormat),
+
+    #[error("The input file format does not support ion mobility when it was requested")]
+    FormatDoesNotSupportIonMobility(MassSpectrometryFormat),
+    #[error(
+        "The input file {0} in {1} format did not contain ion mobility data when it was requested"
+    )]
+    FileDoesNotContainIonMobility(String, MassSpectrometryFormat),
 }
 
 /// Deisotoping and charge state deconvolution of mass spectrometry files.
@@ -196,6 +208,10 @@ If a stop is not specified, processing stops at the end of the run.
         help = "Specifies additional granular information about low-level signal processing operations"
     )]
     pub signal_params: SignalParams,
+
+    /// Whether to use the ion mobility framing algorithm
+    #[arg(short = 'q', long, default_value_t = false)]
+    pub ion_mobility_deconvolution: bool,
 }
 
 impl MZDeiosotoper {
@@ -242,10 +258,7 @@ impl MZDeiosotoper {
             "ms1_averaging_range",
             self.ms1_averaging_range,
         ));
-        processing.add_param(Param::new_key_value(
-            "ms1_denoising",
-            self.ms1_denoising,
-        ));
+        processing.add_param(Param::new_key_value("ms1_denoising", self.ms1_denoising));
         for m in self.ms1_isotopic_model.iter() {
             processing.add_param(Param::new_key_value("ms1_isotopic_model", m.to_string()));
         }
@@ -377,10 +390,16 @@ impl MZDeiosotoper {
                 }
             }
         } else {
+            debug!("Inferring format from {}", self.input_file);
             let (ms_format, compressed) = infer_format(&self.input_file)?;
             debug!("Detected {ms_format:?} from path (compressed? {compressed})");
             match ms_format {
                 MassSpectrometryFormat::MGF => {
+                    if self.ion_mobility_deconvolution {
+                        return Err(MZDeisotoperError::FormatDoesNotSupportIonMobility(
+                            ms_format,
+                        ));
+                    }
                     if compressed {
                         let fh = RestartableGzDecoder::new(io::BufReader::new(fs::File::open(
                             &self.input_file,
@@ -399,13 +418,39 @@ impl MZDeiosotoper {
                         let fh = RestartableGzDecoder::new(io::BufReader::new(fs::File::open(
                             &self.input_file,
                         )?));
-                        let reader = StreamingSpectrumIterator::new(MzMLReaderType::new(fh));
-                        let spectrum_count = Some(reader.len() as u64);
-                        self.writer_then(reader, spectrum_count)?;
+                        if self.ion_mobility_deconvolution {
+                            let reader: MzMLReaderType<
+                                RestartableGzDecoder<io::BufReader<fs::File>>,
+                                CPeak,
+                                DPeak,
+                            > = MzMLReaderType::new_indexed(fh);
+                            let reader = reader.into_frame_source();
+                            let spectrum_count = reader.spectrum_count_hint();
+                            self.writer_ion_mobility(reader, spectrum_count)?;
+                        } else {
+                            let reader = StreamingSpectrumIterator::new(MzMLReaderType::new(fh));
+                            let spectrum_count = Some(reader.len() as u64);
+                            self.writer_then(reader, spectrum_count)?;
+                        }
                     } else {
                         let reader = MzMLReaderType::open_path(self.input_file.clone())?;
-                        let spectrum_count = Some(reader.len() as u64);
-                        self.writer_then(reader, spectrum_count)?;
+                        if self.ion_mobility_deconvolution {
+                            match reader.try_into_frame_source::<CFeature, DFeature>() {
+                                Ok(reader) => {
+                                    let spectrum_count = reader.spectrum_count_hint();
+                                    self.writer_ion_mobility(reader, spectrum_count)?;
+                                }
+                                Err(_) => {
+                                    return Err(MZDeisotoperError::FileDoesNotContainIonMobility(
+                                        self.input_file.clone(),
+                                        ms_format,
+                                    ))
+                                }
+                            }
+                        } else {
+                            let spectrum_count = Some(reader.len() as u64);
+                            self.writer_then(reader, spectrum_count)?;
+                        }
                     }
                 }
                 #[cfg(feature = "mzmlb")]
@@ -419,6 +464,27 @@ impl MZDeiosotoper {
                     let reader = ThermoRawReaderType::open_path(self.input_file.clone())?;
                     let spectrum_count = Some(reader.len() as u64);
                     self.writer_then(reader, spectrum_count)?;
+                }
+                #[cfg(feature = "bruker_tdf")]
+                MassSpectrometryFormat::BrukerTDF => {
+                    let reader: TDFSpectrumReaderType<CFeature, DFeature, CPeak, DPeak> =
+                        TDFSpectrumReaderType::open_path(self.input_file.clone())?;
+                    if self.ion_mobility_deconvolution {
+                        match reader.try_into_frame_source::<CFeature, DFeature>() {
+                            Ok(reader) => {
+                                let spectrum_count = reader.spectrum_count_hint();
+                                self.writer_ion_mobility(reader, spectrum_count)?;
+                            }
+                            Err(_) => {
+                                return Err(MZDeisotoperError::FileDoesNotContainIonMobility(
+                                    self.input_file.clone(),
+                                    ms_format,
+                                ))
+                            }
+                        }
+                    } else {
+                        todo!("Handling of TDF data without ion mobility not yet implemented")
+                    }
                 }
                 _ => {
                     return Err(MZDeisotoperError::FormatUnknownOrNotSupportedError(
@@ -515,6 +581,75 @@ impl MZDeiosotoper {
         Ok(())
     }
 
+    fn writer_ion_mobility<
+        R: RandomAccessIonMobilityFrameIterator<CFeature, DFeature, FrameType>
+            + MSDataFileMetadata
+            + Send
+            + 'static,
+    >(
+        &self,
+        reader: R,
+        spectrum_count: Option<u64>,
+    ) -> Result<(), MZDeisotoperError> {
+        if self.output_file == PathBuf::from("-") {
+            let outfile = io::stdout();
+            let mut writer = MzMLWriterType::<_, CPeak, DPeak>::new(outfile);
+            writer.copy_metadata_from(&reader);
+            self.update_data_processing(&mut writer);
+            if let Some(spectrum_count) = spectrum_count {
+                writer.set_spectrum_count(spectrum_count);
+            }
+            self.run_workflow_ion_mobility(reader, writer, MassSpectrometryFormat::MzML)?;
+        } else {
+            let (ms_format, compressed) = infer_from_path(&self.output_file);
+            match ms_format {
+                MassSpectrometryFormat::MGF => {
+                    todo!("Have not implemented ion mobility writing for MGF");
+                    // let handle = io::BufWriter::new(fs::File::create(self.output_file.clone())?);
+                    // if compressed {
+                    //     let encoder = GzEncoder::new(handle, Compression::best());
+                    //     let writer = MGFWriterType::new(encoder);
+                    //     self.run_workflow_ion_mobility(reader, writer, MassSpectrometryFormat::MGF)?
+                    // } else {
+                    //     let writer = MGFWriterType::new(handle);
+                    //     self.run_workflow_ion_mobility(reader, writer, MassSpectrometryFormat::MGF)?
+                    // }
+                }
+                MassSpectrometryFormat::MzML => {
+                    let handle = io::BufWriter::new(fs::File::create(self.output_file.clone())?);
+                    if compressed {
+                        let encoder = GzEncoder::new(handle, Compression::best());
+                        let mut writer = MzMLWriterType::new(encoder);
+                        writer.copy_metadata_from(&reader);
+                        self.update_data_processing(&mut writer);
+                        if let Some(spectrum_count) = spectrum_count {
+                            writer.set_spectrum_count(spectrum_count);
+                        }
+                        self.run_workflow_ion_mobility(
+                            reader,
+                            writer,
+                            MassSpectrometryFormat::MzML,
+                        )?;
+                    } else {
+                        let mut writer = MzMLWriterType::new(handle);
+                        writer.copy_metadata_from(&reader);
+                        self.update_data_processing(&mut writer);
+                        if let Some(spectrum_count) = spectrum_count {
+                            writer.set_spectrum_count(spectrum_count);
+                        }
+                        self.run_workflow_ion_mobility(
+                            reader,
+                            writer,
+                            MassSpectrometryFormat::MzML,
+                        )?;
+                    }
+                }
+                _ => {}
+            }
+        }
+        Ok(())
+    }
+
     fn run_workflow<
         R: RandomAccessSpectrumIterator<CPeak, DPeak, SpectrumType>
             + MSDataFileMetadata
@@ -528,8 +663,6 @@ impl MZDeiosotoper {
         writer_format: MassSpectrometryFormat,
     ) -> io::Result<()> {
         let buffer_size = self.write_buffer_size;
-        let (send_solved, recv_solved) = bounded(buffer_size);
-        let (send_collated, recv_collated) = bounded(buffer_size);
 
         let mut signal_params = self.signal_params.clone();
         let mut ms1_args = make_default_ms1_deconvolution_params();
@@ -569,6 +702,10 @@ impl MZDeiosotoper {
         let precursor_processing = self.precursor_processing;
 
         let start = Instant::now();
+
+        let (send_solved, recv_solved) = bounded(buffer_size);
+        let (send_collated, recv_collated) = bounded(buffer_size);
+
         let read_task = thread::spawn(move || {
             prepare_procesing(
                 reader,
@@ -625,6 +762,119 @@ impl MZDeiosotoper {
         if (elapsed.as_secs_f64() - processing_elapsed.as_secs_f64()) > 2.0 {
             info!("Total Elapsed Time: {:0.3?}", elapsed);
         }
+        Ok(())
+    }
+
+    fn run_workflow_ion_mobility<
+        R: RandomAccessIonMobilityFrameIterator<CFeature, DFeature, FrameType>
+            + MSDataFileMetadata
+            + Send
+            + 'static,
+        W: IonMobilityFrameWriter<CFeature, DFeature> + SpectrumWriter<CPeak, DPeak> + Send + 'static,
+    >(
+        &self,
+        reader: R,
+        writer: W,
+        writer_format: MassSpectrometryFormat,
+    ) -> io::Result<()> {
+        let buffer_size = self.write_buffer_size;
+        info!("Running ion mobility frame workflow");
+
+        let mut signal_params = self.signal_params.clone();
+        let mut ms1_args = make_default_ms1_deconvolution_params();
+        let mut msn_args = make_default_msn_deconvolution_params();
+        ms1_args.mz_range = signal_params.mz_range;
+        msn_args.mz_range = signal_params.mz_range;
+
+        ms1_args.fit_filter.threshold = self.ms1_score_threshold;
+        ms1_args.isotopic_model = self
+            .ms1_isotopic_model
+            .iter()
+            .map(|it| it.clone().into())
+            .collect();
+        ms1_args.charge_range = self.charge_range.into();
+        ms1_args.max_missed_peaks = self.ms1_missed_peaks;
+
+        msn_args.fit_filter.threshold = self.msn_score_threshold;
+        msn_args.isotopic_model = self
+            .msn_isotopic_model
+            .iter()
+            .map(|it| it.clone().into())
+            .collect();
+        msn_args.charge_range = self.charge_range.into();
+        msn_args.max_missed_peaks = self.msn_missed_peaks;
+
+        signal_params.ms1_averaging = self.ms1_averaging_range as usize;
+        signal_params.ms1_denoising = self.ms1_denoising;
+
+        let time_range = self.time_range;
+        let precursor_processing = self.precursor_processing;
+
+        let mut extraction_params = make_default_ms1_feature_extraction_params();
+        extraction_params.smoothing = self.signal_params.ms1_averaging;
+
+        let mut msn_extraction_params = make_default_msn_feature_extraction_params();
+        msn_extraction_params.smoothing = self.signal_params.ms1_averaging;
+
+        let start = Instant::now();
+
+        let (send_solved, recv_solved) = bounded(buffer_size);
+        let (send_collated, recv_collated) = bounded(buffer_size);
+
+        let read_task = thread::spawn(move || {
+            prepare_procesing_im(
+                reader,
+                ms1_args,
+                msn_args,
+                extraction_params,
+                msn_extraction_params,
+                send_solved,
+                time_range,
+                Some(precursor_processing),
+                writer_format,
+            )
+        });
+
+        let collate_task =
+            thread::spawn(move || collate_results_spectra(recv_solved, send_collated));
+
+        let write_task = thread::spawn(move || write_output_frames(writer, recv_collated));
+
+        match read_task.join() {
+            Ok(o) => {
+                let prog = o?;
+                info!("MS1 Frames: {}", prog.ms1_spectra);
+                info!("MSn Frames: {}", prog.msn_spectra);
+                info!("MS1 Features: {}", prog.ms1_peaks);
+                info!("MSn Features: {}", prog.msn_peaks);
+            }
+            Err(e) => {
+                warn!("Failed to join reader task: {e:?}");
+            }
+        }
+        let read_done = Instant::now();
+        let processing_elapsed = read_done - start;
+
+        match collate_task.join() {
+            Ok(_) => {}
+            Err(e) => {
+                warn!("Failed to join collator task: {e:?}")
+            }
+        }
+
+        match write_task.join() {
+            Ok(o) => o?,
+            Err(e) => {
+                warn!("Failed to join writer task: {e:?}");
+            }
+        }
+
+        let done = Instant::now();
+        let elapsed = done - start;
+        if (elapsed.as_secs_f64() - processing_elapsed.as_secs_f64()) > 2.0 {
+            info!("Total Elapsed Time: {:0.3?}", elapsed);
+        }
+
         Ok(())
     }
 }

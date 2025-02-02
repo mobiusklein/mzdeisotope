@@ -17,10 +17,11 @@ keywords = ['mass-spectrometry', 'deisotoping', 'charge-deconvolution']
 categories = ["science", "science::bioinformatics::proteomics"]
 
 [features]
-default = ["zlib-ng-compat", ]
+default = ["zlib-ng-compat", "bruker_tdf"]
 
 mzmlb = ["mzdata/mzmlb"]
 thermo = ["mzdata/thermo"]
+bruker_tdf = ["mzdata/bruker_tdf"]
 
 zlib = ["mzdata/zlib"]
 zlib-ng-compat = ["mzdata/zlib-ng-compat"]
@@ -28,15 +29,16 @@ miniz_oxide = ["mzdata/miniz_oxide"]
 
 
 [dependencies]
-mzdeisotope = { path = "../mzdeisotope", version = "0.2.6" }
+mzdeisotope = { path = "../mzdeisotope" }
+mzdeisotope-map = { path = "../mzdeisotope-map" }
 mzdata = { workspace = true }
 mzpeaks = { workspace = true }
 
 itertools = "0.12.0"
 rayon = "1.7.0"
 flate2 = "1.0.28"
-clap = { version = "4.5.9", features = ["derive"] }
-crossbeam-channel = { version = "0.5.13" }
+clap = { workspace = true }
+crossbeam-channel = { workspace = true }
 
 thiserror.workspace = true
 

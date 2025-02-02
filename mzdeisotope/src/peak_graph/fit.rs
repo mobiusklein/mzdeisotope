@@ -260,8 +260,9 @@ impl FitGraph {
         let mut result = Vec::with_capacity(clusters.len());
 
         clusters.into_iter().for_each(|mut cluster| {
-            let mut deps = Vec::new();
-            let mut nodes = Vec::new();
+            let z = cluster.len();
+            let mut deps = Vec::with_capacity(z);
+            let mut nodes = Vec::with_capacity(z);
             cluster.dependencies.into_iter().for_each(|f| {
                 if let Some(node) = self.nodes.remove(&f.key) {
                     deps.push(f);

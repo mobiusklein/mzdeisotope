@@ -140,6 +140,7 @@ fn test_map_im() -> io::Result<()> {
 
     let params = FeatureSearchParams {
         truncate_after: 0.95,
+        ignore_below: 0.05,
         max_missed_peaks: 2,
         threshold_scale: 0.3,
         detection_threshold: 0.1,
@@ -230,6 +231,69 @@ fn test_map_im() -> io::Result<()> {
 
 #[test_log::test]
 #[test_log(default_log_filter = "debug")]
+fn test_map_im_ms2() -> io::Result<()> {
+    let sid = "merged=42853 frame=9714 scanStart=341 scanEnd=359";
+
+    #[allow(unexpected_cfgs)]
+    let mut frame: mzdata::spectrum::MultiLayerIonMobilityFrame<
+        _,
+        DeconvolvedSolutionFeature<IonMobility>,
+    > = mzdata::mz_read!("../test/data/20200204_BU_8B8egg_1ug_uL_7charges_60_min_Slot2-11_1_244.mzML.gz".as_ref(), reader => {
+        let mut reader = mzdata::io::Generic3DIonMobilityFrameSource::new(reader);
+        let frame: mzdata::spectrum::MultiLayerIonMobilityFrame<_, DeconvolvedSolutionFeature<IonMobility>> = reader.get_frame_by_id(sid).unwrap();
+        frame
+    })?;
+
+    frame.extract_features_simple(Tolerance::PPM(15.0), 1, 0.2, None)?;
+    frame.features = frame
+        .features
+        .map(|mut fmap| {
+            let vfmap: Vec<_> = fmap.into_par_iter().map(| mut f| {
+                f.smooth(1);
+                f
+            }).collect();
+            fmap = FeatureMap::new(vfmap);
+            fmap
+        });
+
+    let mut deconv = FeatureProcessor::new(
+        frame.features.clone().unwrap(),
+        CachingIsotopicModel::from(IsotopicModels::Glycopeptide),
+        PenalizedMSDeconvScorer::new(0.04, 2.0),
+        MaximizingFitFilter::new(5.0),
+        1,
+        0.02,
+        5.0,
+        true,
+    );
+
+    let params = FeatureSearchParams {
+        truncate_after: 0.8,
+        ignore_below: 0.01,
+        max_missed_peaks: 2,
+        threshold_scale: 0.3,
+        detection_threshold: 0.1,
+    };
+
+    let deconv_map = deconv
+        .deconvolve(Tolerance::PPM(15.0), (1, 8), 1, 1, &params, 1e-3, 10)
+        .unwrap();
+
+    let features = deconv_map.all_features_for(203.079, Tolerance::Da(0.02));
+    assert_eq!(features.len(), 1);
+    assert_eq!(
+        features[0].charge(),
+        1,
+    );
+
+    frame.deconvoluted_features = Some(deconv_map);
+
+    Ok(())
+}
+
+
+#[test_log::test]
+#[test_log(default_log_filter = "debug")]
 fn test_map_rt() -> io::Result<()> {
     let features = prepare_feature_map()?;
     tracing::debug!("{} raw features", features.len());
@@ -255,6 +319,7 @@ fn test_map_rt() -> io::Result<()> {
     let params = FeatureSearchParams {
         truncate_after: 0.95,
         max_missed_peaks: 2,
+        ignore_below: 0.05,
         threshold_scale: 0.3,
         detection_threshold: 0.1,
     };

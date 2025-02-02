@@ -1,5 +1,6 @@
 mod args;
 mod deconv;
+mod deconv_im;
 mod driver;
 mod proc;
 mod progress;

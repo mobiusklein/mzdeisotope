@@ -1,6 +1,7 @@
 use std::{fmt::Display, str::FromStr};
 
 use clap::ValueEnum;
+use mzdeisotope_map::{FeatureDeconvolutionEngine, FeatureSearchParams};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -13,7 +14,9 @@ use mzdeisotope::{
         PenalizedMSDeconvScorer,
     },
 };
-use mzpeaks::CentroidPeak;
+use mzpeaks::{CentroidPeak, IonMobility, Tolerance};
+
+use crate::types::CFeature;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, Default, Deserialize, Serialize)]
 pub enum PrecursorProcessing {
@@ -190,6 +193,21 @@ impl<'a, S: IsotopicPatternScorer, F: IsotopicFitFilter> DeconvolutionBuilderPar
         DeconvolutionParams::new(self.charge_range, self.max_missed_peaks)
     }
 
+    pub fn build_feature_engine(self) -> FeatureDeconvolutionEngine<'a, IonMobility, CFeature, S, F> {
+        let mut params = FeatureSearchParams::default();
+        params.truncate_after = self.isotopic_params.truncate_after;
+        params.ignore_below = self.isotopic_params.ignore_below;
+        params.max_missed_peaks = self.max_missed_peaks as usize;
+        let mut engine = FeatureDeconvolutionEngine::new(params, self.isotopic_model, self.scorer, self.fit_filter);
+        engine.populate_isotopic_model_cache(
+            self.mz_range.0,
+            self.mz_range.1,
+            self.charge_range.0,
+            self.charge_range.1,
+        );
+        engine
+    }
+
     pub fn build_engine(self) -> DeconvolutionEngine<'a, CentroidPeak, S, F> {
         let mut engine = DeconvolutionEngine::new(
             self.isotopic_params,
@@ -233,6 +251,34 @@ impl DeconvolutionParams {
         }
     }
 }
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct FeatureExtractionParams {
+    pub smoothing: usize,
+    pub error_tolerance: Tolerance,
+    pub minimum_size: usize,
+    pub maximum_time_gap: f64,
+}
+
+pub fn make_default_ms1_feature_extraction_params() -> FeatureExtractionParams {
+    FeatureExtractionParams {
+        smoothing: 1,
+        error_tolerance: Tolerance::PPM(15.0),
+        minimum_size: 2,
+        maximum_time_gap: 0.1
+    }
+}
+
+
+pub fn make_default_msn_feature_extraction_params() -> FeatureExtractionParams {
+    FeatureExtractionParams {
+        smoothing: 1,
+        error_tolerance: Tolerance::PPM(15.0),
+        minimum_size: 0,
+        maximum_time_gap: 0.1
+    }
+}
+
 
 pub fn make_default_ms1_deconvolution_params(
 ) -> DeconvolutionBuilderParams<'static, PenalizedMSDeconvScorer, MaximizingFitFilter> {

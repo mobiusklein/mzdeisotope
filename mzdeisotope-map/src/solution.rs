@@ -10,15 +10,12 @@ use tracing::warn;
 
 use mzpeaks::{
     feature::{ChargedFeature, FeatureView, TimeArray},
-    feature_map::FeatureMap,
     peak::MZPoint,
     prelude::*,
     IonMobility, Mass, MZ,
 };
 
-use mzsignal::feature_mapping::graph::{
-    ChargeAwareFeatureMerger, FeatureGraphBuilder, FeatureNode,
-};
+use mzsignal::feature_mapping::graph::ChargeAwareFeatureMerger;
 
 use mzdata::{
     prelude::*,
@@ -110,13 +107,37 @@ impl<'a> MZPointSeries {
     }
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DeconvolvedSolutionFeature<Y: Clone> {
     inner: ChargedFeature<Mass, Y>,
     pub score: ScoreType,
     pub scores: Vec<ScoreType>,
     envelope: Box<[MZPointSeries]>,
+}
+
+impl<Y: Clone> Default for DeconvolvedSolutionFeature<Y> {
+    fn default() -> Self {
+        Self { inner: ChargedFeature::empty(0), score: Default::default(), scores: Default::default(), envelope: Default::default() }
+    }
+}
+
+impl<Y: Clone> AsPeakIter for DeconvolvedSolutionFeature<Y> {
+    type Peak = DeconvolvedSolutionPeak;
+
+    type Iter<'a> = PeakIter<'a, Y>
+    where
+        Self: 'a;
+
+    fn iter_peaks(&self) -> Self::Iter<'_> {
+        self.iter_peaks()
+    }
+}
+
+impl<Y: Clone> BuildFromPeak<DeconvolvedSolutionPeak> for DeconvolvedSolutionFeature<Y> {
+    fn push_peak(&mut self, value: &DeconvolvedSolutionPeak, time: f64) {
+        self.push_peak(value, time);
+    }
 }
 
 impl<Y: Clone> KnownChargeMut for DeconvolvedSolutionFeature<Y> {
@@ -552,56 +573,8 @@ pub(crate) fn reflow_feature<Y: Clone + Default>(feature: DeconvolvedSolutionFea
     sink
 }
 
-#[derive(Default)]
-pub struct FeatureMerger<Y: Clone + Default> {
-    inner: ChargeAwareFeatureMerger<Mass, Y, DeconvolvedSolutionFeature<Y>>,
-}
+pub type FeatureMerger<Y> = ChargeAwareFeatureMerger<Mass, Y, DeconvolvedSolutionFeature<Y>>;
 
-impl<Y: Clone + Default> FeatureMerger<Y> {}
-
-impl<Y: Clone + Default> FeatureGraphBuilder<Mass, Y, DeconvolvedSolutionFeature<Y>>
-    for FeatureMerger<Y>
-{
-    fn build_graph(
-        &self,
-        features: &mzpeaks::feature_map::FeatureMap<Mass, Y, DeconvolvedSolutionFeature<Y>>,
-        mass_error_tolerance: Tolerance,
-        maximum_gap_size: f64,
-    ) -> Vec<FeatureNode> {
-        self.inner
-            .build_graph(features, mass_error_tolerance, maximum_gap_size)
-    }
-
-    fn merge_components(
-        &self,
-        features: &FeatureMap<Mass, Y, DeconvolvedSolutionFeature<Y>>,
-        connected_components: Vec<Vec<usize>>,
-    ) -> FeatureMap<Mass, Y, DeconvolvedSolutionFeature<Y>> {
-        let mut merged_nodes = Vec::new();
-        for component_indices in connected_components {
-            if component_indices.is_empty() {
-                continue;
-            }
-            let mut features_of: Vec<_> = component_indices
-                .into_iter()
-                .map(|i| features.get_item(i))
-                .collect();
-            features_of.sort_by(|a, b| a.start_time().unwrap().total_cmp(&b.start_time().unwrap()));
-            let mut acc: DeconvolvedSolutionFeature<Y> = DeconvolvedSolutionFeature::default();
-            acc.inner.charge = features_of[0].charge();
-            for f in features_of.iter() {
-                acc.score = acc.score.max(f.score);
-                debug_assert_eq!(acc.charge(), f.charge());
-                for (peak, time) in f.iter_peaks() {
-                    acc.push_peak(&peak, time);
-                }
-            }
-            merged_nodes.push(acc);
-        }
-
-        FeatureMap::new(merged_nodes)
-    }
-}
 
 const DECONVOLUTION_SCORE_ARRAY_NAME: &str = "deconvolution score array";
 const SUMMARY_SCORE_ARRAY_NAME: &str = "summary deconvolution score array";

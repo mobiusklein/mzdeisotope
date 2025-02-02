@@ -246,6 +246,7 @@ fn main() -> io::Result<()> {
 
     let params = FeatureSearchParams {
         truncate_after: 0.95,
+        ignore_below: 0.05,
         max_missed_peaks: 2,
         threshold_scale: 0.3,
         detection_threshold: 0.1,

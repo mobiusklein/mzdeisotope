@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use itertools::Itertools;
 
-use mzdata::{io::MassSpectrometryFormat, prelude::*, spectrum::SignalContinuity, Param};
+use mzdata::{io::MassSpectrometryFormat, prelude::*, spectrum::{ScanPolarity, SignalContinuity}, Param};
 use mzpeaks::MZPeakSetType;
 
 use mzdeisotope::{
@@ -252,14 +252,14 @@ pub fn deconvolution_transform<
             );
 
             let charge_range = match scan.polarity() {
-                mzdata::spectrum::ScanPolarity::Unknown
-                | mzdata::spectrum::ScanPolarity::Positive => {
+                ScanPolarity::Unknown
+                | ScanPolarity::Positive => {
                     let (mut low, mut high) = ms1_deconv_params.charge_range;
                     low = low.abs();
                     high = high.abs();
                     (low.min(high), high.max(low))
                 }
-                mzdata::spectrum::ScanPolarity::Negative => {
+                ScanPolarity::Negative => {
                     let (mut low, mut high) = ms1_deconv_params.charge_range;
                     low = low.abs() * -1;
                     high = high.abs() * -1;
@@ -338,19 +338,19 @@ pub fn deconvolution_transform<
 
             let mut msn_charge_range = msn_deconv_params.charge_range;
 
-            if precursor_charge.abs() < msn_charge_range.1.abs() {
+            if precursor_charge.abs() < msn_charge_range.1.abs() && precursor_charge.abs() != 0 {
                 msn_charge_range.1 = precursor_charge;
             }
 
             msn_charge_range = match scan.polarity() {
-                mzdata::spectrum::ScanPolarity::Unknown
-                | mzdata::spectrum::ScanPolarity::Positive => {
+                ScanPolarity::Unknown
+                | ScanPolarity::Positive => {
                     let (mut low, mut high) = msn_charge_range;
                     low = low.abs();
                     high = high.abs();
                     (low.min(high), high.max(low))
                 }
-                mzdata::spectrum::ScanPolarity::Negative => {
+                ScanPolarity::Negative => {
                     let (mut low, mut high) = msn_charge_range;
                     low = low.abs() * -1;
                     high = high.abs() * -1;

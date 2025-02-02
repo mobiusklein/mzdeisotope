@@ -1,3 +1,5 @@
+use std::{collections::HashSet, mem};
+
 use chemical_elements::{isotopic_pattern::TheoreticalIsotopicPattern, neutral_mass};
 
 use itertools::Itertools;
@@ -189,8 +191,13 @@ impl<
         charge: i32,
         search_params: &FeatureSearchParams,
     ) -> TheoreticalIsotopicPattern {
-        self.isotopic_model
-            .isotopic_cluster(mz, charge, PROTON, search_params.truncate_after, 0.05)
+        self.isotopic_model.isotopic_cluster(
+            mz,
+            charge,
+            PROTON,
+            search_params.truncate_after,
+            search_params.ignore_below,
+        )
     }
 
     fn fit_theoretical_distribution_on_features(
@@ -640,21 +647,34 @@ impl<
         }
     }
 
-    fn remove_dead_points(&mut self) {
+    fn remove_dead_points(&mut self, indices_to_mask: Option<&HashSet<usize>>) {
         let n_before = self.feature_map.len();
         let n_points_before: usize = self.feature_map.iter().map(|f| f.len()).sum();
-        let features: Vec<_> = self
-            .feature_map
-            .iter()
-            .map(|f| {
-                f.split_when(|_, (_, _, cur_int)| cur_int <= self.minimum_intensity)
-                    .into_iter()
-                    .map(|s| s.to_owned())
-            })
-            .flatten()
-            .filter(|f| f.len() >= self.minimum_size)
-            .collect();
-        self.feature_map = FeatureMap::new(features);
+
+        let mut tmp = FeatureMap::empty();
+
+        mem::swap(&mut tmp, &mut self.feature_map);
+
+        let mut features_acc = Vec::with_capacity(tmp.len());
+
+        for (i, f) in tmp.into_iter().enumerate() {
+            let process = indices_to_mask
+                .map(|mask| mask.contains(&i))
+                .unwrap_or(true);
+            if process {
+                features_acc.extend(
+                    f.split_when(|_, (_, _, cur_int)| cur_int <= self.minimum_intensity)
+                        .into_iter()
+                        .filter(|s| s.len() >= self.minimum_size)
+                        .map(|s| s.to_owned()),
+                );
+            } else {
+                if f.len() >= self.minimum_size {
+                    features_acc.push(f);
+                }
+            }
+        }
+        self.feature_map = FeatureMap::new(features_acc);
         let n_after = self.feature_map.len();
         let n_points_after: usize = self.feature_map.iter().map(|f| f.len()).sum();
         debug!("{n_before} features, {n_points_before} points before, {n_after} features, {n_points_after} points after");
@@ -672,11 +692,24 @@ impl<
     ) -> Result<FeatureMap<Mass, Y, DeconvolvedSolutionFeature<Y>>, DeconvolutionError> {
         let mut before_tic: f32 = self.feature_map.iter().map(|f| f.total_intensity()).sum();
         let ref_tic = before_tic;
+        if ref_tic == 0.0 || self.feature_map.is_empty() {
+            debug!("The TIC of the feature map was zero or the feature map was empty. Skipping processing.");
+            return Ok(Default::default());
+        }
         let mut deconvoluted_features = Vec::new();
         let mut converged = false;
         let mut convergence_check = f32::MAX;
+
+        let mut indices_modified = HashSet::new();
+
         for i in 0..max_iterations {
-            self.remove_dead_points();
+            // Only visit features that were touched by the last update
+            if i > 0 {
+                self.remove_dead_points(Some(&indices_modified));
+                indices_modified.clear();
+            } else {
+                self.remove_dead_points(None);
+            }
             debug!(
                 "Starting iteration {i} with remaining TIC {before_tic:0.4e} ({:0.3}%), {} feature fit",
                 before_tic / ref_tic * 100.0,
@@ -695,6 +728,7 @@ impl<
 
             let minimum_size = self.minimum_size;
             let max_gap_size = self.maximum_time_gap;
+            let n_before = deconvoluted_features.len();
             deconvoluted_features.extend(
                 fits.iter()
                     .filter(|fit| fit.n_points >= minimum_size)
@@ -704,6 +738,7 @@ impl<
                             search_params.detection_threshold,
                             search_params.max_missed_peaks,
                         );
+                        indices_modified.extend(fit.features.iter().flatten().copied());
 
                         solution
                     })
@@ -725,6 +760,13 @@ impl<
                     .filter(|fit| fit.len() >= minimum_size),
             );
 
+            let n_new_features = deconvoluted_features.len() - n_before;
+
+            if n_new_features == 0 {
+                debug!("No new features were extracted on iteration {i} with remaining TIC {before_tic:0.4e}, {n_before} features fit");
+                break;
+            }
+
             if i == 0 {
                 let min_width_mz = self.isotopic_model.largest_isotopic_width();
                 let indices_to_mask = self.find_unused_features(&fits, min_width_mz, max_gap_size);
@@ -736,7 +778,7 @@ impl<
             convergence_check = (before_tic - after_tic) / after_tic;
             if convergence_check <= convergence {
                 debug!(
-                    "Converged at on iteration {i} with remaining TIC {before_tic:0.4e} - {after_tic:0.4e} = {:0.4e} ({convergence_check}), {} features fit",
+                    "Converged on iteration {i} with remaining TIC {before_tic:0.4e} - {after_tic:0.4e} = {:0.4e} ({convergence_check}), {} features fit",
                     before_tic - after_tic,
                     deconvoluted_features.len()
                 );
@@ -747,7 +789,7 @@ impl<
             }
             self.dependency_graph.reset();
         }
-        if !converged {
+        if !converged && !deconvoluted_features.is_empty() {
             debug!(
                 "Failed to converge after {max_iterations} iterations with remaining TIC {before_tic:0.4e} ({convergence_check}), {} features fit",
                 deconvoluted_features.len()
@@ -758,6 +800,11 @@ impl<
             .into_iter()
             .filter(|f| self.fit_filter.test_score(f.score))
             .collect();
+
+        if map.is_empty() {
+            return Ok(map);
+        }
+
         debug!("Building merge graph over {} features", map.len());
         let merger = FeatureMerger::<Y>::default();
         let map_merged = merger

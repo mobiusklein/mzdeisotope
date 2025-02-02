@@ -77,7 +77,7 @@ impl<'a, Y> FeatureSetIter<'a, Y> {
                 let ix = self.index_list[i];
                 if ix < f.len() {
                     let ix_time = f_at!(f, ix).unwrap().1;
-                    if ix_time < time && ix_time < self.end_time && ix_time > self.last_time_seen {
+                    if ix_time < time && (ix_time <= self.end_time || ix_time.is_close(&self.end_time)) && ix_time > self.last_time_seen {
                         time = ix_time;
                     }
                 }
@@ -99,7 +99,8 @@ impl<'a, Y> FeatureSetIter<'a, Y> {
                 let ix = self.index_list[i];
                 let done = ix >= f.len();
                 let done = if !done {
-                    f_at!(f, ix).unwrap().1 >= self.end_time
+                    let time_at = f_at!(f, ix).unwrap().1;
+                    time_at > self.end_time
                 } else {
                     true
                 };
