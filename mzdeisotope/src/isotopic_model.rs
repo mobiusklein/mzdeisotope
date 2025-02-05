@@ -139,7 +139,7 @@ pub trait IsotopicPatternGenerator {
     /// - `charge_carrier`: The mass of the charge carrier, usually a proton
     /// - `truncate_after`: The cumulative abundance percentage of isotopic signal to retain
     /// - `ignore_below`: The minimum abundance percentage of isotopic signal a peak must have to be kept
-    #[allow(unused)]
+    #[allow(unused, clippy::too_many_arguments)]
     fn populate_cache(
         &mut self,
         min_mz: f64,
@@ -240,9 +240,9 @@ impl IsotopicPatternParams {
 /// # References
 /// - [1]: <https://doi.org/10.1016/1044-0305(95)00017-8>
 ///        Senko M, Beu S, McLafferty F: Determination of Monoisotopic Masses and Ion
-///        Populations for Large Biomolecules from Resolved Isotopic Distributions.
-///        Journal of the American Society for Mass Spectrometry 1995, 6:229-233
-///        <https://doi.org/10.1016/1044-0305(95)00017-8>
+///                                                              Populations for Large Biomolecules from Resolved Isotopic Distributions.
+///                                                              Journal of the American Society for Mass Spectrometry 1995, 6:229-233
+///                                                              <https://doi.org/10.1016/1044-0305(95)00017-8>
 #[derive(Debug, Clone)]
 pub struct IsotopicModel<'lifespan> {
     /// The "average" monomer composition
@@ -253,7 +253,7 @@ pub struct IsotopicModel<'lifespan> {
     generator: BafflingRecursiveIsotopicPatternGenerator<'lifespan>,
 }
 
-impl<'lifespan> PartialEq for IsotopicModel<'lifespan> {
+impl PartialEq for IsotopicModel<'_> {
     fn eq(&self, other: &Self) -> bool {
         self.base_composition == other.base_composition
     }
@@ -297,7 +297,7 @@ impl<'lifespan: 'transient, 'transient> IsotopicModel<'lifespan> {
     }
 }
 
-impl<'lifespan> IsotopicPatternGenerator for IsotopicModel<'lifespan> {
+impl IsotopicPatternGenerator for IsotopicModel<'_> {
     fn isotopic_cluster(
         &mut self,
         mz: f64,
@@ -319,7 +319,7 @@ impl<'lifespan> IsotopicPatternGenerator for IsotopicModel<'lifespan> {
     }
 }
 
-impl<'lifespan, T: IntoIterator<Item = (&'static str, f64)>> From<T> for IsotopicModel<'lifespan> {
+impl<T: IntoIterator<Item = (&'static str, f64)>> From<T> for IsotopicModel<'_> {
     fn from(iter: T) -> Self {
         let mut f = FractionalComposition::default();
         for (e, c) in iter {
@@ -557,7 +557,7 @@ fn isotopic_pattern_width(tid: &TheoreticalIsotopicPattern) -> f64 {
 }
 
 
-impl<'lifespan: 'transient, 'transient> CachingIsotopicModel<'lifespan> {
+impl<'lifespan> CachingIsotopicModel<'lifespan> {
     pub fn new<C: Into<FractionalComposition<'lifespan>>>(
         base_composition: C,
         cache_truncation: f64,
@@ -639,6 +639,7 @@ impl<'lifespan: 'transient, 'transient> CachingIsotopicModel<'lifespan> {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn populate_cache(
         &mut self,
         min_mz: f64,
@@ -669,7 +670,7 @@ impl<'lifespan: 'transient, 'transient> CachingIsotopicModel<'lifespan> {
     }
 }
 
-impl<'lifespan> IsotopicPatternGenerator for CachingIsotopicModel<'lifespan> {
+impl IsotopicPatternGenerator for CachingIsotopicModel<'_> {
     fn largest_isotopic_width(&self) -> f64 {
         self.largest_isotopic_width()
     }
@@ -1085,12 +1086,12 @@ mod test {
         let parts = parts.map(|(e, c)| {
             (e.parse::<ElementSpecification>().unwrap(), c)
         });
-        let hash_map: HashMap<_, _> = parts.clone().into_iter().collect();
+        let hash_map: HashMap<_, _> = parts.into_iter().collect();
         let frac_comp: FractionalComposition = hash_map.into();
         let hs_isomod: IsotopicModel = IsotopicModels::HeparanSulfate.into();
         assert_eq!(hs_isomod.base_composition, frac_comp);
 
-        let frac_comp: FractionalComposition = parts.clone().into_iter().collect();
+        let frac_comp: FractionalComposition = parts.into_iter().collect();
         assert_eq!(hs_isomod.base_composition, frac_comp);
 
         let frac_comp: FractionalComposition = parts.to_vec().into();

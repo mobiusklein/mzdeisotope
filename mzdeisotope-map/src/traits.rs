@@ -74,11 +74,12 @@ impl FeatureSearchParams {
     }
 
     pub fn as_isotopic_params(&self) -> IsotopicPatternParams {
-        let mut res = IsotopicPatternParams::default();
-        res.incremental_truncation = None;
-        res.truncate_after = self.truncate_after;
-        res.ignore_below  = self.ignore_below;
-        res
+        IsotopicPatternParams {
+            incremental_truncation: None,
+            truncate_after: self.truncate_after,
+            ignore_below: self.ignore_below,
+            ..Default::default()
+        }
     }
 }
 
@@ -182,7 +183,7 @@ pub trait FeatureMapMatch<Y> {
     ) -> Option<Vec<(usize, &Feature<MZ, Y>)>> {
         let f = self.find_all_features(mz, error_tolerance);
         if f.is_empty() {
-            return None;
+            None
         } else if let Some(interval) = interval {
             let search_width = interval.end.unwrap() - interval.start.unwrap();
             if search_width == 0.0 {
@@ -214,13 +215,16 @@ pub trait FeatureMapMatch<Y> {
         theoretical_distribution: &TheoreticalIsotopicPattern,
         error_tolerance: Tolerance,
         interval: &Option<CoordinateRange<Y>>,
-    ) -> Vec<Option<Vec<(usize, &Feature<MZ, Y>)>>> {
+    ) -> Vec<Option<IndexedIsotopicFitFeatureSet<'_, Y>>> {
         theoretical_distribution
             .iter()
             .map(|p| self.find_features(p.mz, error_tolerance, interval))
             .collect()
     }
 }
+
+
+pub type IndexedIsotopicFitFeatureSet<'a, Y> = Vec<(usize, &'a Feature<MZ, Y>)>;
 
 pub trait FeatureIsotopicFitter<Y>: FeatureMapMatch<Y> {
     fn fit_theoretical_distribution(
@@ -270,7 +274,9 @@ pub trait FeatureIsotopicFitter<Y>: FeatureMapMatch<Y> {
     ) -> Vec<FeatureSetFit> {
         let base_tid = self.make_isotopic_pattern(mz, charge, search_params);
 
-        let fits = self.fit_theoretical_distribution_on_features(
+
+
+        self.fit_theoretical_distribution_on_features(
             mz,
             error_tolerance,
             charge,
@@ -278,11 +284,10 @@ pub trait FeatureIsotopicFitter<Y>: FeatureMapMatch<Y> {
             search_params.max_missed_peaks,
             search_params.threshold_scale,
             feature,
-        );
-
-        fits
+        )
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn fit_theoretical_distribution_on_features(
         &self,
         mz: f64,
@@ -356,7 +361,7 @@ pub trait GraphFeatureDeconvolution<Y>: FeatureIsotopicFitter<Y> {
         right_search: i8,
         search_params: &FeatureSearchParams,
     ) -> usize {
-        if self.skip_feature(&self.feature_map().get_item(feature)) {
+        if self.skip_feature(self.feature_map().get_item(feature)) {
             0
         } else {
             self.collect_all_fits(

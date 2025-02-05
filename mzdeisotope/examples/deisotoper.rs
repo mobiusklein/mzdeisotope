@@ -81,11 +81,10 @@ fn run_deconvolution(
             || (averager.clone(), reprofiler.clone()),
             |(averager, reprofiler), (i, g)| {
                 let (mut g, arrays) = g.reprofile_with_average_with(averager, reprofiler);
-                g.precursor_mut().and_then(|p| {
+                if let Some(p) = g.precursor_mut() {
                     p.arrays = Some(arrays.into());
                     p.description_mut().signal_continuity = SignalContinuity::Profile;
-                    Some(())
-                });
+                };
                 (i, g)
             },
         )
@@ -101,8 +100,8 @@ fn run_deconvolution(
 
                 let precursor_mz: Vec<_> = group
                     .products()
-                    .into_iter()
-                    .flat_map(|s| s.precursor().and_then(|prec| Some(prec.ion().mz)))
+                    .iter()
+                    .flat_map(|s| s.precursor().map(|prec| prec.ion().mz))
                     .collect();
                 let targets = match group.precursor_mut() {
                     Some(scan) => {
@@ -167,6 +166,7 @@ fn run_deconvolution(
                         .unwrap();
                     n_msn_peaks += deconvoluted_peaks.len();
                     scan.deconvoluted_peaks = Some(deconvoluted_peaks);
+                    #[allow(clippy::bind_instead_of_map)]
                     scan.precursor_mut().and_then(|prec| {
                         let target_mz = prec.mz();
                         let _ = precursor_mz
@@ -281,7 +281,7 @@ fn write_output<W: io::Write + io::Seek>(
             .or_else(|| {
                 group
                     .products()
-                    .into_iter()
+                    .iter()
                     .min_by(|a, b| a.start_time().total_cmp(&b.start_time()))
             })
             .unwrap();

@@ -73,7 +73,7 @@ impl FitNode {
                 .iter()
                 .flatten()
                 .copied()
-                .map(|i| FeatureKey(i)),
+                .map(FeatureKey),
         );
         Self {
             key,

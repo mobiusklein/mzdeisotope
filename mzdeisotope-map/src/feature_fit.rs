@@ -38,7 +38,7 @@ pub struct FeatureSetFit {
 
 impl PartialOrd for FeatureSetFit {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.score.total_cmp(&other.score))
+        Some(self.cmp(other))
     }
 }
 
@@ -60,6 +60,7 @@ impl PartialEq for FeatureSetFit {
 impl Eq for FeatureSetFit {}
 
 impl FeatureSetFit {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         features: Vec<Option<usize>>,
         theoretical: TheoreticalIsotopicPattern,

@@ -42,7 +42,7 @@ impl FeatureDependenceGraph {
     pub fn add_fit(&mut self, fit: FeatureSetFit) {
         let node = self.fit_nodes.add_fit(fit);
         for key in node.feature_iter() {
-            let pn = self.feature_nodes.get_or_create_mute((*key).into());
+            let pn = self.feature_nodes.get_or_create_mute(*key);
             pn.links.insert(node.key, node.score);
         }
     }
@@ -222,7 +222,7 @@ struct BreadFirstTraversal<'a> {
     feature_mask: Vec<bool>,
 }
 
-impl<'a> Iterator for BreadFirstTraversal<'a> {
+impl Iterator for BreadFirstTraversal<'_> {
     type Item = HashSet<FitKey, BuildIdentityHasher<FitKey>>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -260,10 +260,10 @@ impl<'a> BreadFirstTraversal<'a> {
         for i in fit_node.feature_iter().copied() {
             // If the peak has already been visited, skip it, otherwise
             // add it to the mask and traverse the peak node.
-            if self.feature_mask[i.0 as usize] {
+            if self.feature_mask[i.0] {
                 continue;
             } else {
-                self.feature_mask[i.0 as usize] = true;
+                self.feature_mask[i.0] = true;
             }
             let peak_node = self.graph.feature_nodes.get(&i).unwrap();
             next_keys.extend(
@@ -298,10 +298,6 @@ impl<'a> BreadFirstTraversal<'a> {
     }
 
     fn next_component(&mut self) -> Option<HashSet<FitKey, BuildIdentityHasher<FitKey>>> {
-        if let Some(node) = self.nodes.iter().next().copied() {
-            Some(self.visit(node))
-        } else {
-            None
-        }
+        self.nodes.iter().next().copied().map(|node| self.visit(node))
     }
 }

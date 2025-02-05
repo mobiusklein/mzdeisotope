@@ -48,9 +48,9 @@ pub trait IsotopicPatternScorer {
 /// # References
 /// - [1]: <https://doi.org/10.1074/mcp.M110.002766>
 ///        Liu, X., Inbar, Y., Dorrestein, P. C., Wynne, C., Edwards, N., Souda, P., …
-///        Pevzner, P. A. (2010). Deconvolution and database search of complex tandem
-///        mass spectra of intact proteins: a combinatorial approach. Molecular & Cellular
-///        Proteomics : MCP, 9(12), 2772–2782. <https://doi.org/10.1074/mcp.M110.002766>
+///                                                         Pevzner, P. A. (2010). Deconvolution and database search of complex tandem
+///                                                         mass spectra of intact proteins: a combinatorial approach. Molecular & Cellular
+///                                                         Proteomics : MCP, 9(12), 2772–2782. <https://doi.org/10.1074/mcp.M110.002766>
 #[derive(Debug, Clone, Copy)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MSDeconvScorer {

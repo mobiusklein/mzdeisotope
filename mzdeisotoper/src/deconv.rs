@@ -184,6 +184,7 @@ pub fn pick_msn_peaks(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 #[tracing::instrument(
     level = "debug",
     skip(
@@ -261,8 +262,8 @@ pub fn deconvolution_transform<
                 }
                 ScanPolarity::Negative => {
                     let (mut low, mut high) = ms1_deconv_params.charge_range;
-                    low = low.abs() * -1;
-                    high = high.abs() * -1;
+                    low = -low.abs();
+                    high = -high.abs();
                     (low.min(high), high.max(low))
                 }
             };
@@ -352,8 +353,8 @@ pub fn deconvolution_transform<
                 }
                 ScanPolarity::Negative => {
                     let (mut low, mut high) = msn_charge_range;
-                    low = low.abs() * -1;
-                    high = high.abs() * -1;
+                    low = -low.abs();
+                    high = -high.abs();
                     (low.min(high), high.max(low))
                 }
             };

@@ -13,7 +13,7 @@ pub struct FeatureSetIter<'a, Y> {
     index_list: Vec<usize>,
 }
 
-impl<'a, Y> Iterator for FeatureSetIter<'a, Y> {
+impl<Y> Iterator for FeatureSetIter<'_, Y> {
     type Item = (f64, Vec<Option<CentroidPeak>>);
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -30,7 +30,7 @@ macro_rules! f_at {
 impl<'a, Y> FeatureSetIter<'a, Y> {
     pub fn new_with_time_interval(features: &'a [Option<&'a Feature<MZ, Y>>], start_time: f64, end_time: f64) -> Self {
         let n = features.len();
-        let index_list = (0..n).into_iter().map(|_| 0).collect();
+        let index_list = (0..n).map(|_| 0).collect();
 
         let mut this = Self {
             features,
@@ -47,8 +47,8 @@ impl<'a, Y> FeatureSetIter<'a, Y> {
         let mut start_time: f64 = 0.0;
         let mut end_time: f64 = f64::INFINITY;
 
-        for f in features.iter() {
-            if let Some(f) = f {
+        for f in features.iter().flatten() {
+            {
                 if let Some(t) = f.start_time() {
                     if start_time < t {
                         start_time = t;
@@ -125,7 +125,7 @@ impl<'a, Y> FeatureSetIter<'a, Y> {
 
     fn get_peaks_for_time(&self, time: f64) -> Vec<Option<CentroidPeak>> {
         let mut peaks = Vec::new();
-        for (_, f) in self.features.iter().enumerate() {
+        for f in self.features.iter() {
             if let Some(f) = f {
                 if !f.is_empty() {
                     let (ix, err) = f.find_time(time);

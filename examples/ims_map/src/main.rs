@@ -153,10 +153,10 @@ impl BuildFromArrayMap for IonMobilityAwareDeconvolutedPeak {
             .to_f64()?;
 
         let mut peaks = Vec::new();
-        for (mz, (intens, (z, im))) in mzs.into_iter().zip(
+        for (mz, (intens, (z, im))) in mzs.iter().zip(
             intens
-                .into_iter()
-                .zip(charges.into_iter().zip(ims.into_iter())),
+                .iter()
+                .zip(charges.iter().zip(ims.iter())),
         ) {
             let mass = neutral_mass(*mz, *z);
             peaks.push(IonMobilityAwareDeconvolutedPeak::new(

@@ -244,8 +244,10 @@ impl MZDeiosotoper {
     }
 
     fn make_processing_method(&self) -> ProcessingMethod {
-        let mut processing = ProcessingMethod::default();
-        processing.software_reference = "mzdeisotoper".to_string();
+        let mut processing = ProcessingMethod {
+            software_reference: "mzdeisotoper".into(),
+            ..Default::default()
+        };
         processing.add_param(DataProcessingAction::Deisotoping.as_param_const().into());
         processing.add_param(
             DataProcessingAction::ChargeDeconvolution
@@ -675,7 +677,7 @@ impl MZDeiosotoper {
     ) -> io::Result<()> {
         let buffer_size = self.write_buffer_size;
 
-        let mut signal_params = self.signal_params.clone();
+        let mut signal_params = self.signal_params;
         let mut ms1_args = make_default_ms1_deconvolution_params();
         let mut msn_args = make_default_msn_deconvolution_params();
         ms1_args.mz_range = signal_params.mz_range;
@@ -685,7 +687,7 @@ impl MZDeiosotoper {
         ms1_args.isotopic_model = self
             .ms1_isotopic_model
             .iter()
-            .map(|it| it.clone().into())
+            .map(|it| (*it).into())
             .collect();
         ms1_args.charge_range = self.charge_range.into();
         ms1_args.max_missed_peaks = self.ms1_missed_peaks;
@@ -701,7 +703,7 @@ impl MZDeiosotoper {
         msn_args.isotopic_model = self
             .msn_isotopic_model
             .iter()
-            .map(|it| it.clone().into())
+            .map(|it| (*it).into())
             .collect();
         msn_args.charge_range = self.charge_range.into();
         msn_args.max_missed_peaks = self.msn_missed_peaks;
@@ -791,7 +793,7 @@ impl MZDeiosotoper {
         let buffer_size = self.write_buffer_size;
         info!("Running ion mobility frame workflow");
 
-        let mut signal_params = self.signal_params.clone();
+        let mut signal_params = self.signal_params;
         let mut ms1_args = make_default_ms1_deconvolution_params();
         let mut msn_args = make_default_msn_deconvolution_params();
         ms1_args.mz_range = signal_params.mz_range;
@@ -801,7 +803,7 @@ impl MZDeiosotoper {
         ms1_args.isotopic_model = self
             .ms1_isotopic_model
             .iter()
-            .map(|it| it.clone().into())
+            .map(|it| (*it).into())
             .collect();
         ms1_args.charge_range = self.charge_range.into();
         ms1_args.max_missed_peaks = self.ms1_missed_peaks;
@@ -810,7 +812,7 @@ impl MZDeiosotoper {
         msn_args.isotopic_model = self
             .msn_isotopic_model
             .iter()
-            .map(|it| it.clone().into())
+            .map(|it| (*it).into())
             .collect();
         msn_args.charge_range = self.charge_range.into();
         msn_args.max_missed_peaks = self.msn_missed_peaks;

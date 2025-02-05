@@ -194,10 +194,12 @@ impl<'a, S: IsotopicPatternScorer, F: IsotopicFitFilter> DeconvolutionBuilderPar
     }
 
     pub fn build_feature_engine(self) -> FeatureDeconvolutionEngine<'a, IonMobility, CFeature, S, F> {
-        let mut params = FeatureSearchParams::default();
-        params.truncate_after = self.isotopic_params.truncate_after;
-        params.ignore_below = self.isotopic_params.ignore_below;
-        params.max_missed_peaks = self.max_missed_peaks as usize;
+        let params = FeatureSearchParams {
+            truncate_after: self.isotopic_params.truncate_after,
+            ignore_below: self.isotopic_params.ignore_below,
+            max_missed_peaks: self.max_missed_peaks as usize,
+            ..Default::default()
+        };
         let mut engine = FeatureDeconvolutionEngine::new(params, self.isotopic_model, self.scorer, self.fit_filter);
         engine.populate_isotopic_model_cache(
             self.mz_range.0,

@@ -93,7 +93,7 @@ fn write_3d_array(arrays: &BinaryArrayMap3D, mut writer: impl io::Write) -> io::
     for (time, arrays) in arrays.iter() {
         let mzs = arrays.mzs()?;
         let ints = arrays.intensities()?;
-        for (mz, int) in mzs.into_iter().copied().zip(ints.into_iter().copied()) {
+        for (mz, int) in mzs.iter().copied().zip(ints.iter().copied()) {
             writeln!(writer, "{mz},{time},{int}")?
         }
     }
@@ -180,7 +180,7 @@ fn test_map_im() -> io::Result<()> {
     > = reader.get_frame_by_id(sid).unwrap();
 
     let dup_features = FeatureMap::new(
-        DeconvolvedSolutionFeature::try_from_arrays_3d(&dup_frame.arrays.as_ref().unwrap())
+        DeconvolvedSolutionFeature::try_from_arrays_3d(dup_frame.arrays.as_ref().unwrap())
             .unwrap(),
     );
 
@@ -333,7 +333,7 @@ fn test_map_rt() -> io::Result<()> {
     fn query(mass: f64, feature_map: &FeatureMap<Mass, Time, DeconvolvedSolutionFeature<Time>>) {
         let mut hits: Vec<_> = feature_map
             .all_features_for(mass, Tolerance::PPM(20.0))
-            .into_iter()
+            .iter()
             .collect();
         hits.sort_by(|a, b| {
             a.charge()

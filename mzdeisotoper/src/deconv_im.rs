@@ -1,4 +1,6 @@
-use mzdata::{io::MassSpectrometryFormat, prelude::*, spectrum::bindata::ArrayRetrievalError};
+use mzdata::{
+    io::MassSpectrometryFormat, prelude::*, spectrum::bindata::ArrayRetrievalError, Param,
+};
 use mzpeaks::{
     coordinate::{IntervalTree, SimpleInterval},
     IonMobility,
@@ -82,6 +84,7 @@ fn extract_features_msn(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 #[tracing::instrument(
     level = "debug",
     skip(
@@ -112,7 +115,7 @@ pub fn deconvolution_transform_im<
     group_idx: usize,
     mut group: TargetTrackingFrameGroup<CFeature, DFeature, FrameGroupType>,
     precursor_processing: PrecursorProcessing,
-    #[allow(unused)] writer_format: MassSpectrometryFormat,
+    writer_format: MassSpectrometryFormat,
 ) -> (
     usize,
     TargetTrackingFrameGroup<CFeature, DFeature, FrameGroupType>,
@@ -140,72 +143,75 @@ pub fn deconvolution_transform_im<
             .collect()
     };
 
-    match group.precursor_mut() {
-        Some(frame) => {
-            if tracing::enabled!(tracing::Level::DEBUG) {
-                debug!(
-                    "Processing {} MS{} ({:0.3})",
-                    frame.id(),
-                    frame.ms_level(),
-                    frame.start_time()
-                );
-            }
-
-            extract_features_ms1(
-                frame,
-                &precursor_processing,
-                extraction_params,
-                &selected_mz_ranges,
-            )
-            .unwrap();
-
-            let charge_range = match frame.polarity() {
-                mzdata::spectrum::ScanPolarity::Unknown
-                | mzdata::spectrum::ScanPolarity::Positive => {
-                    let (mut low, mut high) = ms1_deconv_params.charge_range;
-                    low = low.abs();
-                    high = high.abs();
-                    (low.min(high), high.max(low))
-                }
-                mzdata::spectrum::ScanPolarity::Negative => {
-                    let (mut low, mut high) = ms1_deconv_params.charge_range;
-                    low = low.abs() * -1;
-                    high = high.abs() * -1;
-                    (low.min(high), high.max(low))
-                }
-            };
-
-            if let Some(features) = frame.features.clone() {
-                debug!(
-                    "Deconvolving {} with {} features",
-                    frame.id(),
-                    features.len()
-                );
-                let deconv_features = ms1_engine
-                    .deconvolute_features(
-                        features,
-                        extraction_params.error_tolerance,
-                        charge_range,
-                        extraction_params.minimum_size,
-                        extraction_params.maximum_time_gap,
-                        5.0,
-                        ms1_deconv_params.max_missed_peaks as usize,
-                    )
-                    .unwrap();
-                prog.ms1_peaks += deconv_features.len();
-                prog.ms1_spectra += 1;
-
-                frame.deconvoluted_features = Some(deconv_features);
-            }
+    if let Some(frame) = group.precursor_mut() {
+        if tracing::enabled!(tracing::Level::DEBUG) {
+            debug!(
+                "Processing {} MS{} ({:0.3})",
+                frame.id(),
+                frame.ms_level(),
+                frame.start_time()
+            );
         }
-        None => {}
+
+        extract_features_ms1(
+            frame,
+            &precursor_processing,
+            extraction_params,
+            &selected_mz_ranges,
+        )
+        .unwrap();
+
+        frame.add_param(
+            Param::builder()
+                .name("mzdeisotope:raw feature count")
+                .value(frame.features.as_ref().map(|f| f.len()).unwrap_or_default())
+                .build(),
+        );
+
+        let charge_range = match frame.polarity() {
+            mzdata::spectrum::ScanPolarity::Unknown
+            | mzdata::spectrum::ScanPolarity::Positive => {
+                let (mut low, mut high) = ms1_deconv_params.charge_range;
+                low = low.abs();
+                high = high.abs();
+                (low.min(high), high.max(low))
+            }
+            mzdata::spectrum::ScanPolarity::Negative => {
+                let (mut low, mut high) = ms1_deconv_params.charge_range;
+                low = -low.abs();
+                high = -high.abs();
+                (low.min(high), high.max(low))
+            }
+        };
+
+        if let Some(features) = frame.features.clone() {
+            debug!(
+                "Deconvolving {} with {} features",
+                frame.id(),
+                features.len()
+            );
+            let deconv_features = ms1_engine
+                .deconvolute_features(
+                    features,
+                    extraction_params.error_tolerance,
+                    charge_range,
+                    extraction_params.minimum_size,
+                    extraction_params.maximum_time_gap,
+                    5.0,
+                    ms1_deconv_params.max_missed_peaks as usize,
+                )
+                .unwrap();
+            prog.ms1_peaks += deconv_features.len();
+            prog.ms1_spectra += 1;
+
+            frame.deconvoluted_features = Some(deconv_features);
+        }
     };
 
     group
         .products_mut()
         .iter_mut()
-        .enumerate()
-        .for_each(|(_frame_i, frame)| {
+        .for_each(|frame| {
             if !had_precursor && tracing::enabled!(tracing::Level::DEBUG) {
                 tracing::debug!(
                     "Processing {} MS{} ({:0.3})",
@@ -236,13 +242,20 @@ pub fn deconvolution_transform_im<
                 }
                 mzdata::spectrum::ScanPolarity::Negative => {
                     let (mut low, mut high) = msn_charge_range;
-                    low = low.abs() * -1;
-                    high = high.abs() * -1;
+                    low = -low.abs();
+                    high = -high.abs();
                     (low.min(high), high.max(low))
                 }
             };
 
             extract_features_msn(frame, msn_extraction_params).unwrap();
+
+            frame.add_param(
+                Param::builder()
+                    .name("mzdeisotope:raw feature count")
+                    .value(frame.features.as_ref().map(|f| f.len()).unwrap_or_default())
+                    .build(),
+            );
 
             if let Some(features) = frame.features.clone() {
                 debug!(

@@ -123,8 +123,7 @@ pub(crate) fn postprocess_frames(
                 let mut arrays = BuildArrayMap3DFrom::as_arrays_3d(peaks.as_slice());
                 arrays
                     .iter_mut()
-                    .map(|(_, layer)| layer.iter_mut())
-                    .flatten()
+                    .flat_map(|(_, layer)| layer.iter_mut())
                     .for_each(|(_, a)| {
                         a.store_compressed(BinaryCompressionType::Zlib).unwrap();
                     });
@@ -138,8 +137,7 @@ pub(crate) fn postprocess_frames(
                 let mut arrays = BuildArrayMap3DFrom::as_arrays_3d(peaks.as_slice());
                 arrays
                     .iter_mut()
-                    .map(|(_, layer)| layer.iter_mut())
-                    .flatten()
+                    .flat_map(|(_, layer)| layer.iter_mut())
                     .for_each(|(_, a)| {
                         a.store_compressed(BinaryCompressionType::Zlib).unwrap();
                     });
@@ -229,11 +227,9 @@ pub(crate) fn collate_results_spectra<T: HasIndex + Send, I: Iterable<Item = T>>
                     group
                         .into_iter()
                         .for_each(|s| collator.receive(s.index(), s));
-                    if drain_channel(&mut collator, &receiver, 1000) {
-                        if collator.done && collator.waiting.is_empty() {
-                            debug!("Setting collator loop condition to false");
-                            has_work = false;
-                        }
+                    if drain_channel(&mut collator, &receiver, 1000) && collator.done && collator.waiting.is_empty() {
+                        debug!("Setting collator loop condition to false");
+                        has_work = false;
                     }
                 }
                 Err(e) => match e {
@@ -250,24 +246,22 @@ pub(crate) fn collate_results_spectra<T: HasIndex + Send, I: Iterable<Item = T>>
         }
 
         let n = collator.waiting.len();
-        if !collator.has_next() {
-            if i % 10000000 == 0 && i > 0 && n > 0 {
-                let t = Instant::now();
-                if (t - last_send).as_secs_f64() > 30.0 {
-                    let waiting_keys: Vec<_> =
-                        collator.waiting.keys().sorted().take(10).copied().collect();
-                    let write_queue_size = sender.len();
-                    let work_queue_size = receiver.len();
-                    tracing::info!(
-                        r#"Collator holding {n} entries at tick {i}, next key {} ({}), pending keys: {waiting_keys:?}
-with {write_queue_size} writing backlog and {work_queue_size} work waiting to collate"#,
-                        collator.next_key,
-                        collator.has_next()
-                    );
-                    last_send = t;
-                }
-            }
-        }
+        if !collator.has_next() && i % 10000000 == 0 && i > 0 && n > 0 {
+                        let t = Instant::now();
+                        if (t - last_send).as_secs_f64() > 30.0 {
+                            let waiting_keys: Vec<_> =
+                                collator.waiting.keys().sorted().take(10).copied().collect();
+                            let write_queue_size = sender.len();
+                            let work_queue_size = receiver.len();
+                            tracing::info!(
+                                r#"Collator holding {n} entries at tick {i}, next key {} ({}), pending keys: {waiting_keys:?}
+        with {write_queue_size} writing backlog and {work_queue_size} work waiting to collate"#,
+                                collator.next_key,
+                                collator.has_next()
+                            );
+                            last_send = t;
+                        }
+                    }
 
         if collator.done && n > 0 {
             debug!("Draining output queue, {n} items");

@@ -30,6 +30,7 @@ use crate::types::{
 };
 use crate::FeatureExtractionParams;
 
+#[allow(clippy::too_many_arguments)]
 pub fn prepare_procesing<
     R: RandomAccessSpectrumIterator<CPeak, DPeak, SpectrumType> + Send + MSDataFileMetadata,
     S: IsotopicPatternScorer + Send + Sync + Clone + 'static,
@@ -201,6 +202,8 @@ pub fn prepare_procesing<
     Ok(prog)
 }
 
+
+#[allow(clippy::too_many_arguments)]
 pub fn prepare_procesing_im<
     R: RandomAccessIonMobilityFrameIterator<CFeature, DFeature, FrameType> + Send,
     S: IsotopicPatternScorer + Send + Sync + Clone + 'static,

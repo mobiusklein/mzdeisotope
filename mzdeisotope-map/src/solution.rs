@@ -2,9 +2,7 @@ use itertools::multizip;
 use mzdeisotope::{scorer::ScoreType, solution::DeconvolvedSolutionPeak};
 use num_traits::Zero;
 use std::{
-    boxed::Box,
-    cmp::Ordering,
-    ops::{Bound, RangeBounds},
+    borrow::Cow, boxed::Box, cmp::Ordering, ops::{Bound, RangeBounds}
 };
 use tracing::warn;
 
@@ -15,7 +13,7 @@ use mzpeaks::{
     IonMobility, Mass, MZ,
 };
 
-use mzsignal::feature_mapping::graph::ChargeAwareFeatureMerger;
+use mzsignal::{feature_mapping::graph::ChargeAwareFeatureMerger, feature_statistics::{FitPeaksOn, PeakFitArgs}};
 
 use mzdata::{
     prelude::*,
@@ -103,7 +101,7 @@ impl<'a> MZPointSeries {
         let start = 0;
         let end = time.len().min(self.len());
 
-        FeatureView::new(&self.mz[start..end], &time, &self.intensity[start..end])
+        FeatureView::new(&self.mz[start..end], time, &self.intensity[start..end])
     }
 }
 
@@ -114,6 +112,18 @@ pub struct DeconvolvedSolutionFeature<Y: Clone> {
     pub score: ScoreType,
     pub scores: Vec<ScoreType>,
     envelope: Box<[MZPointSeries]>,
+}
+
+impl<'a, Y: Clone + 'a> FitPeaksOn<'a> for DeconvolvedSolutionFeature<Y> {}
+
+impl<'a, Y: Clone + 'a> From<&'a DeconvolvedSolutionFeature<Y>> for PeakFitArgs<'a, 'a> {
+    fn from(value: &'a DeconvolvedSolutionFeature<Y>) -> Self {
+        let view = value.as_inner();
+        let view = view.as_view();
+        let view = view.into_inner().0;
+        let (_, y, z) = view.into_inner();
+        PeakFitArgs::new(Cow::Borrowed(y), Cow::Borrowed(z))
+    }
 }
 
 impl<Y: Clone> Default for DeconvolvedSolutionFeature<Y> {
@@ -192,7 +202,7 @@ impl<Y: Clone> DeconvolvedSolutionFeature<Y> {
     }
 
     pub fn iter_peaks(&self) -> PeakIter<'_, Y> {
-        PeakIter::new(&self)
+        PeakIter::new(self)
     }
 
     pub fn iter_envelope(&self) -> EnvelopeIter<'_, Y> {
@@ -416,7 +426,7 @@ impl<Y: Clone> SplittableFeatureLike<'_, Mass, Y> for DeconvolvedSolutionFeature
                 envelope_before.push(env_before_i);
                 envelope_after.push(env_after_i);
             }
-            return (
+            (
                 Self::new(
                     ChargedFeature::empty(self.charge()),
                     self.score,
@@ -429,7 +439,7 @@ impl<Y: Clone> SplittableFeatureLike<'_, Mass, Y> for DeconvolvedSolutionFeature
                     Vec::new(),
                     envelope_after.into_boxed_slice(),
                 ),
-            );
+            )
         }
     }
 
@@ -496,7 +506,7 @@ impl<'a, Y: Clone> PeakIter<'a, Y> {
     }
 }
 
-impl<'a, Y: Clone> Iterator for PeakIter<'a, Y> {
+impl<Y: Clone> Iterator for PeakIter<'_, Y> {
     type Item = (DeconvolvedSolutionPeak, f64);
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -537,7 +547,7 @@ impl<'a, Y: Clone> EnvelopeIter<'a, Y> {
     }
 }
 
-impl<'a, Y: Clone> Iterator for EnvelopeIter<'a, Y> {
+impl<Y: Clone> Iterator for EnvelopeIter<'_, Y> {
     type Item = (f64, Box<[(f64, f32)]>);
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -814,7 +824,7 @@ impl BuildFromArrayMap3D for DeconvolvedSolutionFeature<IonMobility> {
                 let mut traces: Vec<MZPointSeries> = Vec::with_capacity(n_traces);
                 let mut current_trace = MZPointSeries::default();
                 while traces.len() < n_traces {
-                    while let Some(block) = chunks.next() {
+                    for block in chunks.by_ref() {
                         let mz = block[0] as f64;
                         let intensity = block[1];
                         if mz.is_zero() && intensity.is_zero() {
@@ -822,7 +832,7 @@ impl BuildFromArrayMap3D for DeconvolvedSolutionFeature<IonMobility> {
                         }
                         current_trace.push(MZPoint::new(mz, intensity));
                     }
-                    if current_trace.len() == 0 {
+                    if current_trace.is_empty() {
                         warn!("Empty trace detected");
                     }
                     traces.push(current_trace);

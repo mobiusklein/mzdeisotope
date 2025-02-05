@@ -211,6 +211,7 @@ impl<C: PeakLike, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: Isot
     ///
     /// # See also
     /// [`IsotopicPatternGenerator::populate_cache`]
+    #[allow(clippy::too_many_arguments)]
     pub fn populate_isotopic_model_cache(
         &mut self,
         min_mz: f64,
@@ -506,6 +507,7 @@ impl<C: PeakLike, I: IsotopicPatternGenerator, S: IsotopicPatternScorer, F: Isot
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn populate_isotopic_model_cache(
         &mut self,
         min_mz: f64,

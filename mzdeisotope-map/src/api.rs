@@ -100,6 +100,7 @@ impl<
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn deconvolute_features(
         &mut self,
         features: FeatureMap<MZ, T, C>,
@@ -153,7 +154,7 @@ impl<
     }
 }
 
-
+#[allow(clippy::too_many_arguments)]
 pub fn deconvolute_features<'a, T: Clone + Default, C: FeatureLike<MZ, T> + Clone + Default, I: Into<IsotopicModelLike<'a>>, S: IsotopicPatternScorer, F: IsotopicFitFilter>(
         features: FeatureMap<MZ, T, C>,
         isotopic_params: FeatureSearchParams,

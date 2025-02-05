@@ -227,7 +227,7 @@ impl<
                 if g.is_none() {
                     vec![None].into_iter()
                 } else {
-                    let v: Vec<_> = g.unwrap().into_iter().map(|f| Some(f)).collect();
+                    let v: Vec<_> = g.unwrap().into_iter().map(Some).collect();
                     v.into_iter()
                 }
             })
@@ -400,6 +400,7 @@ impl<
         F: IsotopicFitFilter,
     > FeatureProcessor<Y, I, S, F>
 {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         feature_map: FeatureMap<MZ, Y, Feature<MZ, Y>>,
         isotopic_model: I,
@@ -668,10 +669,8 @@ impl<
                         .filter(|s| s.len() >= self.minimum_size)
                         .map(|s| s.to_owned()),
                 );
-            } else {
-                if f.len() >= self.minimum_size {
-                    features_acc.push(f);
-                }
+            } else if f.len() >= self.minimum_size {
+                features_acc.push(f);
             }
         }
         self.feature_map = FeatureMap::new(features_acc);
@@ -680,6 +679,7 @@ impl<
         debug!("{n_before} features, {n_points_before} points before, {n_after} features, {n_points_after} points after");
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn deconvolve(
         &mut self,
         error_tolerance: Tolerance,
@@ -743,7 +743,7 @@ impl<
                         solution
                     })
                     .filter(|f| !f.is_empty())
-                    .map(|f| {
+                    .flat_map(|f| {
                         let parts = f.split_sparse(max_gap_size);
                         if tracing::enabled!(tracing::Level::DEBUG) && f.charge().abs() > 1 {
                             let zs: Vec<_> = parts.iter().map(|p| p.len()).collect();
@@ -756,7 +756,6 @@ impl<
                         }
                         parts
                     })
-                    .flatten()
                     .filter(|fit| fit.len() >= minimum_size),
             );
 

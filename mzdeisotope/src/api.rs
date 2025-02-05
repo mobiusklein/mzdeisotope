@@ -1,6 +1,5 @@
-/*!
- * High level APIs for running deconvolution operations
- */
+//! * High level APIs for running deconvolution operations
+#![allow(clippy::too_many_arguments)]
 
 use std::marker::PhantomData;
 use std::mem;
@@ -309,7 +308,8 @@ impl<
         charge_range: ChargeRange,
         max_missed_peaks: u16,
     ) -> Result<MassPeakSetType<DeconvolvedSolutionPeak>, DeconvolutionError> {
-        let output = match mem::take(&mut self.isotopic_model).unwrap() {
+
+        match mem::take(&mut self.isotopic_model).unwrap() {
             IsotopicModelLike::SingleModel(model) => {
                 let mut deconvoluter =
                     GraphDeconvoluterType::<C, CachingIsotopicModel<'lifespan>, S, F>::new(
@@ -362,8 +362,7 @@ impl<
                 self.fit_filter = Some(deconvoluter.inner.fit_filter);
                 output
             }
-        };
-        output
+        }
     }
 
     /// Deconvolute the provided `peaks` to neutral mass, charge labeled peaks with a set of priority targets.

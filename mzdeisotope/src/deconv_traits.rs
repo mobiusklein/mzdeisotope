@@ -678,6 +678,7 @@ pub trait IsotopicDeconvolutionAlgorithm<C: CentroidLike> {
     /// The set of all solved [`DeconvolvedSolutionPeak`] in a [`MassPeakSetType`] if successful. [`DeconvolutionError`]
     /// otherwise.
     ///
+    #[allow(clippy::too_many_arguments)]
     fn deconvolve(
         &mut self,
         error_tolerance: Tolerance,

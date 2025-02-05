@@ -195,7 +195,6 @@ impl PeakDependenceGraph {
             .into_iter()
             .map(|(cluster, _sols)| {
                 let fits_of: Vec<(FitRef, IsotopicFit)> = cluster.dependencies.iter().copied()
-                    .into_iter()
                     .map(
                         |fit_ref| match self.fit_nodes.dependencies.remove(&fit_ref.key) {
                             Some(fit) => {
@@ -223,7 +222,7 @@ struct BreadFirstTraversal<'a> {
     peak_mask: Vec<bool>,
 }
 
-impl<'a> Iterator for BreadFirstTraversal<'a> {
+impl Iterator for BreadFirstTraversal<'_> {
     type Item = HashSet<FitKey, BuildIdentityHasher<FitKey>>;
 
     fn next(&mut self) -> Option<Self::Item> {
