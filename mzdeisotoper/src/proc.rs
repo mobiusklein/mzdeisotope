@@ -13,7 +13,7 @@ use tracing::{debug, info, trace, warn};
 #[cfg(feature = "mzmlb")]
 use mzdata::io::mzmlb::{MzMLbReaderType, MzMLbWriterBuilder};
 use mzdata::prelude::*;
-use mzdata::spectrum::SignalContinuity;
+use mzdata::spectrum::{IonMobilityFrameGroup, SignalContinuity};
 
 use mzpeaks::Tolerance;
 
@@ -23,11 +23,12 @@ use crate::args::{DeconvolutionBuilderParams, PrecursorProcessing, SignalParams}
 use crate::deconv::deconvolution_transform;
 use crate::deconv_im::deconvolution_transform_im;
 use crate::progress::ProgressRecord;
-use crate::selection_targets::{FrameMSnTargetTracking, MSnTargetTracking, SpectrumGroupTiming, TargetTrackingFrameGroup};
+use crate::selection_targets::{FrameMSnTargetTracking, MSnTargetTracking, SpectrumGroupTiming};
 use crate::time_range::TimeRange;
 use crate::types::{
-    CFeature, CPeak, DFeature, DPeak, FrameGroupType, FrameType, SpectrumGroupType, SpectrumType,
+    CFeature, CPeak, DFeature, DPeak, FrameType, SpectrumGroupType, SpectrumType,
 };
+use crate::types::FrameResult;
 use crate::FeatureExtractionParams;
 
 #[allow(clippy::too_many_arguments)]
@@ -216,7 +217,7 @@ pub fn prepare_procesing_im<
     msn_deconv_params: DeconvolutionBuilderParams<'static, SN, FN>,
     extraction_params: FeatureExtractionParams,
     msn_extraction_params: FeatureExtractionParams,
-    sender: Sender<(usize, TargetTrackingFrameGroup<CFeature, DFeature, FrameGroupType>)>,
+    sender: Sender<(usize, IonMobilityFrameGroup<CFeature, DFeature, FrameResult>)>,
     time_range: Option<TimeRange>,
     precursor_processing: Option<PrecursorProcessing>,
     writer_format: MassSpectrometryFormat,
@@ -312,7 +313,7 @@ pub fn prepare_procesing_im<
     let spectra_per_second =
         (prog.ms1_spectra + prog.msn_spectra) as f64 / elapsed.as_secs() as f64;
     info!(
-        "Elapsed Time: {:0.3?} ({:0.2} spectra/sec)",
+        "Elapsed Time: {:0.3?} ({:0.2} frames/sec)",
         elapsed, spectra_per_second
     );
     Ok(prog)

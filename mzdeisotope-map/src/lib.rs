@@ -4,6 +4,8 @@ mod iter;
 mod dependency_graph;
 mod traits;
 mod api;
+mod fmap;
+
 pub mod solution;
 pub mod prelude;
 

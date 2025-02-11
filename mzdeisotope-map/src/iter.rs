@@ -99,7 +99,7 @@ impl<'a, Y> FeatureSetIter<'a, Y> {
                 let ix = self.index_list[i];
                 let done = ix >= f.len();
                 let done = if !done {
-                    let time_at = f_at!(f, ix).unwrap().1;
+                    let time_at = f.time_view()[ix];
                     time_at > self.end_time
                 } else {
                     true
@@ -123,25 +123,24 @@ impl<'a, Y> FeatureSetIter<'a, Y> {
         })
     }
 
-    fn get_peaks_for_time(&self, time: f64) -> Vec<Option<CentroidPeak>> {
+    fn get_peaks_for_next_time(&mut self, time: f64) -> Vec<Option<CentroidPeak>> {
         let mut peaks = Vec::new();
-        for f in self.features.iter() {
+        for (f, i) in self.features.iter().zip(&mut self.index_list) {
             if let Some(f) = f {
-                if !f.is_empty() {
-                    let (ix, err) = f.find_time(time);
-                    if err.abs() > 1e-3 {
-                        peaks.push(None);
-                        continue;
-                    }
-                    if let Some(ix) = ix {
-                        let p = f.at(ix).unwrap();
-                        peaks.push(Some(CentroidPeak::new(p.0, p.2, ix as u32)));
-                    }
+                if *i >= f.len() {
+                    peaks.push(None);
+                    continue;
+                }
+                let (mz, time_at, intensity) = f.at(*i).unwrap();
+                let time_err = time_at - time;
+                if time_err.abs() > 1e-3 {
+                    peaks.push(None);
                 } else {
-                    peaks.push(None)
+                    peaks.push(Some(CentroidPeak::new(mz, intensity, *i as u32)));
+                    *i += 1;
                 }
             } else {
-                peaks.push(None)
+                peaks.push(None);
             }
         }
         peaks
@@ -153,14 +152,7 @@ impl<'a, Y> FeatureSetIter<'a, Y> {
         }
         let time = self.get_next_time();
         if let Some(time) = time {
-            let peaks = self.get_peaks_for_time(time);
-            for (i, p) in peaks.iter().enumerate() {
-                if let Some(p) = p {
-                    if p.index as usize >= self.index_list[i] {
-                        self.index_list[i] += 1;
-                    }
-                }
-            }
+            let peaks = self.get_peaks_for_next_time(time);
             self.last_time_seen = time;
             Some((time, peaks))
         } else {

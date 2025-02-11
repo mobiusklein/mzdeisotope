@@ -166,7 +166,6 @@ pub fn pick_ms1_peaks(
     }
 }
 
-#[tracing::instrument(level = "debug", skip(scan, _signal_processing_params))]
 pub fn pick_msn_peaks(
     scan: &mut SpectrumType,
     _signal_processing_params: &SignalParams,
@@ -185,20 +184,6 @@ pub fn pick_msn_peaks(
 }
 
 #[allow(clippy::too_many_arguments)]
-#[tracing::instrument(
-    level = "debug",
-    skip(
-        ms1_engine,
-        msn_engine,
-        ms1_deconv_params,
-        msn_deconv_params,
-        signal_processing_params,
-        group,
-        precursor_processing,
-        writer_format
-    ),
-    name = "deconvolution_transform"
-)]
 pub fn deconvolution_transform<
     S: IsotopicPatternScorer + Send + 'static,
     F: IsotopicFitFilter + Send + 'static,
@@ -269,13 +254,6 @@ pub fn deconvolution_transform<
             };
 
             if let Some(peaks) = peaks {
-                let span = tracing::debug_span!(
-                    "precursor deconvolution",
-                    scan_id = scan.id(),
-                    peak_count = peaks.len(),
-                    group_idx
-                );
-                let _entered = span.enter();
                 let has_too_many_peaks = peaks.len() >= PEAK_COUNT_THRESHOLD_WARNING;
                 if has_too_many_peaks {
                     tracing::warn!("{} has {} centroids", scan.id(), peaks.len())
@@ -361,13 +339,6 @@ pub fn deconvolution_transform<
 
             let peaks = pick_msn_peaks(scan, signal_processing_params);
             {
-                let span = tracing::debug_span!(
-                    "product deconvolution",
-                    scan_id = scan.id(),
-                    peak_count = peaks.len(),
-                    group_idx
-                );
-                let _entered = span.enter();
                 let deconvoluted_peaks = msn_engine
                     .deconvolute_peaks(
                         peaks,

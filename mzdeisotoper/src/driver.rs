@@ -228,6 +228,9 @@ impl MZDeiosotoper {
         debug!("Using {} cores", num_threads);
         rayon::ThreadPoolBuilder::new()
             .num_threads(num_threads)
+            .thread_name(|i| {
+                format!("worker-{i}")
+            })
             .build()
             .unwrap()
     }
@@ -719,7 +722,7 @@ impl MZDeiosotoper {
         let (send_solved, recv_solved) = bounded(buffer_size);
         let (send_collated, recv_collated) = bounded(buffer_size);
 
-        let read_task = thread::spawn(move || {
+        let read_task = thread::Builder::new().name("reader".into()).spawn(move || {
             prepare_procesing(
                 reader,
                 ms1_args,
@@ -730,12 +733,12 @@ impl MZDeiosotoper {
                 Some(precursor_processing),
                 writer_format,
             )
-        });
+        })?;
 
         let collate_task =
-            thread::spawn(move || collate_results_spectra(recv_solved, send_collated));
+            thread::Builder::new().name("collater".into()).spawn(move || collate_results_spectra(recv_solved, send_collated))?;
 
-        let write_task = thread::spawn(move || write_output_spectra(writer, recv_collated));
+        let write_task = thread::Builder::new().name("writer".into()).spawn(move || write_output_spectra(writer, recv_collated))?;
 
         match read_task.join() {
             Ok(o) => {
@@ -834,7 +837,9 @@ impl MZDeiosotoper {
         let (send_solved, recv_solved) = bounded(buffer_size);
         let (send_collated, recv_collated) = bounded(buffer_size);
 
-        let read_task = thread::spawn(move || {
+
+
+        let read_task = thread::Builder::new().name("reader-task".into()).spawn(move || {
             prepare_procesing_im(
                 reader,
                 ms1_args,
@@ -846,12 +851,12 @@ impl MZDeiosotoper {
                 Some(precursor_processing),
                 writer_format,
             )
-        });
+        })?;
 
         let collate_task =
-            thread::spawn(move || collate_results_spectra(recv_solved, send_collated));
+            thread::Builder::new().name("collator-task".into()).spawn(move || collate_results_spectra(recv_solved, send_collated))?;
 
-        let write_task = thread::spawn(move || write_output_frames(writer, recv_collated));
+        let write_task = thread::Builder::new().name("writer-task".into()).spawn(move || write_output_frames(writer, recv_collated))?;
 
         match read_task.join() {
             Ok(o) => {

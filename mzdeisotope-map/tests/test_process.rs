@@ -105,27 +105,28 @@ fn write_3d_array(arrays: &BinaryArrayMap3D, mut writer: impl io::Write) -> io::
 fn test_map_im() -> io::Result<()> {
     let sid = "merged=42926 frame=9728 scanStart=1 scanEnd=705";
 
-    #[allow(unexpected_cfgs)]
-    let mut frame: mzdata::spectrum::MultiLayerIonMobilityFrame<
-        _,
-        DeconvolvedSolutionFeature<IonMobility>,
-    > = mzdata::mz_read!("../test/data/20200204_BU_8B8egg_1ug_uL_7charges_60_min_Slot2-11_1_244.mzML.gz".as_ref(), reader => {
-        let mut reader = mzdata::io::Generic3DIonMobilityFrameSource::new(reader);
-        let frame: mzdata::spectrum::MultiLayerIonMobilityFrame<_, DeconvolvedSolutionFeature<IonMobility>> = reader.get_frame_by_id(sid).unwrap();
-        frame
-    })?;
+    let mut reader = mzdata::MzMLReader::new_indexed(mzdata::io::RestartableGzDecoder::new(
+        io::BufReader::new(fs::File::open(
+            "../test/data/20200204_BU_8B8egg_1ug_uL_7charges_60_min_Slot2-11_1_244.mzML.gz",
+        )?),
+    )).into_frame_source::<Feature<MZ, IonMobility>, DeconvolvedSolutionFeature<IonMobility>>();
+
+
+    let mut frame= reader.get_frame_by_id(sid).unwrap();
 
     frame.extract_features_simple(Tolerance::PPM(15.0), 2, 0.01, None)?;
-    frame.features = frame
-        .features
-        .map(|mut fmap| {
-            let vfmap: Vec<_> = fmap.into_par_iter().filter(|f| f.len() > 1).map(| mut f| {
+    frame.features = frame.features.map(|mut fmap| {
+        let vfmap: Vec<_> = fmap
+            .into_par_iter()
+            .filter(|f| f.len() > 1)
+            .map(|mut f| {
                 f.smooth(1);
                 f
-            }).collect();
-            fmap = FeatureMap::new(vfmap);
-            fmap
-        });
+            })
+            .collect();
+        fmap = FeatureMap::new(vfmap);
+        fmap
+    });
 
     let mut deconv = FeatureProcessor::new(
         frame.features.clone().unwrap(),
@@ -180,8 +181,7 @@ fn test_map_im() -> io::Result<()> {
     > = reader.get_frame_by_id(sid).unwrap();
 
     let dup_features = FeatureMap::new(
-        DeconvolvedSolutionFeature::try_from_arrays_3d(dup_frame.arrays.as_ref().unwrap())
-            .unwrap(),
+        DeconvolvedSolutionFeature::try_from_arrays_3d(dup_frame.arrays.as_ref().unwrap()).unwrap(),
     );
 
     for (fb, fa) in dup_features
@@ -234,27 +234,26 @@ fn test_map_im() -> io::Result<()> {
 fn test_map_im_ms2() -> io::Result<()> {
     let sid = "merged=42853 frame=9714 scanStart=341 scanEnd=359";
 
-    #[allow(unexpected_cfgs)]
-    let mut frame: mzdata::spectrum::MultiLayerIonMobilityFrame<
-        _,
-        DeconvolvedSolutionFeature<IonMobility>,
-    > = mzdata::mz_read!("../test/data/20200204_BU_8B8egg_1ug_uL_7charges_60_min_Slot2-11_1_244.mzML.gz".as_ref(), reader => {
-        let mut reader = mzdata::io::Generic3DIonMobilityFrameSource::new(reader);
-        let frame: mzdata::spectrum::MultiLayerIonMobilityFrame<_, DeconvolvedSolutionFeature<IonMobility>> = reader.get_frame_by_id(sid).unwrap();
-        frame
-    })?;
+    let mut reader = mzdata::MzMLReader::new_indexed(mzdata::io::RestartableGzDecoder::new(
+        io::BufReader::new(fs::File::open(
+            "../test/data/20200204_BU_8B8egg_1ug_uL_7charges_60_min_Slot2-11_1_244.mzML.gz",
+        )?),
+    )).into_frame_source::<Feature<MZ, IonMobility>, DeconvolvedSolutionFeature<IonMobility>>();
+
+    let mut frame= reader.get_frame_by_id(sid).unwrap();
 
     frame.extract_features_simple(Tolerance::PPM(15.0), 1, 0.2, None)?;
-    frame.features = frame
-        .features
-        .map(|mut fmap| {
-            let vfmap: Vec<_> = fmap.into_par_iter().map(| mut f| {
+    frame.features = frame.features.map(|mut fmap| {
+        let vfmap: Vec<_> = fmap
+            .into_par_iter()
+            .map(|mut f| {
                 f.smooth(1);
                 f
-            }).collect();
-            fmap = FeatureMap::new(vfmap);
-            fmap
-        });
+            })
+            .collect();
+        fmap = FeatureMap::new(vfmap);
+        fmap
+    });
 
     let mut deconv = FeatureProcessor::new(
         frame.features.clone().unwrap(),
@@ -281,16 +280,12 @@ fn test_map_im_ms2() -> io::Result<()> {
 
     let features = deconv_map.all_features_for(203.079, Tolerance::Da(0.02));
     assert_eq!(features.len(), 1);
-    assert_eq!(
-        features[0].charge(),
-        1,
-    );
+    assert_eq!(features[0].charge(), 1,);
 
     frame.deconvoluted_features = Some(deconv_map);
 
     Ok(())
 }
-
 
 #[test_log::test]
 #[test_log(default_log_filter = "debug")]

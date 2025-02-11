@@ -15,7 +15,7 @@ use crate::{
     args::{DeconvolutionParams, PrecursorProcessing},
     progress::ProgressRecord,
     selection_targets::TargetTrackingFrameGroup,
-    types::{CFeature, DFeature, FrameGroupType, FrameType},
+    types::{CFeature, DFeature, FrameGroupType, FrameResultGroup, FrameType},
     write::postprocess_frames,
     FeatureExtractionParams,
 };
@@ -85,21 +85,6 @@ fn extract_features_msn(
 }
 
 #[allow(clippy::too_many_arguments)]
-#[tracing::instrument(
-    level = "debug",
-    skip(
-        ms1_engine,
-        msn_engine,
-        ms1_deconv_params,
-        msn_deconv_params,
-        extraction_params,
-        msn_extraction_params,
-        group,
-        precursor_processing,
-        writer_format
-    ),
-    name = "deconvolution_transform_im"
-)]
 pub fn deconvolution_transform_im<
     S: IsotopicPatternScorer + Send + 'static,
     F: IsotopicFitFilter + Send + 'static,
@@ -118,7 +103,7 @@ pub fn deconvolution_transform_im<
     writer_format: MassSpectrometryFormat,
 ) -> (
     usize,
-    TargetTrackingFrameGroup<CFeature, DFeature, FrameGroupType>,
+    FrameResultGroup,
     ProgressRecord,
 ) {
     let had_precursor = group.precursor().is_some();
@@ -280,6 +265,6 @@ pub fn deconvolution_transform_im<
             }
         });
 
-    (_, group) = postprocess_frames(group_idx, group, writer_format);
+    let (_, group) = postprocess_frames(group_idx, group, writer_format);
     (group_idx, group, prog)
 }

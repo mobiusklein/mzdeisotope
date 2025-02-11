@@ -265,9 +265,9 @@ pub struct FeatureExtractionParams {
 pub fn make_default_ms1_feature_extraction_params() -> FeatureExtractionParams {
     FeatureExtractionParams {
         smoothing: 1,
-        error_tolerance: Tolerance::PPM(15.0),
+        error_tolerance: Tolerance::PPM(10.0),
         minimum_size: 2,
-        maximum_time_gap: 0.1
+        maximum_time_gap: 0.025,
     }
 }
 
@@ -275,9 +275,9 @@ pub fn make_default_ms1_feature_extraction_params() -> FeatureExtractionParams {
 pub fn make_default_msn_feature_extraction_params() -> FeatureExtractionParams {
     FeatureExtractionParams {
         smoothing: 1,
-        error_tolerance: Tolerance::PPM(15.0),
+        error_tolerance: Tolerance::PPM(10.0),
         minimum_size: 0,
-        maximum_time_gap: 0.1
+        maximum_time_gap: 0.025,
     }
 }
 

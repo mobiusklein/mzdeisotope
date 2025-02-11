@@ -480,6 +480,7 @@ impl<
         }
     }
 
+    #[allow(unused)]
     pub fn iter(&self) -> IonMobilityFrameGroupIter<'_, C, D, MultiLayerIonMobilityFrame<C, D>, G> {
         IonMobilityFrameGroupIter::new(&self.group)
     }

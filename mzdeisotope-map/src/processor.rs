@@ -27,7 +27,7 @@ use crate::{
     solution::{reflow_feature, DeconvolvedSolutionFeature, FeatureMerger, MZPointSeries},
     traits::{
         DeconvolutionError, FeatureIsotopicFitter, FeatureMapMatch, FeatureSearchParams,
-        GraphFeatureDeconvolution,
+        GraphFeatureDeconvolution, FeatureMapType, FeatureType,
     },
     FeatureSetIter,
 };
@@ -165,7 +165,7 @@ pub struct FeatureProcessor<
     S: IsotopicPatternScorer,
     F: IsotopicFitFilter,
 > {
-    pub feature_map: FeatureMap<MZ, Y, Feature<MZ, Y>>,
+    pub feature_map: FeatureMapType<Y>,
     pub isotopic_model: I,
     pub scorer: S,
     pub fit_filter: F,
@@ -261,7 +261,7 @@ impl<
             for opt in features.into_iter() {
                 if let Some((j, f)) = opt {
                     indices_vec.push(Some(j));
-                    features_vec.push(Some(f));
+                    features_vec.push(Some(f.as_ref()));
                 } else {
                     features_vec.push(None);
                     indices_vec.push(None);
@@ -344,11 +344,11 @@ impl<
     > FeatureMapMatch<Y> for FeatureProcessor<Y, I, S, F>
 {
     #[inline(always)]
-    fn feature_map(&self) -> &FeatureMap<MZ, Y, Feature<MZ, Y>> {
+    fn feature_map(&self) -> &FeatureMapType<Y> {
         &self.feature_map
     }
 
-    fn feature_map_mut(&mut self) -> &mut FeatureMap<MZ, Y, Feature<MZ, Y>> {
+    fn feature_map_mut(&mut self) -> &mut FeatureMapType<Y> {
         &mut self.feature_map
     }
 }
@@ -375,7 +375,7 @@ impl<
         self.prefer_multiply_charged
     }
 
-    fn skip_feature(&self, feature: &Feature<MZ, Y>) -> bool {
+    fn skip_feature(&self, feature: &FeatureType<Y>) -> bool {
         if self.minimum_size > feature.len() {
             debug!(
                 "Skipping feature {} with {} points",
@@ -413,7 +413,7 @@ impl<
     ) -> Self {
         let dependency_graph = FeatureDependenceGraph::new(scorer.interpretation());
         Self {
-            feature_map,
+            feature_map: feature_map.into_iter().map(FeatureType::from).collect(),
             isotopic_model,
             scorer,
             fit_filter,
@@ -462,7 +462,7 @@ impl<
         let features: Vec<_> = fit
             .features
             .iter()
-            .map(|i| i.map(|i| self.feature_map.get_item(i)))
+            .map(|i| i.map(|i| self.feature_map.get_item(i).as_ref()))
             .collect();
         let feat_iter = FeatureSetIter::new_with_time_interval(
             &features,
@@ -607,6 +607,8 @@ impl<
                     debug!("{i} unable to update {time}");
                 }
             }
+
+            feature_to_reduce.invalidate();
         }
     }
 
@@ -652,7 +654,7 @@ impl<
         let n_before = self.feature_map.len();
         let n_points_before: usize = self.feature_map.iter().map(|f| f.len()).sum();
 
-        let mut tmp = FeatureMap::empty();
+        let mut tmp = FeatureMapType::empty();
 
         mem::swap(&mut tmp, &mut self.feature_map);
 
@@ -673,7 +675,7 @@ impl<
                 features_acc.push(f);
             }
         }
-        self.feature_map = FeatureMap::new(features_acc);
+        self.feature_map = FeatureMap::new(features_acc).into();
         let n_after = self.feature_map.len();
         let n_points_after: usize = self.feature_map.iter().map(|f| f.len()).sum();
         debug!("{n_before} features, {n_points_before} points before, {n_after} features, {n_points_after} points after");
@@ -743,19 +745,7 @@ impl<
                         solution
                     })
                     .filter(|f| !f.is_empty())
-                    .flat_map(|f| {
-                        let parts = f.split_sparse(max_gap_size);
-                        if tracing::enabled!(tracing::Level::DEBUG) && f.charge().abs() > 1 {
-                            let zs: Vec<_> = parts.iter().map(|p| p.len()).collect();
-                            debug!(
-                                "{}@{} split into {} units of sizes {zs:?}",
-                                f.mz(),
-                                f.charge(),
-                                parts.len()
-                            )
-                        }
-                        parts
-                    })
+                    .flat_map(|f| f.split_sparse(max_gap_size))
                     .filter(|fit| fit.len() >= minimum_size),
             );
 
@@ -773,7 +763,7 @@ impl<
                 self.mask_features_at(&indices_to_mask);
             }
 
-            let after_tic = self.feature_map.iter().map(|f| f.total_intensity()).sum();
+            let after_tic = self.feature_map.iter().map(|f| f.as_ref().total_intensity()).sum();
             convergence_check = (before_tic - after_tic) / after_tic;
             if convergence_check <= convergence {
                 debug!(
@@ -808,6 +798,7 @@ impl<
         let merger = FeatureMerger::<Y>::default();
         let map_merged = merger
             .bridge_feature_gaps(&map, Tolerance::PPM(2.0), self.maximum_time_gap)
+            .features
             .into_iter()
             .map(reflow_feature)
             .collect();

@@ -7,18 +7,20 @@ use itertools::Itertools;
 use mzdata::{
     io::MassSpectrometryFormat,
     prelude::*,
-    spectrum::SpectrumLike,
     spectrum::{
-        bindata::{BinaryCompressionType, BuildArrayMap3DFrom},
-        utils::Collator,
+        bindata::BinaryCompressionType, utils::Collator,
+        IonMobilityFrameGroup, SpectrumLike,
     },
+    RawSpectrum,
 };
 use tracing::{debug, error, info, instrument};
 
-use crate::{selection_targets::TargetTrackingFrameGroup, types::{
-    CFeature, CPeak, DFeature, DPeak, FrameGroupType, FrameType, SpectrumGroupType, SpectrumType,
-    BUFFER_SIZE,
-}};
+use crate::{
+    selection_targets::TargetTrackingFrameGroup,
+    types::{
+        CFeature, CPeak, DFeature, DPeak, FrameGroupType, FrameResult, FrameResultGroup, FrameType, SpectrumGroupType, SpectrumType, BUFFER_SIZE
+    },
+};
 
 pub(crate) trait HasIndex {
     fn index(&self) -> usize;
@@ -52,9 +54,27 @@ impl Iterable for TargetTrackingFrameGroup<CFeature, DFeature, FrameGroupType> {
     }
 }
 
+impl Iterable for FrameResultGroup {
+    fn iter(&self) -> impl Iterator<Item = &Self::Item> {
+        self.iter()
+    }
+}
+
 impl HasIndex for FrameType {
     fn index(&self) -> usize {
         self.description().index
+    }
+}
+
+impl HasIndex for RawSpectrum {
+    fn index(&self) -> usize {
+        self.description().index
+    }
+}
+
+impl HasIndex for FrameResult {
+    fn index(&self) -> usize {
+        IonMobilityFrameLike::index(self)
     }
 }
 
@@ -116,57 +136,54 @@ pub(crate) fn postprocess_frames(
     group_idx: usize,
     mut group: TargetTrackingFrameGroup<CFeature, DFeature, FrameGroupType>,
     output_format: MassSpectrometryFormat,
-) -> (usize, TargetTrackingFrameGroup<CFeature, DFeature, FrameGroupType>) {
+) -> (
+    usize,
+    FrameResultGroup,
+) {
+    let mut grp = IonMobilityFrameGroup::default();
     if matches!(output_format, MassSpectrometryFormat::MzML) {
-        if let Some(precursor) = group.precursor_mut() {
-            if let Some(peaks) = precursor.deconvoluted_features.as_ref() {
-                let mut arrays = BuildArrayMap3DFrom::as_arrays_3d(peaks.as_slice());
-                arrays
-                    .iter_mut()
-                    .flat_map(|(_, layer)| layer.iter_mut())
-                    .for_each(|(_, a)| {
-                        a.store_compressed(BinaryCompressionType::Zlib).unwrap();
-                    });
-                precursor.arrays = Some(arrays);
-                precursor.deconvoluted_features = None;
-                precursor.features = None
-            }
+        if let Some(precursor) = group.group.precursor.take() {
+            let descr = precursor.description().clone();
+            let mut spec = RawSpectrum::from(precursor);
+            spec.arrays.iter_mut().for_each(|(_, a)| { a.store_compressed(BinaryCompressionType::Zlib).unwrap() });
+            let spec = FrameResult::Flattened(spec, descr);
+            grp.precursor = Some(spec);
         }
-        for product in group.products_mut().iter_mut() {
-            if let Some(peaks) = product.deconvoluted_features.as_ref() {
-                let mut arrays = BuildArrayMap3DFrom::as_arrays_3d(peaks.as_slice());
-                arrays
-                    .iter_mut()
-                    .flat_map(|(_, layer)| layer.iter_mut())
-                    .for_each(|(_, a)| {
-                        a.store_compressed(BinaryCompressionType::Zlib).unwrap();
-                    });
-                product.arrays = Some(arrays);
-                product.deconvoluted_features = None;
-                product.features = None;
-            }
+        let mut products = Vec::new();
+        for product in group.group.products {
+            let descr = product.description().clone();
+            let mut spec = RawSpectrum::from(product);
+            spec.arrays.iter_mut().for_each(|(_, a)| { a.store_compressed(BinaryCompressionType::Zlib).unwrap() });
+            let spec = FrameResult::Flattened(spec, descr);
+            products.push(spec);
         }
-        (group_idx, group)
+        grp.products = products;
+        (group_idx, grp)
     } else if matches!(output_format, MassSpectrometryFormat::MzMLb) {
-        if let Some(precursor) = group.precursor_mut() {
-            if let Some(peaks) = precursor.deconvoluted_features.as_ref() {
-                let arrays = BuildArrayMap3DFrom::as_arrays_3d(peaks.as_slice());
-                precursor.arrays = Some(arrays);
-                precursor.deconvoluted_features = None;
-                precursor.features = None
-            }
+        let mut grp = IonMobilityFrameGroup::default();
+        if let Some(precursor) = group.group.precursor.take() {
+            let descr = precursor.description().clone();
+            let spec = RawSpectrum::from(precursor);
+            let spec = FrameResult::Flattened(spec, descr);
+            grp.precursor = Some(spec);
         }
-        for product in group.products_mut().iter_mut() {
-            if let Some(peaks) = product.deconvoluted_features.as_ref() {
-                let arrays = BuildArrayMap3DFrom::as_arrays_3d(peaks.as_slice());
-                product.arrays = Some(arrays);
-                product.deconvoluted_features = None;
-                product.features = None;
-            }
+        let mut products = Vec::new();
+        for product in group.group.products {
+            let descr = product.description().clone();
+            let spec = FrameResult::Flattened(RawSpectrum::from(product), descr);
+            products.push(spec);
         }
-        (group_idx, group)
+        grp.products = products;
+        (group_idx, grp)
     } else {
-        (group_idx, group)
+        grp.precursor = group.group.precursor.take().map(FrameResult::Frame);
+        grp.products = group
+            .group
+            .products
+            .into_iter()
+            .map(FrameResult::Frame)
+            .collect();
+        (group_idx, grp)
     }
 }
 
@@ -175,18 +192,17 @@ fn drain_channel<T: Send + HasIndex, I: Iterable<Item = T>>(
     channel: &Receiver<(usize, I)>,
     batch_size: usize,
 ) -> bool {
+    let mut j = 0;
     for b in 0..batch_size {
         match channel.try_recv() {
             Ok((_, group)) => {
                 group
                     .into_iter()
                     .for_each(|s| collator.receive(s.index(), s));
+                j += 1;
             }
             Err(e) => match e {
                 TryRecvError::Empty => {
-                    if b > batch_size / 2 {
-                        info!("Drained {b} items from work queue");
-                    }
                     break;
                 }
                 TryRecvError::Disconnected => {
@@ -196,6 +212,9 @@ fn drain_channel<T: Send + HasIndex, I: Iterable<Item = T>>(
                 }
             },
         }
+    }
+    if j > batch_size / 2 {
+        info!("Drained {j} items from work queue");
     }
     collator.done
 }
@@ -215,8 +234,6 @@ pub(crate) fn collate_results_spectra<T: HasIndex + Send, I: Iterable<Item = T>>
             i = 1;
         }
         {
-            let span = tracing::debug_span!("polling work queue", tick = i);
-            let _entered = span.enter();
             match receiver.try_recv() {
                 Ok((group_idx, group)) => {
                     if group_idx == 0 {
@@ -227,7 +244,10 @@ pub(crate) fn collate_results_spectra<T: HasIndex + Send, I: Iterable<Item = T>>
                     group
                         .into_iter()
                         .for_each(|s| collator.receive(s.index(), s));
-                    if drain_channel(&mut collator, &receiver, 1000) && collator.done && collator.waiting.is_empty() {
+                    if drain_channel(&mut collator, &receiver, 1000)
+                        && collator.done
+                        && collator.waiting.is_empty()
+                    {
                         debug!("Setting collator loop condition to false");
                         has_work = false;
                     }
@@ -247,21 +267,21 @@ pub(crate) fn collate_results_spectra<T: HasIndex + Send, I: Iterable<Item = T>>
 
         let n = collator.waiting.len();
         if !collator.has_next() && i % 10000000 == 0 && i > 0 && n > 0 {
-                        let t = Instant::now();
-                        if (t - last_send).as_secs_f64() > 30.0 {
-                            let waiting_keys: Vec<_> =
-                                collator.waiting.keys().sorted().take(10).copied().collect();
-                            let write_queue_size = sender.len();
-                            let work_queue_size = receiver.len();
-                            tracing::info!(
-                                r#"Collator holding {n} entries at tick {i}, next key {} ({}), pending keys: {waiting_keys:?}
-        with {write_queue_size} writing backlog and {work_queue_size} work waiting to collate"#,
-                                collator.next_key,
-                                collator.has_next()
-                            );
-                            last_send = t;
-                        }
-                    }
+            let t = Instant::now();
+            if (t - last_send).as_secs_f64() > 30.0 {
+                let waiting_keys: Vec<_> =
+                    collator.waiting.keys().sorted().take(10).copied().collect();
+                let write_queue_size = sender.len();
+                let work_queue_size = receiver.len();
+                tracing::info!(
+                    r#"Collator holding {n} entries at tick {i}, next key {} ({}), pending keys: {waiting_keys:?}
+with {write_queue_size} writing backlog and {work_queue_size} work waiting to collate"#,
+                    collator.next_key,
+                    collator.has_next()
+                );
+                last_send = t;
+            }
+        }
 
         if collator.done && n > 0 {
             debug!("Draining output queue, {n} items");
@@ -281,12 +301,8 @@ pub(crate) fn collate_results_spectra<T: HasIndex + Send, I: Iterable<Item = T>>
                 }
             }
         } else {
-            let span = tracing::debug_span!("sending write queue", tick = i);
-            let _entered = span.enter();
             while let Some((group_idx, group)) = collator.try_next() {
                 if collator.waiting.len() >= BUFFER_SIZE {
-                    let span = tracing::debug_span!("flushing write queue", tick = i);
-                    let _entered = span.enter();
                     match sender.send((group_idx, group)) {
                         Ok(()) => {}
                         Err(e) => {
@@ -348,8 +364,6 @@ pub fn write_output_spectra<S: SpectrumWriter<CPeak, DPeak>>(
             checkpoint = group_idx;
             time_checkpoint = scan_time;
         }
-        let span = tracing::debug_span!("writing spectrum", scan_index = group_idx);
-        let _entered = span.enter();
         writer.write(&scan)?;
     }
     if time_checkpoint != scan_time {
@@ -363,7 +377,7 @@ pub fn write_output_frames<
     S: IonMobilityFrameWriter<CFeature, DFeature> + SpectrumWriter<CPeak, DPeak>,
 >(
     mut writer: S,
-    receiver: Receiver<(usize, FrameType)>,
+    receiver: Receiver<(usize, FrameResult)>,
 ) -> io::Result<()> {
     let mut checkpoint = 0usize;
     let mut time_checkpoint = 0.0;
@@ -389,7 +403,13 @@ pub fn write_output_frames<
         }
         let span = tracing::debug_span!("writing frame", frame_index = group_idx);
         let _entered = span.enter();
-        writer.write_frame(&frame)?;
+
+        match frame {
+            FrameResult::Flattened(raw_spectrum, _) => writer.write_owned(raw_spectrum),
+            FrameResult::Frame(frame) => writer.write_frame_owned(frame),
+        }?;
+
+        // writer.write_frame(&frame)?;
     }
     if time_checkpoint != frame_time {
         tracing::info!("Finished | Frame={frame_counter} Time={frame_time:0.3}");

@@ -12,8 +12,7 @@ use mzdeisotope::{
 };
 use mzpeaks::{
     coordinate::CoordinateRange,
-    feature::{Feature, TimeInterval},
-    feature_map::FeatureMap,
+    feature::TimeInterval,
     prelude::*,
     MZ,
 };
@@ -23,8 +22,12 @@ use tracing::debug;
 use crate::{
     dependency_graph::{
         DependenceCluster, FeatureDependenceGraph, FitKey, FitRef, SubgraphSolverMethod,
-    }, FeatureSetFit
+    }, FeatureSetFit,
+    fmap::{IndexedFeatureMap, IndexedFeature}
 };
+
+pub(crate) type FeatureType<Y> = IndexedFeature<Y>;
+pub(crate) type FeatureMapType<Y> = IndexedFeatureMap<Y>;
 
 /// An error that might occur during deconvolution
 #[derive(Debug, Clone, PartialEq, Error)]
@@ -160,14 +163,14 @@ pub fn quick_charge_feature_w<C: FeatureLike<MZ, Y>, Y>(
 }
 
 pub trait FeatureMapMatch<Y> {
-    fn feature_map(&self) -> &FeatureMap<MZ, Y, Feature<MZ, Y>>;
-    fn feature_map_mut(&mut self) -> &mut FeatureMap<MZ, Y, Feature<MZ, Y>>;
+    fn feature_map(&self) -> &FeatureMapType<Y>;
+    fn feature_map_mut(&mut self) -> &mut FeatureMapType<Y>;
 
     fn find_all_features(
         &self,
         mz: f64,
         error_tolerance: Tolerance,
-    ) -> Vec<(usize, &Feature<MZ, Y>)> {
+    ) -> Vec<(usize, &FeatureType<Y>)> {
         let indices = self.feature_map().all_indices_for(mz, error_tolerance);
         indices
             .into_iter()
@@ -180,7 +183,7 @@ pub trait FeatureMapMatch<Y> {
         mz: f64,
         error_tolerance: Tolerance,
         interval: &Option<CoordinateRange<Y>>,
-    ) -> Option<Vec<(usize, &Feature<MZ, Y>)>> {
+    ) -> Option<Vec<(usize, &FeatureType<Y>)>> {
         let f = self.find_all_features(mz, error_tolerance);
         if f.is_empty() {
             None
@@ -189,7 +192,7 @@ pub trait FeatureMapMatch<Y> {
             if search_width == 0.0 {
                 return None;
             }
-            let f: Vec<(usize, &Feature<MZ, Y>)> = f
+            let f: Vec<(usize, &FeatureType<Y>)> = f
                 .into_iter()
                 .filter(|(_, f)| {
                     let t = f.as_range();
@@ -224,7 +227,7 @@ pub trait FeatureMapMatch<Y> {
 }
 
 
-pub type IndexedIsotopicFitFeatureSet<'a, Y> = Vec<(usize, &'a Feature<MZ, Y>)>;
+pub type IndexedIsotopicFitFeatureSet<'a, Y> = Vec<(usize, &'a FeatureType<Y>)>;
 
 pub trait FeatureIsotopicFitter<Y>: FeatureMapMatch<Y> {
     fn fit_theoretical_distribution(
@@ -309,7 +312,7 @@ pub trait GraphFeatureDeconvolution<Y>: FeatureIsotopicFitter<Y> {
 
     fn prefer_multiply_charged(&self) -> bool;
 
-    fn skip_feature(&self, feature: &Feature<MZ, Y>) -> bool;
+    fn skip_feature(&self, feature: &FeatureType<Y>) -> bool;
 
     fn dependency_graph_mut(&mut self) -> &mut FeatureDependenceGraph;
 

@@ -16,9 +16,9 @@ version = "0.2.7"
 
 [workspace.dependencies]
 
-mzdata = { version = ">=0.44.0", default-features = false, features = ["mzsignal", "nalgebra"] }
-mzpeaks = { version = ">=1.0.6,<1.1.0" }
-mzsignal = { version = ">= 1.1.0,<1.2.0", default-features = false, features = ["nalgebra", "avx"] }
+mzdata = { version = ">=0.46.1", default-features = false, features = ["mzsignal", "nalgebra", "mzml", "mgf"] }
+mzpeaks = { version = ">=1.0.7,<1.1.0" }
+mzsignal = { version = ">= 1.1.1,<1.2.0", default-features = false, features = ["nalgebra", "avx"] }
 chemical_elements = { version = "0.5.0", features = ['mzpeaks'] }
 
 tracing = { version = "0.1.40" }
@@ -52,3 +52,5 @@ opt-level = 3
 
 [patch.crates-io]
 # mzdata = { path = "../mzdata" }
+# mzsignal = { path = "../mzsignal" }
+# mzpeaks = { path = "../mzpeaks" }

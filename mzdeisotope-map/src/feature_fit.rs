@@ -5,7 +5,9 @@ use chemical_elements::isotopic_pattern::TheoreticalIsotopicPattern;
 
 use mzsignal::smooth::moving_average;
 use mzdeisotope::scorer::ScoreType;
-use mzpeaks::{feature::{Feature, TimeInterval}, feature_map::{FeatureMap, FeatureMapLike}, CoordinateRange, MZ};
+use mzpeaks::{feature::TimeInterval, feature_map::FeatureMapLike, CoordinateRange};
+
+use crate::traits::FeatureMapType;
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, PartialOrd)]
 pub struct MapCoordinate {
@@ -108,7 +110,7 @@ impl FeatureSetFit {
         self.features.is_empty()
     }
 
-    pub fn find_bounds<Y: Clone>(&self, feature_map: &FeatureMap<MZ, Y, Feature<MZ, Y>>, detection_threshold: f32) -> CoordinateRange<Y> {
+    pub fn find_bounds<Y: Clone>(&self, feature_map: &FeatureMapType<Y>, detection_threshold: f32) -> CoordinateRange<Y> {
         let mut start_time: f64 = f64::INFINITY;
         let mut end_time: f64 = f64::INFINITY;
 
@@ -128,7 +130,7 @@ impl FeatureSetFit {
         CoordinateRange::new(Some(start_time), Some(end_time))
     }
 
-    pub fn find_separation<Y: Clone>(&self, feature_map: &FeatureMap<MZ, Y, Feature<MZ, Y>>, detection_threshold: f32) -> (CoordinateRange<Y>, Vec<ScoreSegment>) {
+    pub fn find_separation<Y: Clone>(&self, feature_map: &FeatureMapType<Y>, detection_threshold: f32) -> (CoordinateRange<Y>, Vec<ScoreSegment>) {
         let mut time_range = self.find_bounds(feature_map, detection_threshold);
         if self.n_points > 0 {
             let mut segments = Vec::new();
