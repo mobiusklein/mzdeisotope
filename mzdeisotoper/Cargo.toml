@@ -17,7 +17,7 @@ keywords = ['mass-spectrometry', 'deisotoping', 'charge-deconvolution']
 categories = ["science", "science::bioinformatics::proteomics"]
 
 [features]
-default = ["zlib-ng-compat", "bruker_tdf"]
+default = ["zlib-ng-compat", ]
 
 mzmlb = ["mzdata/mzmlb"]
 thermo = ["mzdata/thermo"]
