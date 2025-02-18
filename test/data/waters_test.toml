@@ -1,0 +1,30 @@
+input_file = '..\test\data\5B8egg_500ng_30V450ms18msReal_Ramp3_01.mzML_one_scan.gz'
+output_file = "tmp.mzML"
+write_buffer_size = 10000
+threads = 1
+ms1_averaging_range = 0
+ms1_denoising = 0.0
+ms1_isotopic_model = ["Peptide"]
+ms1_score_threshold = 5.0
+msn_isotopic_model = ["Peptide"]
+msn_score_threshold = 2.0
+precursor_processing = "DIA"
+charge_range = [
+    1,
+    8,
+]
+ms1_missed_peaks = 1
+msn_missed_peaks = 1
+isotopic_incremental_truncation = false
+ion_mobility_deconvolution = true
+ms1_ion_mobility_gap_size = 0.5
+msn_ion_mobility_gap_size = 0.5
+
+[signal_params]
+ms1_averaging = 1
+mz_range = [
+    80.0,
+    2200.0,
+]
+interpolation_dx = 0.002
+ms1_denoising = 0.0

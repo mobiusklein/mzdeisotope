@@ -54,3 +54,4 @@ toml = "0.8.19"
 [dev-dependencies]
 assert_cmd = "2.0.13"
 predicates = "3.1.0"
+test-log = { version = "0.2.16", features = ["trace", "unstable"] }

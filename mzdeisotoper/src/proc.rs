@@ -56,6 +56,8 @@ pub fn prepare_procesing<
     let build_ms1_engine = thread::spawn(move || ms1_deconv_params.make_params_and_engine());
     let build_msn_engine = thread::spawn(move || msn_deconv_params.make_params_and_engine());
 
+    let has_ms1 = reader.file_description().has_ms1_spectra();
+
     let mut group_iter = reader.into_groups();
     let end_time = if let Some(time_range) = time_range {
         info!("Starting from {}", time_range.start);
@@ -64,6 +66,10 @@ pub fn prepare_procesing<
     } else {
         f64::INFINITY
     };
+
+    if !has_ms1 {
+        group_iter.max_ms1_seeking_depth = 1;
+    }
 
     let (ms1_deconv_params, ms1_engine) = build_ms1_engine.join().unwrap();
     let (msn_deconv_params, msn_engine) = build_msn_engine.join().unwrap();
@@ -206,7 +212,7 @@ pub fn prepare_procesing<
 
 #[allow(clippy::too_many_arguments)]
 pub fn prepare_procesing_im<
-    R: RandomAccessIonMobilityFrameIterator<CFeature, DFeature, FrameType> + Send,
+    R: RandomAccessIonMobilityFrameIterator<CFeature, DFeature, FrameType> + Send + MSDataFileMetadata,
     S: IsotopicPatternScorer + Send + Sync + Clone + 'static,
     F: IsotopicFitFilter + Send + Sync + Clone + 'static,
     SN: IsotopicPatternScorer + Send + Sync + Clone + 'static,
@@ -241,6 +247,8 @@ pub fn prepare_procesing_im<
         )
     });
 
+    let has_ms1 = reader.file_description().has_ms1_spectra();
+
     let mut group_iter = reader.into_groups();
     let end_time = if let Some(time_range) = time_range {
         info!("Starting from {}", time_range.start);
@@ -249,6 +257,10 @@ pub fn prepare_procesing_im<
     } else {
         f64::INFINITY
     };
+
+    if !has_ms1 {
+        group_iter.max_ms1_seeking_depth = 1;
+    }
 
     let (ms1_deconv_params, ms1_engine) = build_ms1_engine.join().unwrap();
     let (msn_deconv_params, msn_engine) = build_msn_engine.join().unwrap();

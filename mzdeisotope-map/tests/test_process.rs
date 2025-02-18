@@ -44,7 +44,7 @@ macro_rules! assert_is_close {
 }
 
 fn prepare_feature_map() -> io::Result<FeatureMap<MZ, Time, Feature<MZ, Time>>> {
-    let reader = mzdata::MZReader::open_path("../mzdeisotoper/tests/data/batching_test.mzML")?;
+    let reader = mzdata::MZReader::open_path("../test/data/batching_test.mzML")?;
 
     let scans: Vec<_> = reader
         .into_iter()

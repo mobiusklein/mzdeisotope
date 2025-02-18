@@ -1,5 +1,5 @@
 use mzdata::{
-    io::MassSpectrometryFormat, prelude::*, spectrum::bindata::ArrayRetrievalError, Param,
+    io::MassSpectrometryFormat, prelude::*, spectrum::{bindata::ArrayRetrievalError, SignalContinuity}, Param,
 };
 use mzpeaks::{
     coordinate::{IntervalTree, SimpleInterval},
@@ -59,6 +59,7 @@ fn extract_features_ms1(
                     f.smooth(extraction_params.smoothing);
                 });
             }
+            frame.description_mut().signal_continuity = SignalContinuity::Centroid;
         }
         PrecursorProcessing::TandemOnly => {}
     }
@@ -81,6 +82,7 @@ fn extract_features_msn(
             f.smooth(extraction_params.smoothing);
         });
     }
+    frame.description_mut().signal_continuity = SignalContinuity::Centroid;
     Ok(())
 }
 
@@ -199,7 +201,7 @@ pub fn deconvolution_transform_im<
         .for_each(|frame| {
             if !had_precursor && tracing::enabled!(tracing::Level::DEBUG) {
                 tracing::debug!(
-                    "Processing {} MS{} ({:0.3})",
+                    "Processing {} MSn={} ({:0.3})",
                     frame.id(),
                     frame.ms_level(),
                     frame.acquisition().start_time()

@@ -216,6 +216,12 @@ If a stop is not specified, processing stops at the end of the run.
     /// Whether to use the ion mobility framing algorithm
     #[arg(short = 'q', long, default_value_t = false)]
     pub ion_mobility_deconvolution: bool,
+
+    #[arg(long, default_value_t = 0.025)]
+    pub ms1_ion_mobility_gap_size: f64,
+
+    #[arg(long, default_value_t = 0.025)]
+    pub msn_ion_mobility_gap_size: f64,
 }
 
 impl MZDeiosotoper {
@@ -828,9 +834,11 @@ impl MZDeiosotoper {
 
         let mut extraction_params = make_default_ms1_feature_extraction_params();
         extraction_params.smoothing = self.signal_params.ms1_averaging;
+        extraction_params.maximum_time_gap = self.ms1_ion_mobility_gap_size;
 
         let mut msn_extraction_params = make_default_msn_feature_extraction_params();
         msn_extraction_params.smoothing = self.signal_params.ms1_averaging;
+        msn_extraction_params.maximum_time_gap = self.msn_ion_mobility_gap_size;
 
         let start = Instant::now();
 

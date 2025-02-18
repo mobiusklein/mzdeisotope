@@ -1,4 +1,4 @@
-use std::{error::Error, fs, io::prelude::*, io::BufReader, process::Command};
+use std::{error::Error, process::Command};
 
 use assert_cmd::prelude::*;
 use predicates::prelude::*;
@@ -38,7 +38,7 @@ fn test_run_subset() -> Result<(), Box<dyn Error>> {
     let mut cmd = Command::cargo_bin("mzdeisotoper")?;
     cmd.env("RUST_LOG", "debug");
     cmd.env("RUST_BACKTRACE", "1");
-    cmd.arg("./tests/data/batching_test.mzML")
+    cmd.arg("../test/data/batching_test.mzML")
         .args(["-o", "-", "-r", "120-120.1", "-i"]);
     let result = cmd.assert().success();
     result
@@ -54,7 +54,7 @@ fn test_run_subset_average() -> Result<(), Box<dyn Error>> {
     let mut cmd = Command::cargo_bin("mzdeisotoper")?;
     cmd.env("RUST_LOG", "trace");
     cmd.env("RUST_BACKTRACE", "1");
-    cmd.arg("./tests/data/batching_test.mzML")
+    cmd.arg("../test/data/batching_test.mzML")
         .args(["-o", "-", "-r", "120-120.1", "-g", "1"]);
     let result = cmd.assert().success();
     result
@@ -68,12 +68,8 @@ fn test_run_subset_average() -> Result<(), Box<dyn Error>> {
 #[test]
 fn test_run_subset_stdin() -> Result<(), Box<dyn Error>> {
     let mut cmd = assert_cmd::Command::cargo_bin("mzdeisotoper")?;
-    let mut source = BufReader::new(fs::File::open("./tests/data/batching_test.mzML.gz")?);
-    let mut buf = Vec::new();
-    source.read_to_end(&mut buf)?;
     cmd.env("RUST_LOG", "trace");
-    cmd.pipe_stdin("./tests/data/batching_test.mzML.gz")
-        .unwrap();
+    cmd.pipe_stdin("../test/data/batching_test.mzML.gz")?;
     cmd.arg("-").args(["-o", "-", "-r", "120-120.1"]);
     let result = cmd.assert().success();
     result
