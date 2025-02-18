@@ -1,4 +1,4 @@
-input_file = '..\test\data\5B8egg_500ng_30V450ms18msReal_Ramp3_01.mzML_one_scan.gz'
+input_file = '../test/data/5B8egg_500ng_30V450ms18msReal_Ramp3_01.mzML_one_scan.gz'
 output_file = "tmp.mzML"
 write_buffer_size = 10000
 threads = 1
