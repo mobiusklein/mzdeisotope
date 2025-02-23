@@ -1,20 +1,33 @@
 use std::ops::{Index, IndexMut};
 
-use mzpeaks::{prelude::*, MZ};
-use mzpeaks::feature::Feature;
-use mzpeaks::feature_map::FeatureMap;
+use mzpeaks::{
+    feature::Feature,
+    feature_map::FeatureMap,
+    prelude::*,
+    MZ,
+};
 
 #[derive(Debug, Default, Clone)]
 pub struct IndexedFeature<Y> {
     pub(crate) feature: Feature<MZ, Y>,
-    mz: f64,
-    intensity: f32,
+    pub mz: f64,
+    pub intensity: f32,
+    pub charges: Option<Box<[i32]>>,
 }
 
 impl<Y> IndexedFeature<Y> {
     pub fn invalidate(&mut self) {
         self.mz = self.feature.mz();
         self.intensity = self.feature.intensity();
+        self.charges = None;
+    }
+
+    pub fn charges(&self) -> Option<&[i32]> {
+        self.charges.as_deref()
+    }
+
+    pub fn charges_mut(&mut self) -> &mut Option<Box<[i32]>> {
+        &mut self.charges
     }
 }
 
@@ -23,7 +36,6 @@ impl<Y> IndexedFeature<Y> {
         self.intensity
     }
 }
-
 
 impl<Y> AsRef<Feature<MZ, Y>> for IndexedFeature<Y> {
     fn as_ref(&self) -> &Feature<MZ, Y> {
@@ -38,7 +50,8 @@ impl<Y> From<Feature<MZ, Y>> for IndexedFeature<Y> {
         Self {
             feature: value,
             mz,
-            intensity
+            intensity,
+            charges: None,
         }
     }
 }
@@ -48,7 +61,6 @@ impl<Y> From<IndexedFeature<Y>> for Feature<MZ, Y> {
         value.feature
     }
 }
-
 
 impl<Y> PartialOrd for IndexedFeature<Y> {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
@@ -150,6 +162,12 @@ pub struct IndexedFeatureMap<Y> {
     index: Vec<f64>,
 }
 
+impl<Y> AsRef<FeatureMap<MZ, Y, IndexedFeature<Y>>> for IndexedFeatureMap<Y> {
+    fn as_ref(&self) -> &FeatureMap<MZ, Y, IndexedFeature<Y>> {
+        &self.features
+    }
+}
+
 impl<Y> FromIterator<IndexedFeature<Y>> for IndexedFeatureMap<Y> {
     fn from_iter<T: IntoIterator<Item = IndexedFeature<Y>>>(iter: T) -> Self {
         FeatureMap::from_iter(iter.into_iter(), true).into()
@@ -160,7 +178,7 @@ impl<Y> From<FeatureMap<MZ, Y, IndexedFeature<Y>>> for IndexedFeatureMap<Y> {
     fn from(value: FeatureMap<MZ, Y, IndexedFeature<Y>>) -> Self {
         let mut this = Self {
             features: value,
-            index: Vec::new()
+            index: Vec::new(),
         };
         this.build_index();
         this
@@ -171,7 +189,7 @@ impl<Y> From<FeatureMap<MZ, Y, Feature<MZ, Y>>> for IndexedFeatureMap<Y> {
     fn from(value: FeatureMap<MZ, Y, Feature<MZ, Y>>) -> Self {
         let mut this = Self {
             features: value.into_iter().map(IndexedFeature::from).collect(),
-            index: Vec::new()
+            index: Vec::new(),
         };
         this.build_index();
         this
@@ -179,6 +197,15 @@ impl<Y> From<FeatureMap<MZ, Y, Feature<MZ, Y>>> for IndexedFeatureMap<Y> {
 }
 
 impl<Y> IndexedFeatureMap<Y> {
+    pub fn new(features: Vec<IndexedFeature<Y>>) -> Self {
+        let features = FeatureMap::new(features);
+        let mut this = Self {
+            features,
+            index: Vec::new()
+        };
+        this.build_index();
+        this
+    }
 
     fn build_index(&mut self) {
         self.index = self.features.iter().map(|f| f.mz).collect();
@@ -194,6 +221,10 @@ impl<Y> IndexedFeatureMap<Y> {
 
     pub fn is_empty(&self) -> bool {
         self.features.is_empty()
+    }
+
+    pub fn into_inner(self) -> FeatureMap<MZ, Y, IndexedFeature<Y>> {
+        self.features
     }
 
     pub fn iter(&self) -> std::slice::Iter<'_, IndexedFeature<Y>> {
@@ -231,8 +262,8 @@ impl<Y> IndexMut<usize> for IndexedFeatureMap<Y> {
 impl<Y1> FeatureMapLikeMut<MZ, Y1, IndexedFeature<Y1>> for IndexedFeatureMap<Y1> {
     fn push(&mut self, feature: IndexedFeature<Y1>) {
         if self.is_empty() {
-                self.index.push(feature.mz);
-                self.features.push(feature);
+            self.index.push(feature.mz);
+            self.features.push(feature);
         } else {
             let is_tail =
                 self.features.last().as_ref().unwrap().coordinate() <= feature.coordinate();
@@ -255,7 +286,9 @@ impl<Y1> FeatureMapLike<MZ, Y1, IndexedFeature<Y1>> for IndexedFeatureMap<Y1> {
     }
 
     fn len(&self) -> usize {
-        <FeatureMap<MZ, Y1, IndexedFeature<Y1>> as FeatureMapLike<MZ, Y1, IndexedFeature<Y1>>>::len(&self.features)
+        <FeatureMap<MZ, Y1, IndexedFeature<Y1>> as FeatureMapLike<MZ, Y1, IndexedFeature<Y1>>>::len(
+            &self.features,
+        )
     }
 
     fn is_empty(&self) -> bool {
@@ -274,15 +307,18 @@ impl<Y1> FeatureMapLike<MZ, Y1, IndexedFeature<Y1>> for IndexedFeatureMap<Y1> {
         <FeatureMap<MZ, Y1, IndexedFeature<Y1>> as FeatureMapLike<MZ, Y1, IndexedFeature<Y1>>>::get_slice(&self.features, i)
     }
 
-    fn iter<'a>(&'a self) -> impl Iterator<Item = &'a IndexedFeature<Y1>> where
-            IndexedFeature<Y1>: 'a, {
-        <FeatureMap<MZ, Y1, IndexedFeature<Y1>> as FeatureMapLike<MZ, Y1, IndexedFeature<Y1>>>::iter(&self.features)
+    fn iter<'a>(&'a self) -> impl Iterator<Item = &'a IndexedFeature<Y1>>
+    where
+        IndexedFeature<Y1>: 'a,
+    {
+        <FeatureMap<MZ, Y1, IndexedFeature<Y1>> as FeatureMapLike<MZ, Y1, IndexedFeature<Y1>>>::iter(
+            &self.features,
+        )
     }
 }
 
-
 pub struct FeatureIter<Y> {
-    source: std::vec::IntoIter<IndexedFeature<Y>>
+    source: std::vec::IntoIter<IndexedFeature<Y>>,
 }
 
 impl<Y> Iterator for FeatureIter<Y> {
@@ -299,6 +335,8 @@ impl<Y> IntoIterator for IndexedFeatureMap<Y> {
     type IntoIter = FeatureIter<Y>;
 
     fn into_iter(self) -> Self::IntoIter {
-        Self::IntoIter { source: self.features.into_iter() }
+        Self::IntoIter {
+            source: self.features.into_iter(),
+        }
     }
 }

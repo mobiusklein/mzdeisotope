@@ -391,22 +391,18 @@ mod test {
                 Peak {
                     mz: 739.920306,
                     intensity: 8310.933747,
-                    charge: -3,
                 },
                 Peak {
                     mz: 740.254733,
                     intensity: 8061.025466,
-                    charge: -3,
                 },
                 Peak {
                     mz: 740.588994,
                     intensity: 4926.998052,
-                    charge: -3,
                 },
                 Peak {
                     mz: 740.923235,
                     intensity: 2250.893651,
-                    charge: -3,
                 },
             ],
             739.920306,

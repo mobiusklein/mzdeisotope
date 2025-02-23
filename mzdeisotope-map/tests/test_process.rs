@@ -153,6 +153,7 @@ fn test_map_im() -> io::Result<()> {
 
     let features_at = deconv_map.all_features_for(3602.55817059969, Tolerance::PPM(10.0));
     let charges: Vec<_> = features_at.iter().map(|f| f.charge()).collect();
+    eprintln!("{charges:?}");
     assert!(charges.contains(&3));
 
     frame.deconvoluted_features = Some(deconv_map);

@@ -222,6 +222,12 @@ If a stop is not specified, processing stops at the end of the run.
 
     #[arg(long, default_value_t = 0.025)]
     pub msn_ion_mobility_gap_size: f64,
+
+    #[arg(short='f', long, default_value_t = 3)]
+    pub ms1_ion_mobility_feature_min_length: usize,
+
+    #[arg(short='F', long, default_value_t = 3)]
+    pub msn_ion_mobility_feature_min_length: usize,
 }
 
 impl MZDeiosotoper {
@@ -369,7 +375,8 @@ impl MZDeiosotoper {
             fs::write(path, config_text)?;
         }
 
-        self.create_threadpool().install(|| self.reader_then())
+        // self.create_threadpool().install(|| self.reader_then())
+        self.reader_then()
     }
 
     fn reader_then(&self) -> Result<(), MZDeisotoperError> {
@@ -728,17 +735,21 @@ impl MZDeiosotoper {
         let (send_solved, recv_solved) = bounded(buffer_size);
         let (send_collated, recv_collated) = bounded(buffer_size);
 
+        let worker_pool = self.create_threadpool();
+
         let read_task = thread::Builder::new().name("reader".into()).spawn(move || {
-            prepare_procesing(
-                reader,
-                ms1_args,
-                msn_args,
-                signal_params,
-                send_solved,
-                rt_range,
-                Some(precursor_processing),
-                writer_format,
-            )
+            worker_pool.install(|| {
+                prepare_procesing(
+                    reader,
+                    ms1_args,
+                    msn_args,
+                    signal_params,
+                    send_solved,
+                    rt_range,
+                    Some(precursor_processing),
+                    writer_format,
+                )
+            })
         })?;
 
         let collate_task =
@@ -835,30 +846,34 @@ impl MZDeiosotoper {
         let mut extraction_params = make_default_ms1_feature_extraction_params();
         extraction_params.smoothing = self.signal_params.ms1_averaging;
         extraction_params.maximum_time_gap = self.ms1_ion_mobility_gap_size;
+        extraction_params.minimum_size = self.ms1_ion_mobility_feature_min_length;
 
         let mut msn_extraction_params = make_default_msn_feature_extraction_params();
         msn_extraction_params.smoothing = self.signal_params.ms1_averaging;
         msn_extraction_params.maximum_time_gap = self.msn_ion_mobility_gap_size;
+        msn_extraction_params.minimum_size = self.msn_ion_mobility_feature_min_length;
 
         let start = Instant::now();
 
         let (send_solved, recv_solved) = bounded(buffer_size);
         let (send_collated, recv_collated) = bounded(buffer_size);
 
-
+        let worker_pool = self.create_threadpool();
 
         let read_task = thread::Builder::new().name("reader-task".into()).spawn(move || {
-            prepare_procesing_im(
-                reader,
-                ms1_args,
-                msn_args,
-                extraction_params,
-                msn_extraction_params,
-                send_solved,
-                time_range,
-                Some(precursor_processing),
-                writer_format,
-            )
+            worker_pool.install(|| {
+                prepare_procesing_im(
+                    reader,
+                    ms1_args,
+                    msn_args,
+                    extraction_params,
+                    msn_extraction_params,
+                    send_solved,
+                    time_range,
+                    Some(precursor_processing),
+                    writer_format,
+                )
+            })
         })?;
 
         let collate_task =

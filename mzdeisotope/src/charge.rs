@@ -246,13 +246,9 @@ impl ChargeListIter {
     }
 
     pub fn next_charge(&mut self) -> Option<i32> {
-        if self.index < self.valid.len() {
-            let val = self.valid[self.index];
-            self.index += 1;
-            Some(val)
-        } else {
-            None
-        }
+        let value = self.valid.get(self.index).copied();
+        self.index += 1;
+        value
     }
 }
 
@@ -271,6 +267,14 @@ impl From<Vec<i32>> for ChargeListIter {
         Self::new(value)
     }
 }
+
+impl From<ChargeListIter> for Vec<i32> {
+    fn from(value: ChargeListIter) -> Self {
+        value.valid
+    }
+}
+
+impl ChargeIterator for &mut ChargeListIter {}
 
 impl ChargeIterator for std::vec::IntoIter<i32> {}
 

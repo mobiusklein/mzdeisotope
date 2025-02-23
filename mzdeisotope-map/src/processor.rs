@@ -2,6 +2,7 @@ use std::{collections::HashSet, mem};
 
 use chemical_elements::{isotopic_pattern::TheoreticalIsotopicPattern, neutral_mass};
 
+use identity_hash::BuildIdentityHasher;
 use itertools::Itertools;
 use mzpeaks::{
     coordinate::{BoundingBox, CoordinateRange, QuadTree, Span1D},
@@ -26,8 +27,8 @@ use crate::{
     feature_fit::{FeatureSetFit, MapCoordinate},
     solution::{reflow_feature, DeconvolvedSolutionFeature, FeatureMerger, MZPointSeries},
     traits::{
-        DeconvolutionError, FeatureIsotopicFitter, FeatureMapMatch, FeatureSearchParams,
-        GraphFeatureDeconvolution, FeatureMapType, FeatureType,
+        DeconvolutionError, FeatureIsotopicFitter, FeatureMapMatch, FeatureMapType,
+        FeatureSearchParams, FeatureType, GraphFeatureDeconvolution, GraphStepResult,
     },
     FeatureSetIter,
 };
@@ -44,33 +45,48 @@ impl EnvelopeConformer {
         }
     }
 
+    pub fn conform_into<
+        C: CentroidLike + Default + CoordinateLikeMut<MZ> + IntensityMeasurementMut,
+    >(
+        &self,
+        experimental: Vec<Option<C>>,
+        theoretical: &mut TheoreticalIsotopicPattern,
+        cleaned_eid: &mut Vec<C>,
+    ) -> usize {
+        let mut n_missing: usize = 0;
+        let mut total_intensity = 0.0f32;
+
+        for (observed_peak, peak) in experimental.into_iter().zip(theoretical.iter()) {
+            if observed_peak.is_none() {
+                let mut templated_peak = C::default();
+                *templated_peak.coordinate_mut() = peak.mz();
+                *templated_peak.intensity_mut() = 1.0;
+                if peak.intensity > self.minimum_theoretical_abundance {
+                    n_missing += 1;
+                }
+                total_intensity += 1.0;
+                cleaned_eid.push(templated_peak)
+            } else {
+                let observed_peak = observed_peak.unwrap();
+                total_intensity += observed_peak.intensity();
+                cleaned_eid.push(observed_peak)
+            }
+        }
+
+        let total_intensity = total_intensity as f64;
+        theoretical.iter_mut().for_each(|p| {
+            p.intensity *= total_intensity;
+        });
+        n_missing
+    }
+
     pub fn conform<C: CentroidLike + Default + CoordinateLikeMut<MZ> + IntensityMeasurementMut>(
         &self,
         experimental: Vec<Option<C>>,
         theoretical: &mut TheoreticalIsotopicPattern,
     ) -> (Vec<C>, usize) {
         let mut cleaned_eid = Vec::with_capacity(experimental.len());
-        let mut n_missing: usize = 0;
-        let mut total_intensity = 0.0f32;
-
-        for (fpeak, peak) in experimental.into_iter().zip(theoretical.iter()) {
-            if fpeak.is_none() {
-                let mut tpeak = C::default();
-                *tpeak.coordinate_mut() = peak.mz();
-                *tpeak.intensity_mut() = 1.0;
-                if peak.intensity > self.minimum_theoretical_abundance {
-                    n_missing += 1;
-                }
-                total_intensity += tpeak.intensity();
-                cleaned_eid.push(tpeak)
-            } else {
-                total_intensity += fpeak.as_ref().unwrap().intensity();
-                cleaned_eid.push(fpeak.unwrap())
-            }
-        }
-        theoretical.iter_mut().for_each(|p| {
-            p.intensity *= total_intensity as f64;
-        });
+        let n_missing = self.conform_into(experimental, theoretical, &mut cleaned_eid);
         (cleaned_eid, n_missing)
     }
 }
@@ -269,13 +285,19 @@ impl<
             }
 
             let it = FeatureSetIter::new(&features_vec);
+            let mut cleaned_eid = Vec::with_capacity(snapped_tid.len());
+            let mut tid = snapped_tid.clone();
             for (time, eid) in it {
                 counter += 1;
                 if counter % 500 == 0 && counter > 0 {
                     debug!("Step {counter} at {time} for feature combination {i} of {mz}@{charge}");
                 }
-                let mut tid = snapped_tid.clone();
-                let (cleaned_eid, n_missing) = self.envelope_conformer.conform(eid, &mut tid);
+                tid.clone_from(&snapped_tid);
+
+                cleaned_eid.clear();
+                let n_missing =
+                    self.envelope_conformer
+                        .conform_into(eid, &mut tid, &mut cleaned_eid);
                 if n_missing > max_missed_peaks {
                     continue;
                 }
@@ -392,6 +414,8 @@ impl<
         &mut self.dependency_graph
     }
 }
+
+pub(crate) type IndexSet = HashSet<usize, BuildIdentityHasher<usize>>;
 
 impl<
         Y: Clone + Default,
@@ -543,7 +567,7 @@ impl<
                         *residuals[i].last().unwrap()
                     );
                 });
-            let neutral_mass = tid[0].neutral_mass();
+            let neutral_mass = neutral_mass(tid[0].mz, charge, PROTON);
             deconv_feature.push_raw(neutral_mass, time, total_intensity);
         }
 
@@ -650,7 +674,7 @@ impl<
         }
     }
 
-    fn remove_dead_points(&mut self, indices_to_mask: Option<&HashSet<usize>>) {
+    fn remove_dead_points(&mut self, indices_to_mask: Option<&IndexSet>) {
         let n_before = self.feature_map.len();
         let n_points_before: usize = self.feature_map.iter().map(|f| f.len()).sum();
 
@@ -660,22 +684,36 @@ impl<
 
         let mut features_acc = Vec::with_capacity(tmp.len());
 
-        for (i, f) in tmp.into_iter().enumerate() {
+        for (i, f) in tmp.into_inner().into_iter().enumerate() {
             let process = indices_to_mask
                 .map(|mask| mask.contains(&i))
                 .unwrap_or(true);
             if process {
-                features_acc.extend(
-                    f.split_when(|_, (_, _, cur_int)| cur_int <= self.minimum_intensity)
-                        .into_iter()
-                        .filter(|s| s.len() >= self.minimum_size)
-                        .map(|s| s.to_owned()),
-                );
+                let parts: Vec<_> = f
+                    .feature
+                    .split_when(|_, (_, _, cur_int)| cur_int <= self.minimum_intensity)
+                    .into_iter()
+                    .filter(|s| s.len() >= self.minimum_size)
+                    .collect();
+                if parts.len() == 1 {
+                    if parts[0].len() == f.len() {
+                        features_acc.push(f)
+                    } else {
+                        let p: FeatureType<Y> = parts[0].to_owned().into();
+                        features_acc.push(p)
+                    }
+                } else {
+                    for s in parts {
+                        let p: FeatureType<Y> = s.to_owned().into();
+                        features_acc.push(p);
+                    }
+                }
             } else if f.len() >= self.minimum_size {
                 features_acc.push(f);
             }
         }
-        self.feature_map = FeatureMap::new(features_acc).into();
+
+        self.feature_map = FeatureMapType::new(features_acc);
         let n_after = self.feature_map.len();
         let n_points_after: usize = self.feature_map.iter().map(|f| f.len()).sum();
         debug!("{n_before} features, {n_points_before} points before, {n_after} features, {n_points_after} points after");
@@ -702,10 +740,9 @@ impl<
         let mut converged = false;
         let mut convergence_check = f32::MAX;
 
-        let mut indices_modified = HashSet::new();
+        let mut indices_modified = IndexSet::default();
 
         for i in 0..max_iterations {
-            // Only visit features that were touched by the last update
             if i > 0 {
                 self.remove_dead_points(Some(&indices_modified));
                 indices_modified.clear();
@@ -718,7 +755,9 @@ impl<
                 deconvoluted_features.len()
             );
 
-            let fits = self.graph_step_deconvolve(
+            let GraphStepResult {
+                selected_fits: fits,
+            } = self.graph_step_deconvolve(
                 error_tolerance,
                 charge_range,
                 left_search_limit,
@@ -761,9 +800,15 @@ impl<
                 let indices_to_mask = self.find_unused_features(&fits, min_width_mz, max_gap_size);
                 debug!("{} features unused", indices_to_mask.len());
                 self.mask_features_at(&indices_to_mask);
+                indices_modified.extend(indices_to_mask);
             }
 
-            let after_tic = self.feature_map.iter().map(|f| f.as_ref().total_intensity()).sum();
+            let after_tic = self
+                .feature_map
+                .iter()
+                .map(|f| f.as_ref().total_intensity())
+                .sum();
+
             convergence_check = (before_tic - after_tic) / after_tic;
             if convergence_check <= convergence {
                 debug!(

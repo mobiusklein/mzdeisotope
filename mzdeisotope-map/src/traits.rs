@@ -22,8 +22,9 @@ use tracing::debug;
 use crate::{
     dependency_graph::{
         DependenceCluster, FeatureDependenceGraph, FitKey, FitRef, SubgraphSolverMethod,
-    }, FeatureSetFit,
-    fmap::{IndexedFeatureMap, IndexedFeature}
+    },
+    fmap::{IndexedFeature, IndexedFeatureMap},
+    FeatureSetFit,
 };
 
 pub(crate) type FeatureType<Y> = IndexedFeature<Y>;
@@ -86,8 +87,6 @@ impl FeatureSearchParams {
     }
 }
 
-
-
 pub fn quick_charge_feature<C: FeatureLike<MZ, Y>, Y, const N: usize>(
     features: &[C],
     position: usize,
@@ -102,27 +101,35 @@ pub fn quick_charge_feature<C: FeatureLike<MZ, Y>, Y, const N: usize>(
     let mut result_size = 0usize;
     let min_intensity = feature.intensity() / 4.0;
     let query_time = feature.as_range();
-    for other in features.iter().skip(position + 1).filter(|f| f.as_range().overlaps(&query_time)) {
-        if other.intensity() < min_intensity {
-            continue;
-        }
-        let diff = other.mz() - feature.mz();
+    let query_mz = feature.mz();
+
+    for other in features
+        .iter()
+        .skip(position + 1)
+        .filter(|f| f.as_range().overlaps(&query_time))
+    {
+        let diff = other.mz() - query_mz;
         if diff > 1.1 {
             break;
         }
+        if other.intensity() < min_intensity {
+            continue;
+        }
         let raw_charge = 1.0 / diff;
-        let charge = (raw_charge + 0.5) as i32;
         let remain = raw_charge - raw_charge.floor();
         if 0.2 < remain && remain < 0.8 {
             continue;
         }
+        let charge = (raw_charge + 0.5) as i32;
         if charge < min_charge || charge > max_charge {
             continue;
         }
-        if !charges[(charge - 1) as usize] {
+        let idx_z = (charge - 1) as usize;
+        let hit = &mut charges[idx_z];
+        if !*hit {
             result_size += 1;
+            *hit = true;
         }
-        charges[(charge - 1) as usize] = true;
     }
 
     let mut result = Vec::with_capacity(result_size);
@@ -159,7 +166,7 @@ pub fn quick_charge_feature_w<C: FeatureLike<MZ, Y>, Y>(
             }
         };
     }
-    match_i!(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,)
+    match_i!(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,)
 }
 
 pub trait FeatureMapMatch<Y> {
@@ -226,7 +233,6 @@ pub trait FeatureMapMatch<Y> {
     }
 }
 
-
 pub type IndexedIsotopicFitFeatureSet<'a, Y> = Vec<(usize, &'a FeatureType<Y>)>;
 
 pub trait FeatureIsotopicFitter<Y>: FeatureMapMatch<Y> {
@@ -276,8 +282,6 @@ pub trait FeatureIsotopicFitter<Y>: FeatureMapMatch<Y> {
         feature: &Option<CoordinateRange<Y>>,
     ) -> Vec<FeatureSetFit> {
         let base_tid = self.make_isotopic_pattern(mz, charge, search_params);
-
-
 
         self.fit_theoretical_distribution_on_features(
             mz,
@@ -330,7 +334,7 @@ pub trait GraphFeatureDeconvolution<Y>: FeatureIsotopicFitter<Y> {
         }
         (0..n)
             .rev()
-            .map(|i| {
+            .map(move |i| {
                 if i % 5000 == 0 {
                     debug!(
                         "Processing feature {}/{n} ({:0.2}%)",
@@ -338,11 +342,25 @@ pub trait GraphFeatureDeconvolution<Y>: FeatureIsotopicFitter<Y> {
                         (n - i) as f32 / n as f32 * 100.0
                     )
                 }
-                let charge_range_of = quick_charge_feature_w(
-                    self.feature_map().as_slice(),
-                    i,
-                    charge_range
-                );
+
+                // If we are only visiting a subset of features, if the feature's key
+                // is not on the list, skip the rest of this work.
+                // if let Some(to_visit) = keys_to_visit {
+                //     if !to_visit.contains(self.feature_map()[i].key.as_ref().unwrap()) {
+                //         return 0;
+                //     }
+                // }
+
+                if self.feature_map()[i].charges().is_none() {
+                    let charge_range_of =
+                        quick_charge_feature_w(self.feature_map().as_slice(), i, charge_range);
+                    let f = &mut self.feature_map_mut()[i];
+                    *f.charges_mut() = Some(Vec::from(charge_range_of.clone()).into_boxed_slice());
+                }
+
+                let charge_range_of: ChargeListIter =
+                    self.feature_map()[i].charges().unwrap().to_vec().into();
+
                 self.explore_local(
                     i,
                     error_tolerance,
@@ -478,9 +496,11 @@ pub trait GraphFeatureDeconvolution<Y>: FeatureIsotopicFitter<Y> {
             .dependency_graph_mut()
             .solutions(SubgraphSolverMethod::Greedy);
         debug!("{} distinct solution clusters", solutions.len());
-        let res: Result<(), DeconvolutionError> =
-            solutions.into_iter().try_for_each(|(cluster, fits)| {
-                self.solve_subgraph_top(cluster, fits, fit_accumulator)
+        let res: Result<(), DeconvolutionError> = solutions
+            .into_iter()
+            .try_for_each(|(cluster, fits)| {
+                self.solve_subgraph_top(cluster, fits, fit_accumulator)?;
+                Ok(())
             });
         res
     }
@@ -492,7 +512,7 @@ pub trait GraphFeatureDeconvolution<Y>: FeatureIsotopicFitter<Y> {
         left_search: i8,
         right_search: i8,
         search_params: &FeatureSearchParams,
-    ) -> Result<Vec<FeatureSetFit>, DeconvolutionError> {
+    ) -> Result<GraphStepResult, DeconvolutionError> {
         let mut fit_accumulator = Vec::new();
         self.populate_graph(
             error_tolerance,
@@ -506,6 +526,18 @@ pub trait GraphFeatureDeconvolution<Y>: FeatureIsotopicFitter<Y> {
             self.dependency_graph_mut().fit_nodes.len()
         );
         self.select_best_disjoint_subgraphs(&mut fit_accumulator)?;
-        Ok(fit_accumulator)
+        Ok(GraphStepResult::new(fit_accumulator))
+    }
+}
+
+pub struct GraphStepResult {
+    pub selected_fits: Vec<FeatureSetFit>,
+}
+
+impl GraphStepResult {
+    pub fn new(selected_fits: Vec<FeatureSetFit>) -> Self {
+        Self {
+            selected_fits,
+        }
     }
 }

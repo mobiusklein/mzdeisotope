@@ -19,16 +19,15 @@ fn main() {
         .parse::<i32>()
         .unwrap();
     let s = model.scale(mz, charge, PROTON);
-    println!("{}", s.to_string());
+    println!("{}", s);
     let tid = model
         .isotopic_cluster(mz, charge, PROTON, 0.95, 0.001)
         .scale_by(100.0);
     for peak in &tid {
         println!(
-            "{:.3}\t{:.5}\t{}",
+            "{:.3}\t{:.5}\t",
             peak.mz(),
             peak.intensity(),
-            peak.charge()
         );
     }
 }

@@ -637,33 +637,37 @@ impl<
             .products
             .iter()
             .map(|s| {
-                let prec = s.precursor().unwrap();
-                let mz = prec.mz();
-                let t = s.start_time();
-                let hits: usize = self
-                    .targets
-                    .iter_mut()
-                    .map(|p| {
-                        if error_tolerance.test(p.mz, mz)
-                            && (t > p.time_range.end)
-                            && (t - p.time_range.end) < time_width_half
-                        {
-                            p.time_range.end = t;
-                            1
-                        } else {
-                            0
-                        }
-                    })
-                    .sum();
-                if hits == 0 {
-                    let p = SelectionTargetSpecification::new(
-                        mz,
-                        prec.charge(),
-                        (t - pad..t + pad).into(),
-                    );
-                    self.targets.push_back(p);
-                    1
-                } else {
+                if let Some(prec) = s.precursor() {
+                    let mz = prec.mz();
+                    let t = s.start_time();
+                    let hits: usize = self
+                        .targets
+                        .iter_mut()
+                        .map(|p| {
+                            if error_tolerance.test(p.mz, mz)
+                                && (t > p.time_range.end)
+                                && (t - p.time_range.end) < time_width_half
+                            {
+                                p.time_range.end = t;
+                                1
+                            } else {
+                                0
+                            }
+                        })
+                        .sum();
+                    if hits == 0 {
+                        let p = SelectionTargetSpecification::new(
+                            mz,
+                            prec.charge(),
+                            (t - pad..t + pad).into(),
+                        );
+                        self.targets.push_back(p);
+                        1
+                    } else {
+                        0
+                    }
+                }
+                else {
                     0
                 }
             })

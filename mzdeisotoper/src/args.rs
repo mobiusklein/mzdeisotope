@@ -276,7 +276,7 @@ pub fn make_default_msn_feature_extraction_params() -> FeatureExtractionParams {
     FeatureExtractionParams {
         smoothing: 1,
         error_tolerance: Tolerance::PPM(10.0),
-        minimum_size: 0,
+        minimum_size: 2,
         maximum_time_gap: 0.025,
     }
 }

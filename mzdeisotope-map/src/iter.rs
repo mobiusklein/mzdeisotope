@@ -11,6 +11,7 @@ pub struct FeatureSetIter<'a, Y> {
     pub end_time: f64,
     pub last_time_seen: f64,
     index_list: Vec<usize>,
+    has_more: bool,
 }
 
 impl<Y> Iterator for FeatureSetIter<'_, Y> {
@@ -21,14 +22,12 @@ impl<Y> Iterator for FeatureSetIter<'_, Y> {
     }
 }
 
-macro_rules! f_at {
-    ($f:expr, $at:expr) => {
-        $f.at($at)
-    };
-}
-
 impl<'a, Y> FeatureSetIter<'a, Y> {
-    pub fn new_with_time_interval(features: &'a [Option<&'a Feature<MZ, Y>>], start_time: f64, end_time: f64) -> Self {
+    pub fn new_with_time_interval(
+        features: &'a [Option<&'a Feature<MZ, Y>>],
+        start_time: f64,
+        end_time: f64,
+    ) -> Self {
         let n = features.len();
         let index_list = (0..n).map(|_| 0).collect();
 
@@ -38,8 +37,10 @@ impl<'a, Y> FeatureSetIter<'a, Y> {
             end_time,
             index_list,
             last_time_seen: f64::NEG_INFINITY,
+            has_more: true,
         };
         this.initialize_indices();
+        this.has_more = this.has_more();
         this
     }
 
@@ -76,8 +77,11 @@ impl<'a, Y> FeatureSetIter<'a, Y> {
             if let Some(f) = f {
                 let ix = self.index_list[i];
                 if ix < f.len() {
-                    let ix_time = f_at!(f, ix).unwrap().1;
-                    if ix_time < time && (ix_time <= self.end_time || ix_time.is_close(&self.end_time)) && ix_time > self.last_time_seen {
+                    let ix_time = f.time_view()[ix];
+                    if ix_time < time
+                        && (ix_time <= self.end_time || ix_time.is_close(&self.end_time))
+                        && ix_time > self.last_time_seen
+                    {
                         time = ix_time;
                     }
                 }
@@ -94,9 +98,8 @@ impl<'a, Y> FeatureSetIter<'a, Y> {
         let mut j = 0;
         let n = self.features.len();
 
-        for (i, f) in self.features.iter().enumerate() {
+        for (f, ix) in self.features.iter().zip(self.index_list.iter().copied()) {
             if let Some(f) = f {
-                let ix = self.index_list[i];
                 let done = ix >= f.len();
                 let done = if !done {
                     let time_at = f.time_view()[ix];
@@ -147,8 +150,8 @@ impl<'a, Y> FeatureSetIter<'a, Y> {
     }
 
     fn get_next_value(&mut self) -> Option<(f64, Vec<Option<CentroidPeak>>)> {
-        if !self.has_more() {
-            return None
+        if !self.has_more {
+            return None;
         }
         let time = self.get_next_time();
         if let Some(time) = time {
@@ -156,6 +159,7 @@ impl<'a, Y> FeatureSetIter<'a, Y> {
             self.last_time_seen = time;
             Some((time, peaks))
         } else {
+            self.has_more = false;
             None
         }
     }

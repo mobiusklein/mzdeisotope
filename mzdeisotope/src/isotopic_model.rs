@@ -852,7 +852,7 @@ impl TheoreticalIsotopicDistributionScalingMethod {
         experimental: &[C],
         theoretical: &mut TheoreticalIsotopicPattern,
     ) {
-        if theoretical.len() == 0 {
+        if theoretical.is_empty() {
             return;
         }
         match self {
