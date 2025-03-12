@@ -2,7 +2,10 @@ use itertools::multizip;
 use mzdeisotope::{scorer::ScoreType, solution::DeconvolvedSolutionPeak};
 use num_traits::Zero;
 use std::{
-    borrow::Cow, boxed::Box, cmp::Ordering, ops::{Bound, RangeBounds}
+    borrow::Cow,
+    boxed::Box,
+    cmp::Ordering,
+    ops::{Bound, RangeBounds},
 };
 use tracing::warn;
 
@@ -13,7 +16,10 @@ use mzpeaks::{
     IonMobility, Mass, MZ,
 };
 
-use mzsignal::{feature_mapping::graph::ChargeAwareFeatureMerger, feature_statistics::{FitPeaksOn, PeakFitArgs}};
+use mzsignal::{
+    feature_mapping::graph::ChargeAwareFeatureMerger,
+    feature_statistics::{FitPeaksOn, PeakFitArgs},
+};
 
 use mzdata::{
     prelude::*,
@@ -128,14 +134,20 @@ impl<'a, Y: Clone + 'a> From<&'a DeconvolvedSolutionFeature<Y>> for PeakFitArgs<
 
 impl<Y: Clone> Default for DeconvolvedSolutionFeature<Y> {
     fn default() -> Self {
-        Self { inner: ChargedFeature::empty(0), score: Default::default(), scores: Default::default(), envelope: Default::default() }
+        Self {
+            inner: ChargedFeature::empty(0),
+            score: Default::default(),
+            scores: Default::default(),
+            envelope: Default::default(),
+        }
     }
 }
 
 impl<Y: Clone> AsPeakIter for DeconvolvedSolutionFeature<Y> {
     type Peak = DeconvolvedSolutionPeak;
 
-    type Iter<'a> = PeakIter<'a, Y>
+    type Iter<'a>
+        = PeakIter<'a, Y>
     where
         Self: 'a;
 
@@ -217,7 +229,8 @@ impl<Y: Clone> DeconvolvedSolutionFeature<Y> {
     pub fn push_peak(&mut self, peak: &DeconvolvedSolutionPeak, time: f64) {
         let n_before = self.inner.len();
         self.inner.push_raw(peak.neutral_mass, time, peak.intensity);
-        let did_resize = self.len() != n_before;
+        let n_after = self.len();
+        let did_resize = n_after != n_before;
         if did_resize {
             self.scores.push(peak.score);
             if self.envelope.is_empty() {
@@ -514,12 +527,18 @@ impl<Y: Clone> Iterator for PeakIter<'_, Y> {
         if i < self.feature.len() {
             let (mass, time, inten) = self.feature.at(i).unwrap();
             let score = self.feature.scores[i];
-            let env: Vec<_> = self
-                .feature
-                .envelope
-                .iter()
-                .map(|e| e.at(i).unwrap())
-                .collect();
+            let mut env = Vec::with_capacity(self.feature.envelope.len());
+            env.extend(self.feature.envelope.iter().enumerate().map(|(j, e)| {
+                e.at(i).unwrap_or_else(|| {
+                    let sizes: Vec<_> = self.feature.envelope.iter().map(|e| e.len()).collect();
+                    warn!(
+                        "Envelope {j} of length {} does not have an {i}th element, on a feature of length {} [{sizes:?}]",
+                        e.len(),
+                        self.feature.len(),
+                    );
+                    MZPoint::new(e.mz.first().copied().unwrap_or_default(), 1.0)
+                })
+            }));
             let peak = DeconvolvedSolutionPeak::new(
                 mass,
                 inten,
@@ -572,7 +591,9 @@ impl<Y: Clone> Iterator for EnvelopeIter<'_, Y> {
 }
 
 // Collapse features that somehow have repeated time points
-pub(crate) fn reflow_feature<Y: Clone + Default>(feature: DeconvolvedSolutionFeature<Y>) -> DeconvolvedSolutionFeature<Y> {
+pub(crate) fn reflow_feature<Y: Clone + Default>(
+    feature: DeconvolvedSolutionFeature<Y>,
+) -> DeconvolvedSolutionFeature<Y> {
     let mut sink = DeconvolvedSolutionFeature::default();
     *sink.charge_mut() = feature.charge();
     sink.score = feature.score;
@@ -584,7 +605,6 @@ pub(crate) fn reflow_feature<Y: Clone + Default>(feature: DeconvolvedSolutionFea
 }
 
 pub type FeatureMerger<Y> = ChargeAwareFeatureMerger<Mass, Y, DeconvolvedSolutionFeature<Y>>;
-
 
 const DECONVOLUTION_SCORE_ARRAY_NAME: &str = "deconvolution score array";
 const SUMMARY_SCORE_ARRAY_NAME: &str = "summary deconvolution score array";

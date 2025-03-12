@@ -23,14 +23,10 @@ use mzsignal::feature_mapping::graph::FeatureGraphBuilder;
 use tracing::{debug, trace};
 
 use crate::{
-    dependency_graph::FeatureDependenceGraph,
-    feature_fit::{FeatureSetFit, MapCoordinate},
-    solution::{reflow_feature, DeconvolvedSolutionFeature, FeatureMerger, MZPointSeries},
-    traits::{
+    dependency_graph::FeatureDependenceGraph, feature_fit::{FeatureSetFit, MapCoordinate}, fmap::IndexedFeature, solution::{reflow_feature, DeconvolvedSolutionFeature, FeatureMerger, MZPointSeries}, traits::{
         DeconvolutionError, FeatureIsotopicFitter, FeatureMapMatch, FeatureMapType,
         FeatureSearchParams, FeatureType, GraphFeatureDeconvolution, GraphStepResult,
-    },
-    FeatureSetIter,
+    }, FeatureSetIter
 };
 
 #[derive(Debug)]
@@ -190,6 +186,7 @@ pub struct FeatureProcessor<
     pub minimum_size: usize,
     pub maximum_time_gap: f64,
     pub minimum_intensity: f32,
+    feature_buffer: Vec<IndexedFeature<Y>>,
     envelope_conformer: EnvelopeConformer,
     dependency_graph: FeatureDependenceGraph,
 }
@@ -448,6 +445,7 @@ impl<
             minimum_intensity: minimum_intensity.max(1.001),
             prefer_multiply_charged,
             dependency_graph,
+            feature_buffer: Vec::new(),
         }
     }
 
@@ -682,9 +680,13 @@ impl<
 
         mem::swap(&mut tmp, &mut self.feature_map);
 
-        let mut features_acc = Vec::with_capacity(tmp.len());
+        if self.feature_buffer.capacity() < tmp.len() {
+            self.feature_buffer.reserve(tmp.len() - self.feature_buffer.capacity());
+        }
+        let mut features_acc = mem::take(&mut self.feature_buffer);
 
-        for (i, f) in tmp.into_inner().into_iter().enumerate() {
+        let mut inner: Vec<_> = tmp.into_inner().into_inner();
+        for (i, f) in inner.drain(..).enumerate() {
             let process = indices_to_mask
                 .map(|mask| mask.contains(&i))
                 .unwrap_or(true);
@@ -712,7 +714,7 @@ impl<
                 features_acc.push(f);
             }
         }
-
+        self.feature_buffer = inner;
         self.feature_map = FeatureMapType::new(features_acc);
         let n_after = self.feature_map.len();
         let n_points_after: usize = self.feature_map.iter().map(|f| f.len()).sum();
@@ -842,7 +844,7 @@ impl<
         debug!("Building merge graph over {} features", map.len());
         let merger = FeatureMerger::<Y>::default();
         let map_merged = merger
-            .bridge_feature_gaps(&map, Tolerance::PPM(2.0), self.maximum_time_gap)
+            .bridge_feature_gaps(map, Tolerance::PPM(2.0), self.maximum_time_gap)
             .features
             .into_iter()
             .map(reflow_feature)

@@ -73,11 +73,9 @@ impl<'a, Y> FeatureSetIter<'a, Y> {
     fn get_next_time(&self) -> Option<f64> {
         let mut time = f64::INFINITY;
 
-        for (i, f) in self.features.iter().enumerate() {
+        for (f, ix) in self.features.iter().zip(self.index_list.iter().copied()) {
             if let Some(f) = f {
-                let ix = self.index_list[i];
-                if ix < f.len() {
-                    let ix_time = f.time_view()[ix];
+                if let Some(ix_time) = f.time_view().get(ix).copied() {
                     if ix_time < time
                         && (ix_time <= self.end_time || ix_time.is_close(&self.end_time))
                         && ix_time > self.last_time_seen
