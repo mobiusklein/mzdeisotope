@@ -22,6 +22,11 @@ use tracing_subscriber::{
 
 use mzdeisotoper::{MZDeiosotoper, MZDeisotoperError};
 
+#[cfg(windows)]
+#[cfg(feature = "mimalloc")]
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 // See https://github.com/tokio-rs/tracing/issues/3065#issuecomment-2318179647
 struct CustomFormatter<T>{
     _t: PhantomData<T>

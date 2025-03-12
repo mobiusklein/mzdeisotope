@@ -17,7 +17,7 @@ keywords = ['mass-spectrometry', 'deisotoping', 'charge-deconvolution']
 categories = ["science", "science::bioinformatics::proteomics"]
 
 [features]
-default = ["zlib-ng-compat", ]
+default = ["zlib-ng-compat", "mimalloc"]
 
 mzmlb = ["mzdata/mzmlb"]
 thermo = ["mzdata/thermo"]
@@ -50,6 +50,7 @@ tracing-appender.workspace = true
 serde = { version = "1.0.197", features = ["derive"] }
 figment = { version = "0.10.15", features = ["env", "toml"] }
 toml = "0.8.19"
+mimalloc = { version = "0.1.43", optional = true }
 
 [dev-dependencies]
 assert_cmd = "2.0.13"

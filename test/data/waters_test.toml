@@ -17,8 +17,11 @@ ms1_missed_peaks = 1
 msn_missed_peaks = 1
 isotopic_incremental_truncation = false
 ion_mobility_deconvolution = true
-ms1_ion_mobility_gap_size = 0.5
-msn_ion_mobility_gap_size = 0.5
+ms1_ion_mobility_gap_size = 0.2
+msn_ion_mobility_gap_size = 0.2
+
+ms1_ion_mobility_feature_min_length = 2
+msn_ion_mobility_feature_min_length = 2
 
 [signal_params]
 ms1_averaging = 1

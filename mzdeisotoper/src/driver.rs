@@ -88,7 +88,7 @@ pub enum MZDeisotoperError {
 /// Deisotoping and charge state deconvolution of mass spectrometry files.
 ///
 /// Read a file or stream, transform the spectra, and write out a processed mzML or MGF
-/// file or stream.
+/// file, or an mzML stream.
 #[derive(Parser, Debug, Deserialize, Serialize)]
 #[command(author, version)]
 pub struct MZDeiosotoper {
@@ -103,23 +103,24 @@ pub struct MZDeiosotoper {
     pub output_file: PathBuf,
 
     /// The path to write a log file to, in addition to STDERR
-    #[arg(short = 'l', long = "log-file")]
+    #[arg(short = 'l', long = "log-file", help_heading = "Config")]
     pub log_file: Option<PathBuf>,
 
     /// A TOML configuration file to read additional parameters from.
     ///
     /// Configurations are also read from `mzdeisotoper.toml` in the working directory.
     /// Environment variables prefixed with `MZDEISOTOPER_` will be read too.
-    #[arg(long = "config-file")]
+    #[arg(long = "config-file", help_heading = "Config")]
     pub config_file: Option<PathBuf>,
 
     /// Write TOML configuration to this file
-    #[arg(long)]
+    #[arg(long, help_heading = "Config")]
     pub write_config_file: Option<PathBuf>,
 
     /// The size of the buffer for queueing writing of results to the output stream.
     ///
-    /// Making this longer consumes more memory but reduces the odds of
+    /// Making this larger consumes more memory but reduces the odds of bottlenecks
+    /// forming due to a spike in file system delays.
     #[arg(short = 'w', long="write-buffer-size", default_value_t=BUFFER_SIZE)]
     pub write_buffer_size: usize,
 
@@ -141,7 +142,8 @@ pub struct MZDeiosotoper {
 
 If a start is not specified, processing begins from the start of the run.
 If a stop is not specified, processing stops at the end of the run.
-"#
+"#,
+        help_heading = "Processing"
     )]
     pub time_range: Option<TimeRange>,
 
@@ -151,6 +153,7 @@ If a stop is not specified, processing stops at the end of the run.
         long = "ms1-averaging-range",
         default_value_t = 0,
         value_parser = clap::value_parser!(u32).range(0..),
+        help_heading = "Processing"
     )]
     pub ms1_averaging_range: u32,
 
@@ -159,31 +162,33 @@ If a stop is not specified, processing stops at the end of the run.
         short = 'b',
         long = "ms1-background-reduction",
         default_value_t = 0.0,
-        value_parser = non_negative_float_f32
+        value_parser = non_negative_float_f32,
+        help_heading = "Processing"
     )]
     pub ms1_denoising: f32,
 
     /// The isotopic model to use for MS1 spectra
-    #[arg(short = 'a', long = "ms1-isotopic-model", default_value = "peptide")]
+    #[arg(short = 'a', long = "ms1-isotopic-model", default_value = "peptide", help_heading = "Processing")]
     pub ms1_isotopic_model: Vec<ArgIsotopicModels>,
 
     /// The minimum isotopic pattern fit score for MS1 spectra
-    #[arg(short = 's', long = "ms1-score-threshold", default_value_t = 20.0)]
+    #[arg(short = 's', long = "ms1-score-threshold", default_value_t = 20.0, help_heading = "Processing")]
     pub ms1_score_threshold: ScoreType,
 
     /// The isotopic model to use for MSn spectra
-    #[arg(short = 'A', long = "msn-isotopic-model", default_value = "peptide")]
+    #[arg(short = 'A', long = "msn-isotopic-model", default_value = "peptide", help_heading = "Processing")]
     pub msn_isotopic_model: Vec<ArgIsotopicModels>,
 
     /// The minimum isotopic pattern fit score for MSn spectra
-    #[arg(short = 'S', long = "msn-score-threshold", default_value_t = 10.0)]
+    #[arg(short = 'S', long = "msn-score-threshold", default_value_t = 10.0, help_heading = "Processing")]
     pub msn_score_threshold: ScoreType,
 
     #[arg(
         short = 'v',
         long = "precursor-processing",
         default_value = "selected-precursors",
-        help = "How to treat precursor ranges"
+        help = "How to treat precursor ranges",
+        help_heading = "Processing"
     )]
     pub precursor_processing: PrecursorProcessing,
 
@@ -192,41 +197,54 @@ If a stop is not specified, processing stops at the end of the run.
         short = 'z',
         long = "charge-range",
         default_value_t=ArgChargeRange(1, 8),
+        help_heading = "Processing"
     )]
     pub charge_range: ArgChargeRange,
 
     /// The maximum number of missed peaks for MS1 spectra
-    #[arg(short = 'm', long = "max-missed-peaks", default_value_t = 1)]
+    #[arg(short = 'm', long = "max-missed-peaks", default_value_t = 1, help_heading = "Processing")]
     pub ms1_missed_peaks: u16,
 
     /// The maximum number of missed peaks for MSn spectra
-    #[arg(short = 'M', long = "msn-max-missed-peaks", default_value_t = 1)]
+    #[arg(short = 'M', long = "msn-max-missed-peaks", default_value_t = 1, help_heading = "Processing")]
     pub msn_missed_peaks: u16,
 
+    /// The mass error to tolerate for MS1 spectra
+    #[arg(short = 'e', long = "ms1-mass-error-tolerance", help_heading = "Processing")]
+    pub ms1_error_tolerance: Option<Tolerance>,
+
+    /// The mass error to tolerate for MSn spectra
+    #[arg(short = 'E', long = "msn-mass-error-tolerance", help_heading = "Processing")]
+    pub msn_error_tolerance: Option<Tolerance>,
+
     /// Use incremental truncation of isotopic patterns instead of a single width
-    #[arg(short = 'i', long = "incremental-truncation")]
+    #[arg(short = 'i', long = "incremental-truncation", help_heading = "Processing")]
     pub isotopic_incremental_truncation: bool,
 
     #[arg(
         skip,
-        help = "Specifies additional granular information about low-level signal processing operations"
+        // help = "Specifies additional granular information about low-level signal processing operations"
     )]
     pub signal_params: SignalParams,
 
     /// Whether to use the ion mobility framing algorithm
-    #[arg(short = 'q', long, default_value_t = false)]
+    #[arg(short = 'q', long, default_value_t = false, help_heading = "Ion Mobility")]
     pub ion_mobility_deconvolution: bool,
 
-    #[arg(long, default_value_t = 0.025)]
+    /// The maximum gap size in ion mobility units to tolerate in MS1 IM-MS features
+    #[arg(long, default_value_t = 0.025, help_heading = "Ion Mobility")]
     pub ms1_ion_mobility_gap_size: f64,
 
-    #[arg(long, default_value_t = 0.025)]
+    /// The maximum gap size in ion mobility units to tolerate in MSn IM-MS features
+    #[arg(long, default_value_t = 0.025, help_heading = "Ion Mobility")]
     pub msn_ion_mobility_gap_size: f64,
 
-    #[arg(short='f', long, default_value_t = 3)]
+    /// The minimum feature size for MS1 IM-MS features
+    #[arg(short='f', long, default_value_t = 3, help_heading = "Ion Mobility")]
     pub ms1_ion_mobility_feature_min_length: usize,
 
-    #[arg(short='F', long, default_value_t = 3)]
+    /// The minimum feature size for MSn IM-MS features
+    #[arg(short='F', long, default_value_t = 2, help_heading = "Ion Mobility")]
     pub msn_ion_mobility_feature_min_length: usize,
 }
 
@@ -847,11 +865,17 @@ impl MZDeiosotoper {
         extraction_params.smoothing = self.signal_params.ms1_averaging;
         extraction_params.maximum_time_gap = self.ms1_ion_mobility_gap_size;
         extraction_params.minimum_size = self.ms1_ion_mobility_feature_min_length;
+        if let Some(tol) = self.ms1_error_tolerance {
+            extraction_params.error_tolerance = tol;
+        }
 
         let mut msn_extraction_params = make_default_msn_feature_extraction_params();
         msn_extraction_params.smoothing = self.signal_params.ms1_averaging;
         msn_extraction_params.maximum_time_gap = self.msn_ion_mobility_gap_size;
         msn_extraction_params.minimum_size = self.msn_ion_mobility_feature_min_length;
+        if let Some(tol) = self.msn_error_tolerance {
+            msn_extraction_params.error_tolerance = tol;
+        }
 
         let start = Instant::now();
 
