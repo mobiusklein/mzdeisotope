@@ -28,7 +28,7 @@ mzdata = { workspace = true }
 mzpeaks = { workspace = true, features = ["rayon"]}
 mzsignal = { workspace = true }
 chemical_elements = { workspace = true }
-mzdeisotope = { path = "../mzdeisotope" }
+mzdeisotope = { workspace = true }
 
 serde = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
