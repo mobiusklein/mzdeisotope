@@ -153,7 +153,7 @@ impl From<ChargeRangeV2> for ChargeRangeIter {
 
 }
 
-/// Hoopman's [QuickCharge][1] algorithm to quickly estimate the charge states to actually try
+/// Hoopman's QuickCharge[^1] algorithm to quickly estimate the charge states to actually try
 /// fitting a given seed peak with.
 ///
 /// For safety, this does not rule out charge state 1 unless 1 is not in `charge_range`.
@@ -174,11 +174,10 @@ impl From<ChargeRangeV2> for ChargeRangeIter {
 /// then the *true* charge state will be missing.
 ///
 /// # References
-/// - [1]: <https://doi.org/10.1021/ac0700833>
-///       Hoopmann, M. R., Finney, G. L., MacCoss, M. J., Michael R. Hoopmann, Gregory L. Finney,
-///                                                  and, MacCoss*, M. J., … MacCoss, M. J. (2007). "High-speed data reduction, feature detection
-///                                                  and MS/MS spectrum quality assessment of shotgun proteomics data sets using high-resolution
-///                                                  Mass Spectrometry". Analytical Chemistry, 79(15), 5620–5632. <https://doi.org/10.1021/ac0700833>
+/// [^1]: Hoopmann, M. R., Finney, G. L., MacCoss, M. J., Michael R. Hoopmann, Gregory L. Finney,
+///       and, MacCoss*, M. J., … MacCoss, M. J. (2007). "High-speed data reduction, feature detection
+///       and MS/MS spectrum quality assessment of shotgun proteomics data sets using high-resolution
+///       Mass Spectrometry". Analytical Chemistry, 79(15), 5620–5632. <https://doi.org/10.1021/ac0700833>
 ///
 pub fn quick_charge<C: CentroidLike, const N: usize>(
     peaks: &[C],
