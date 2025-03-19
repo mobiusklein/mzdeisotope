@@ -5,6 +5,7 @@ use std::collections::btree_map::{self, BTreeMap, Entry as BEntry};
 use std::collections::hash_map::{self, Entry, HashMap};
 use std::hash;
 
+use chemical_elements::isotopic_pattern::baffling::NumPeaksSpec;
 #[doc(hidden)]
 pub use chemical_elements::isotopic_pattern::{
     BafflingRecursiveIsotopicPatternGenerator, TheoreticalIsotopicPattern, Peak as TheorteicalPeak
@@ -308,7 +309,7 @@ impl IsotopicPatternGenerator for IsotopicModel<'_> {
         let composition = self.scale(mz, charge, charge_carrier);
         let peaks = self
             .generator
-            .isotopic_variants(composition, 0, charge, charge_carrier);
+            .isotopic_variants(composition, NumPeaksSpec::Guess, charge, charge_carrier);
         let peaks = TheoreticalIsotopicPattern::from(peaks);
         let diff = mz - peaks.origin;
         peaks
@@ -1189,5 +1190,12 @@ mod test {
         assert_eq!(model.get_peak_offset(1000.0), 0);
         assert_eq!(model.get_peak_offset(2500.0), 1);
         assert_eq!(model.get_peak_offset(10000.0), 6);
+    }
+
+    #[test]
+    fn test_isotopic_pattern_overflow() {
+        let mut model: IsotopicModel = IsotopicModels::Peptide.into();
+        let tid = model.isotopic_cluster(40000.0, 1, PROTON, 0.95, 0.001);
+        assert!(tid.len() > 5, "{} should be longer than 5 peaks", tid.len())
     }
 }

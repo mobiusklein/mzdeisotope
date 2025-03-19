@@ -22,7 +22,7 @@ mzdeisotope-map = { version = "0.3.0", path = "./mzdeisotope-map" }
 mzdata = { version = ">=0.48.2", default-features = false, features = ["mzsignal", "nalgebra", "mzml", "mgf"] }
 mzpeaks = { version = ">=1.0.8,<1.1.0" }
 mzsignal = { version = ">= 1.1.4,<1.2.0", default-features = false, features = ["nalgebra", "avx"] }
-chemical_elements = { version = "0.6.0", features = ['mzpeaks'] }
+chemical_elements = { version = "0.7.0", features = ['mzpeaks'] }
 
 tracing = { version = "0.1.40" }
 tracing-log = { version = "0.2.0" }

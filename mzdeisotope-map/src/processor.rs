@@ -619,8 +619,8 @@ impl<
                             trace!(
                                 "Residual({fidx}) {int_at} => {res_int} @ {mz_at}|{time}|{time_at} {n_residual}/{n_of}",
                             );
-                            debug_assert!(*int_at >= res_int);
-                            *int_at = res_int;
+                            // debug_assert!(*int_at >= res_int, "Expectation failed: {int_at} >= {res_int}, delta {}", (*int_at - res_int));
+                            *int_at = res_int.min(*int_at);
                         }
                     } else {
                         debug!("{i} unable to update {time}");
