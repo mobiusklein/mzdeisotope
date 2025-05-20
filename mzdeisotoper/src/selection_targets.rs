@@ -313,9 +313,14 @@ impl<
 
     fn initial_feed(&mut self) {
         let group = self.source.next();
+        tracing::trace!("First spectrum group was found? {}", group.is_some());
         let start_time = group
             .as_ref()
-            .and_then(|s| s.earliest_spectrum().map(|s| s.start_time()))
+            .and_then(|s| {
+                s.earliest_spectrum().inspect(|s| {
+                    tracing::trace!("Earliest spectrum {} occurs at {}", s.id(), s.start_time());
+                }).map(|s| s.start_time())
+            })
             .unwrap();
         let end_time = start_time + self.time_width;
         tracing::trace!("Initial time window {start_time} to {end_time}");
