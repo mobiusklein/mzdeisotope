@@ -19,7 +19,7 @@ version = "0.3.2"
 mzdeisotope = { version = "0.3.2", path = "./mzdeisotope" }
 mzdeisotope-map = { version = "0.3.2", path = "./mzdeisotope-map" }
 
-mzdata = { version = ">=0.52.0", default-features = false, features = ["mzsignal", "nalgebra", "mzml", "mgf"] }
+mzdata = { version = ">=0.53.0", default-features = false, features = ["mzsignal", "nalgebra", "mzml", "mgf"] }
 mzpeaks = { version = ">=1.0.8,<1.1.0" }
 mzsignal = { version = ">= 1.1.4,<1.2.0", default-features = false, features = ["nalgebra", "avx"] }
 chemical_elements = { version = "0.7.0", features = ['mzpeaks'] }

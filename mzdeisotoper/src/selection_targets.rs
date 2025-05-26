@@ -684,9 +684,13 @@ impl<
 
     fn initial_feed(&mut self) {
         let group = self.source.next();
+        tracing::trace!("First frame group was found? {}", group.is_some());
         let start_time = group
             .as_ref()
-            .and_then(|s| s.earliest_frame().map(|s| s.start_time()))
+            .and_then(|s| s.earliest_frame().map(|s| {
+                tracing::trace!("Earliest frame {} occurs at {}", s.id(), s.start_time());
+                s.start_time()
+            }))
             .unwrap();
         let end_time = start_time + self.time_width;
         tracing::trace!("Initial time window {start_time} to {end_time}");
