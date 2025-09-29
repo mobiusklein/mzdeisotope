@@ -52,5 +52,5 @@ tracing-subscriber = { version = "0.3.18", features = ["env-filter", "fmt"]}
 [package.metadata.docs.rs]
 rustdoc-args = [
     "--html-in-header",
-    "mzdeiostope/doc/katex.html",
+    "doc/katex.html",
 ]

@@ -1712,7 +1712,7 @@ dependencies = [
 
 [[package]]
 name = "mzdeisotope"
-version = "0.3.2"
+version = "0.3.3"
 dependencies = [
  "chemical_elements",
  "flate2",
@@ -1731,7 +1731,7 @@ dependencies = [
 
 [[package]]
 name = "mzdeisotope-map"
-version = "0.3.2"
+version = "0.3.3"
 dependencies = [
  "chemical_elements",
  "flate2",
@@ -1752,7 +1752,7 @@ dependencies = [
 
 [[package]]
 name = "mzdeisotoper"
-version = "0.3.2"
+version = "0.3.3"
 dependencies = [
  "assert_cmd",
  "clap",
