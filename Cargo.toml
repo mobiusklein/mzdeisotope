@@ -12,12 +12,12 @@ members = [
 ]
 
 [workspace.package]
-version = "0.3.3"
+version = "0.3.4"
 
 [workspace.dependencies]
 
-mzdeisotope = { version = "0.3.3", path = "./mzdeisotope" }
-mzdeisotope-map = { version = "0.3.3", path = "./mzdeisotope-map" }
+mzdeisotope = { version = "0.3.4", path = "./mzdeisotope" }
+mzdeisotope-map = { version = "0.3.4", path = "./mzdeisotope-map" }
 
 mzdata = { version = ">=0.59.2", default-features = false, features = ["mzsignal", "nalgebra", "mzml", "mgf"] }
 mzpeaks = { version = ">=1.0.8,<1.1.0" }
