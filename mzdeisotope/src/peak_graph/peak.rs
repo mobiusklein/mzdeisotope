@@ -66,7 +66,7 @@ impl PeakGraph {
         }
     }
 
-    pub fn keys(&self) -> Keys<PeakKey, PeakNode> {
+    pub fn keys(&self) -> Keys<'_, PeakKey, PeakNode> {
         self.peak_nodes.keys()
     }
 

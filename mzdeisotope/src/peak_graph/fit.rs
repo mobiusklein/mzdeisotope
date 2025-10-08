@@ -97,7 +97,7 @@ impl FitNode {
         }
     }
 
-    pub fn peak_iter(&self) -> Iter<PeakKey> {
+    pub fn peak_iter(&self) -> Iter<'_, PeakKey> {
         self.peak_indices.iter()
     }
 
@@ -240,7 +240,7 @@ impl FitGraph {
         found
     }
 
-    pub fn values(&self) -> Values<FitKey, FitNode> {
+    pub fn values(&self) -> Values<'_, FitKey, FitNode> {
         self.nodes.values()
     }
 

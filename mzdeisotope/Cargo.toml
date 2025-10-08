@@ -23,6 +23,10 @@ path = "src/averagine.rs"
 [[example]]
 name = "deisotoper"
 
+[[example]]
+name = "basic"
+path = "examples/basic.rs"
+
 [features]
 
 experimental-partition-key = []

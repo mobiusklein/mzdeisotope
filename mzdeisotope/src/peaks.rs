@@ -144,7 +144,7 @@ impl SliceCache {
         self.range_to_indices.clear()
     }
 
-    pub fn entry(&mut self, m1: f64, m2: f64) -> Entry<(Placeholder, Placeholder), Range<usize>> {
+    pub fn entry(&mut self, m1: f64, m2: f64) -> Entry<'_, (Placeholder, Placeholder), Range<usize>> {
         let key = self.key_from(m1, m2);
         self.range_to_indices.entry(key)
     }

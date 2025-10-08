@@ -84,7 +84,7 @@ impl DependenceCluster {
         self.reset()
     }
 
-    pub fn iter(&self) -> std::slice::Iter<FitRef> {
+    pub fn iter(&self) -> std::slice::Iter<'_, FitRef> {
         self.dependencies.iter()
     }
 }

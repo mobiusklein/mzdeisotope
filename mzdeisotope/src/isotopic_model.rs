@@ -578,7 +578,7 @@ impl<'lifespan> CachingIsotopicModel<'lifespan> {
         self.cache.is_empty()
     }
 
-    pub fn iter(&self) -> btree_map::Iter<IsotopicPatternSpec, TheoreticalIsotopicPattern> {
+    pub fn iter(&self) -> btree_map::Iter<'_, IsotopicPatternSpec, TheoreticalIsotopicPattern> {
         self.cache.iter()
     }
 
