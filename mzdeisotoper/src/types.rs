@@ -85,7 +85,7 @@ impl IonMobilityFrameLike<CFeature, DFeature> for FrameResult {
         None
     }
 
-    fn features(&self) -> RefFeatureDataLevel<CFeature, DFeature> {
+    fn features(&self) -> RefFeatureDataLevel<'_, CFeature, DFeature> {
         RefFeatureDataLevel::Missing
     }
 

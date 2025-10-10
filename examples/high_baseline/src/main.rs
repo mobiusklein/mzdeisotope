@@ -32,7 +32,7 @@ struct App {
 
 fn prepare_writer(
     reader: &MZReaderType<std::fs::File, CentroidPeak, mzdeisotope::DeconvolvedSolutionPeak>,
-) -> MzMLWriterType<io::StdoutLock, CentroidPeak, mzdeisotope::DeconvolvedSolutionPeak> {
+) -> MzMLWriterType<io::StdoutLock<'_>, CentroidPeak, mzdeisotope::DeconvolvedSolutionPeak> {
     let mut writer = MzMLWriterType::new(io::stdout().lock());
     writer.copy_metadata_from(reader);
 

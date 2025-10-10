@@ -85,7 +85,7 @@ pub fn prepare_procesing<
             );
         grouper
             .enumerate()
-            .take_while(|(_, g)| (g.earliest_time().unwrap_or_default() <= end_time))
+            .take_while(|(_, g)| g.earliest_time().unwrap_or_default() <= end_time)
             .par_bridge()
             .map_init(
                 || {
@@ -152,7 +152,7 @@ pub fn prepare_procesing<
         let grouper = group_iter
             .track_precursors(2.0, Tolerance::PPM(5.0))
             .enumerate()
-            .take_while(|(_, g)| (g.earliest_time().unwrap_or_default() <= end_time))
+            .take_while(|(_, g)| g.earliest_time().unwrap_or_default() <= end_time)
             .par_bridge();
         grouper
             .map_init(

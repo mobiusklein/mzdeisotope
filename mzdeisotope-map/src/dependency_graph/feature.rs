@@ -103,15 +103,15 @@ impl FeatureGraph {
         self.nodes.is_empty()
     }
 
-    pub fn keys(&self) -> Keys<FeatureKey, FeatureNode> {
+    pub fn keys(&self) -> Keys<'_, FeatureKey, FeatureNode> {
         self.nodes.keys()
     }
 
-    pub fn iter(&self) -> Iter<FeatureKey, FeatureNode> {
+    pub fn iter(&self) -> Iter<'_, FeatureKey, FeatureNode> {
         self.nodes.iter()
     }
 
-    pub fn iter_mut(&mut self) -> IterMut<FeatureKey, FeatureNode> {
+    pub fn iter_mut(&mut self) -> IterMut<'_, FeatureKey, FeatureNode> {
         self.nodes.iter_mut()
     }
 

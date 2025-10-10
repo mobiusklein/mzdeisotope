@@ -265,7 +265,7 @@ impl<Y: Clone> DeconvolvedSolutionFeature<Y> {
         }
     }
 
-    pub fn envelope(&self) -> Vec<FeatureView<MZ, Y>> {
+    pub fn envelope(&self) -> Vec<FeatureView<'_, MZ, Y>> {
         let times = self.inner.time_view();
         self.envelope
             .iter()

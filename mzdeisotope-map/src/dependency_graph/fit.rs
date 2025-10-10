@@ -101,7 +101,7 @@ impl FitNode {
         }
     }
 
-    pub fn feature_iter(&self) -> Iter<FeatureKey> {
+    pub fn feature_iter(&self) -> Iter<'_, FeatureKey> {
         self.feature_indices.iter()
     }
 
@@ -244,7 +244,7 @@ impl FitGraph {
         found
     }
 
-    pub fn values(&self) -> Values<FitKey, FitNode> {
+    pub fn values(&self) -> Values<'_, FitKey, FitNode> {
         self.nodes.values()
     }
 
