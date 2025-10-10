@@ -191,11 +191,21 @@ pub fn deconvolute_peaks_with_targets<
 /// and a consistent set of parameters and strategies. If multiple isotopic
 /// models are used, a slightly different algorithm will be used.
 ///
-/// The type definition is templated on multiple compile time strategies.
+/// The type definition is templated on multiple compile time strategies. This means the
+/// scoring function is fixed at compile time.
 ///
-/// Internally, this struct is in a mostly-unusable state while it is running a deconvolution
-/// operation, as gives up its ownership of its isotopic pattern cache temporarily. The cache is
-/// reclaimed after processing finishes.
+/// Prefer using an instance of this type to repeatedly calling [`deconvolute_peaks`],
+/// which internally creates an instance and then discards after it is done. This way
+/// you can preserve the computed isotopic pattern cache for speed and consistency across
+/// input spectra.
+///
+/// ## What is this isotopic pattern cache thing?
+/// Internally, any isotopic models you provide will be wrapped in [`CachingIsotopicModel`]
+/// if they are not an instance already. This implementation of [`IsotopicPatternGenerator`](crate::isotopic_model::IsotopicPatternGenerator)
+/// that caches computed isotopic patterns so that repeated queries don't have to waste time recalculating patterns.
+/// Queries that are also very, very close to a cached solution will also re-use that solution, so we provide
+/// a [`DeconvolutionEngine::populate_isotopic_model_cache`] method for pre-filling the cache with a grid of
+/// m/z by charge state values so that most experimental data doesn't bias what is already computed in the cache.
 pub struct DeconvolutionEngine<
     'lifespan,
     C: CentroidLike + Clone + From<CentroidPeak> + IntensityMeasurementMut,
@@ -204,7 +214,8 @@ pub struct DeconvolutionEngine<
 > {
     /// The set of parameters to use for `isotopic_model` when generating an isotopic pattern for a given m/z
     isotopic_params: IsotopicPatternParams,
-    /// Whether or not to use Hoopman's QuickCharge algorithm to filter candidate
+    /// Whether or not to use Hoopman's QuickCharge algorithm to filter candidate charge states prior to the full
+    /// isotopic pattern fitting process
     use_quick_charge: bool,
     /// The model to generate isotpoic patterns from, or a collection there-of. If more than one model is
     /// provided, a slightly different algorithm will be used.
@@ -487,4 +498,44 @@ impl<
         };
         output
     }
+
+    /// The set of parameters to use for `isotopic_model` when generating an isotopic pattern for a given m/z
+    pub fn isotopic_params(&self) -> &IsotopicPatternParams {
+        &self.isotopic_params
+    }
+
+    /// Whether or not to use Hoopman's QuickCharge algorithm to filter candidate charge states prior to the full
+    /// isotopic pattern fitting process
+    pub fn use_quick_charge(&self) -> bool {
+        self.use_quick_charge
+    }
+
+    pub fn set_use_quick_charge(&mut self, value: bool) {
+        self.use_quick_charge = value;
+    }
+
+    /// The strategy for scoring isotopic pattern fits
+    pub fn scorer(&self) -> Option<&S> {
+        self.scorer.as_ref()
+    }
+
+    pub fn scorer_mut(&mut self) -> &mut Option<S> {
+        &mut self.scorer
+    }
+
+    /// The strategy for filtering out isotopic pattern fits that are too poor to consider
+    pub fn fit_filter(&self) -> Option<&F> {
+        self.fit_filter.as_ref()
+    }
+
+    pub fn fit_filter_mut(&mut self) -> &mut Option<F> {
+        &mut self.fit_filter
+    }
+
+    /// The model(s) to generate isotpoic patterns from. If more than one model is
+    /// provided, a slightly different algorithm will be used.
+    pub fn isotopic_model(&self) -> Option<&IsotopicModelLike<'lifespan>> {
+        self.isotopic_model.as_ref()
+    }
+
 }

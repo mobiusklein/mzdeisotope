@@ -1,4 +1,10 @@
-//! A basic demonstration of how to use [`mzdeisotope::deconvolute_peaks`]
+//! A basic demonstration of how to use [`mzdeisotope::DeconvolutionEngine`].
+//!
+//! While functionally equivalent to [`mzdeisotope::deconvolute_peaks`], the
+//! [`DeconvolutionEngine`] type encapsulates all of the
+//! parts that are not directly data dependent. Internally, [`deconvolute_peaks`]
+//! is just taking all of the arguments, creating a [`DeconvolutionEngine`], and
+//! uses it once and throws it away after computing the result.
 
 use std::{collections::BTreeMap, io};
 
