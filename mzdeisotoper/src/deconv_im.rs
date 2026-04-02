@@ -122,9 +122,12 @@ pub fn deconvolution_transform_im<
             .products()
             .iter()
             .flat_map(|s| {
-                s.precursor().map(|prec| {
-                    let ion = prec.ion();
-                    (ion.ion_mobility(), ion.mz)
+                s.precursor().and_then(|prec| {
+                    if let Some(ion) = prec.ion() {
+                        Some((ion.ion_mobility(), ion.mz()))
+                    } else {
+                        None
+                    }
                 })
             })
             .collect()
@@ -210,7 +213,7 @@ pub fn deconvolution_transform_im<
 
             let precursor_charge = frame
                 .precursor()
-                .and_then(|prec| prec.charge())
+                .and_then(|prec| prec.ion().and_then(|i| i.charge()))
                 .unwrap_or(msn_deconv_params.charge_range.1);
 
             let mut msn_charge_range = msn_deconv_params.charge_range;

@@ -101,7 +101,7 @@ fn run_deconvolution(
                 let precursor_mz: Vec<_> = group
                     .products()
                     .iter()
-                    .flat_map(|s| s.precursor().map(|prec| prec.ion().mz))
+                    .flat_map(|s| s.precursor().map(|prec| prec.ion().unwrap().mz))
                     .collect();
                 let targets = match group.precursor_mut() {
                     Some(scan) => {
@@ -168,26 +168,27 @@ fn run_deconvolution(
                     scan.deconvoluted_peaks = Some(deconvoluted_peaks);
                     #[allow(clippy::bind_instead_of_map)]
                     scan.precursor_mut().and_then(|prec| {
-                        let target_mz = prec.mz();
+                        let target_mz = prec.ion().unwrap().mz();
                         let _ = precursor_mz
                             .iter()
                             .find_position(|t| ((**t) - target_mz).abs() < 1e-6)
                             .and_then(|(i, _)| {
                                 if let Some(peak) = &targets[i] {
                                     // let orig_mz = prec.ion.mz;
-                                    let orig_charge = prec.ion().charge;
+                                    let orig_charge = prec.ion().unwrap().charge;
                                     let update_ion = if let Some(orig_z) = orig_charge {
                                         orig_z == peak.charge
                                     } else {
                                         true
                                     };
+                                    let ion = prec.ion_mut().unwrap();
                                     if update_ion {
-                                        prec.ion_mut().mz = peak.mz();
-                                        prec.ion_mut().charge = Some(peak.charge);
-                                        prec.ion_mut().intensity = peak.intensity;
+                                        ion.mz = peak.mz();
+                                        ion.charge = Some(peak.charge);
+                                        ion.intensity = peak.intensity;
                                     } else {
                                         // tracing::warn!("Expected ion of charge state {} @ {orig_mz:0.3}, found {} @ {:0.3}", orig_charge.unwrap(), peak.charge, peak.mz());
-                                        prec.ion_mut().params_mut().push(Param::new_key_value(
+                                        ion.params_mut().push(Param::new_key_value(
                                             "mzdeisotope:defaulted".to_string(),
                                             true.to_string(),
                                         ));
@@ -196,11 +197,11 @@ fn run_deconvolution(
                                 Some(())
                             })
                             .or_else(|| {
-                                prec.ion_mut().params_mut().push(Param::new_key_value(
+                                prec.ion_mut().unwrap().params_mut().push(Param::new_key_value(
                                     "mzdeisotope:defaulted".to_string(),
                                     true.to_string(),
                                 ));
-                                prec.ion_mut().params_mut().push(Param::new_key_value(
+                                prec.ion_mut().unwrap().params_mut().push(Param::new_key_value(
                                     "mzdeisotope:orphan".to_string(),
                                     true.to_string(),
                                 ));

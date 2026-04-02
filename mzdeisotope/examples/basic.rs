@@ -15,7 +15,7 @@ fn main() -> io::Result<()> {
     let mut spec = reader.get_spectrum_by_index(0).unwrap();
 
     // Find the precursor ion charge state. Derived product ions cannot have a charge higher than this!
-    let prec_z = spec.precursor().as_ref().unwrap().ion().charge().unwrap();
+    let prec_z = spec.precursor().as_ref().unwrap().ion().unwrap().charge().unwrap();
 
     // Pick peaks from the spectrum so there will be centroids.
     spec.pick_peaks(1.0).unwrap();

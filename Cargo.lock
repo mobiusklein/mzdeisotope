@@ -705,9 +705,9 @@ checksum = "fea41bba32d969b513997752735605054bc0dfa92b4c56bf1189f2e174be7a10"
 
 [[package]]
 name = "dotnetrawfilereader-sys"
-version = "0.5.5"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c67533b645a6500a290ce6ee85ee7b809b776de6674c92b3edfa285debffc7e7"
+checksum = "12133984f1ab906194700b36d4c2d88bb150c87364b0e85cee4942cc14565a88"
 dependencies = [
  "include_dir",
  "netcorehost",
@@ -720,6 +720,15 @@ name = "either"
 version = "1.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "48c757948c5ede0e46177b7add2e67155f70e33c07fea8284df6576da70b3719"
+
+[[package]]
+name = "encoding_rs"
+version = "0.8.35"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "75030f3c4f45dafd7586dd6780965a8c7e8e285a5ecb86713e63a79c5b2766f3"
+dependencies = [
+ "cfg-if",
+]
 
 [[package]]
 name = "enum-map"
@@ -1688,15 +1697,16 @@ dependencies = [
 
 [[package]]
 name = "mzdata"
-version = "0.60.1"
+version = "0.63.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0c5a444200cad73bf6fc7201cb698b7c66636f7ffafb4b2a6ee9c1ca3118f3ae"
+checksum = "0c0ff4b68629b2b4075de81087a471e2033509787bb6b9bebe4e55b502c2b883"
 dependencies = [
  "base16ct",
  "base64-simd",
  "bitflags 2.9.1",
  "bytemuck",
  "chrono",
+ "encoding_rs",
  "flate2",
  "hdf5",
  "hdf5-sys",
@@ -1722,7 +1732,7 @@ dependencies = [
 
 [[package]]
 name = "mzdeisotope"
-version = "0.3.4"
+version = "0.3.5"
 dependencies = [
  "chemical_elements",
  "flate2",
@@ -1741,7 +1751,7 @@ dependencies = [
 
 [[package]]
 name = "mzdeisotope-map"
-version = "0.3.4"
+version = "0.3.5"
 dependencies = [
  "chemical_elements",
  "flate2",
@@ -1762,7 +1772,7 @@ dependencies = [
 
 [[package]]
 name = "mzdeisotoper"
-version = "0.3.4"
+version = "0.3.5"
 dependencies = [
  "assert_cmd",
  "clap",
@@ -2846,9 +2856,9 @@ dependencies = [
 
 [[package]]
 name = "thermorawfilereader"
-version = "0.5.5"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d390ffb0b192738d5d64c1e669362fba388e409c487f8f3c29597de9091df164"
+checksum = "75d2509335a6a7ba5d1be77e57225d4502fb66d7d93213e29479f357012bf368"
 dependencies = [
  "bytemuck",
  "dotnetrawfilereader-sys",

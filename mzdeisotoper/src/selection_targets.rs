@@ -276,7 +276,8 @@ impl<
             .iter()
             .map(|s| {
                 let prec = s.precursor().unwrap();
-                let mz = prec.mz();
+                let ion = prec.ion().unwrap();
+                let mz = ion.mz();
                 let t = s.start_time();
                 let hits: usize = self
                     .targets
@@ -296,7 +297,7 @@ impl<
                 if hits == 0 {
                     let p = SelectionTargetSpecification::new(
                         mz,
-                        prec.charge(),
+                        ion.charge(),
                         (t - pad..t + pad).into(),
                     );
                     self.targets.push_back(p);
@@ -643,7 +644,8 @@ impl<
             .iter()
             .map(|s| {
                 if let Some(prec) = s.precursor() {
-                    let mz = prec.mz();
+                    let ion = prec.ion().unwrap();
+                    let mz = ion.mz();
                     let t = s.start_time();
                     let hits: usize = self
                         .targets
@@ -663,7 +665,7 @@ impl<
                     if hits == 0 {
                         let p = SelectionTargetSpecification::new(
                             mz,
-                            prec.charge(),
+                            ion.charge(),
                             (t - pad..t + pad).into(),
                         );
                         self.targets.push_back(p);
