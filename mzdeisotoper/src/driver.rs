@@ -831,11 +831,10 @@ impl MZDeiosotoper {
         let buffer_size = self.write_buffer_size;
         info!("Running ion mobility frame workflow");
 
-        let mut signal_params = self.signal_params;
         let mut ms1_args = make_default_ms1_deconvolution_params();
         let mut msn_args = make_default_msn_deconvolution_params();
-        ms1_args.mz_range = signal_params.mz_range;
-        msn_args.mz_range = signal_params.mz_range;
+        ms1_args.mz_range = self.signal_params.mz_range;
+        msn_args.mz_range = self.signal_params.mz_range;
 
         ms1_args.fit_filter.threshold = self.ms1_score_threshold;
         ms1_args.isotopic_model = self
@@ -854,9 +853,6 @@ impl MZDeiosotoper {
             .collect();
         msn_args.charge_range = self.charge_range.into();
         msn_args.max_missed_peaks = self.msn_missed_peaks;
-
-        signal_params.ms1_averaging = self.ms1_averaging_range as usize;
-        signal_params.ms1_denoising = self.ms1_denoising;
 
         let time_range = self.time_range;
         let precursor_processing = self.precursor_processing;

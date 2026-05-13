@@ -123,11 +123,7 @@ pub fn deconvolution_transform_im<
             .iter()
             .flat_map(|s| {
                 s.precursor().and_then(|prec| {
-                    if let Some(ion) = prec.ion() {
-                        Some((ion.ion_mobility(), ion.mz()))
-                    } else {
-                        None
-                    }
+                    prec.ion().map(|ion| (ion.ion_mobility(), ion.mz()))
                 })
             })
             .collect()

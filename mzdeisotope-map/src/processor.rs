@@ -53,19 +53,21 @@ impl EnvelopeConformer {
         let mut total_intensity = 0.0f32;
 
         for (observed_peak, peak) in experimental.into_iter().zip(theoretical.iter()) {
-            if observed_peak.is_none() {
-                let mut templated_peak = C::default();
-                *templated_peak.coordinate_mut() = peak.mz();
-                *templated_peak.intensity_mut() = 1.0;
-                if peak.intensity > self.minimum_theoretical_abundance {
-                    n_missing += 1;
+            match observed_peak {
+                None => {
+                    let mut templated_peak = C::default();
+                    *templated_peak.coordinate_mut() = peak.mz();
+                    *templated_peak.intensity_mut() = 1.0;
+                    if peak.intensity > self.minimum_theoretical_abundance {
+                        n_missing += 1;
+                    }
+                    total_intensity += 1.0;
+                    cleaned_eid.push(templated_peak)
+                },
+                Some(observed_peak) => {
+                    total_intensity += observed_peak.intensity();
+                    cleaned_eid.push(observed_peak)
                 }
-                total_intensity += 1.0;
-                cleaned_eid.push(templated_peak)
-            } else {
-                let observed_peak = observed_peak.unwrap();
-                total_intensity += observed_peak.intensity();
-                cleaned_eid.push(observed_peak)
             }
         }
 
@@ -237,12 +239,10 @@ impl<
         let fgi = feature_groups
             .into_iter()
             .map(|g| {
-                if g.is_none() {
-                    vec![None].into_iter()
-                } else {
-                    let v: Vec<_> = g.unwrap().into_iter().map(Some).collect();
-                    v.into_iter()
-                }
+                match g {
+                    Some(v) => v.into_iter().map(Some).collect(),
+                    None => vec![None],
+                }.into_iter()
             })
             .multi_cartesian_product()
             .enumerate();

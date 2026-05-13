@@ -128,8 +128,7 @@ impl<
                         true
                     );
 
-                let mut params = self.isotopic_params;
-                params.max_missed_peaks = max_missed_peaks;
+                self.isotopic_params.max_missed_peaks = max_missed_peaks;
 
                 let output = deconvoluter.deconvolve(
                     error_tolerance,

@@ -695,12 +695,12 @@ impl BuildArrayMapFrom for DeconvolvedSolutionFeature<IonMobility> {
         );
 
         for (mz, im, inten, charge, score, key) in acc.iter() {
-            mz_array.extend(mz.to_le_bytes());
-            intensity_array.extend(inten.to_le_bytes());
-            ion_mobility_array.extend(im.to_le_bytes());
-            charge_array.extend(charge.to_le_bytes());
-            score_array.extend(score.to_le_bytes());
-            marker_array.extend((*key as i32).to_le_bytes());
+            mz_array.extend_from_slice(&mz.to_le_bytes());
+            intensity_array.extend_from_slice(&inten.to_le_bytes());
+            ion_mobility_array.extend_from_slice(&im.to_le_bytes());
+            charge_array.extend_from_slice(&charge.to_le_bytes());
+            score_array.extend_from_slice(&score.to_le_bytes());
+            marker_array.extend_from_slice(&(*key as i32).to_le_bytes());
         }
 
         let mut map = BinaryArrayMap::default();

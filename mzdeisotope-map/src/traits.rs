@@ -461,10 +461,12 @@ pub trait GraphFeatureDeconvolution<Y>: FeatureIsotopicFitter<Y> {
                 }
             }
         }
-        if holdout.is_some() && best_fit_charge == 1 {
-            for fit in holdout.unwrap() {
-                counter += 1;
-                self.add_fit_to_graph(fit);
+        if best_fit_charge == 1 {
+            if let Some(holdout) = holdout {
+                for fit in holdout {
+                    counter += 1;
+                    self.add_fit_to_graph(fit);
+                }
             }
         }
         counter

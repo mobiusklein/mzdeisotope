@@ -165,8 +165,8 @@ impl From<ChargeRangeV2> for ChargeRangeIter {
 ///
 /// ## Static Parameter
 /// - `N`: The maximum charge state to allocate a solution for. Rust's const expressions
-///        are not yet good enough to let us do more with this beyond a small memory
-///        optimization
+///   are not yet good enough to let us do more with this beyond a small memory
+///   optimization
 ///
 /// # Caveats
 /// [`mzdeisotope`](crate) fits relative to the monoisotopic peak, and if A+1
