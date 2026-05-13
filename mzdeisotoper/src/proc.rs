@@ -68,7 +68,7 @@ pub fn prepare_procesing<
     };
 
     if !has_ms1 {
-        group_iter.max_ms1_seeking_depth = 1;
+        group_iter.set_max_ms1_seeking_depth(1);
     }
 
     let (ms1_deconv_params, ms1_engine) = build_ms1_engine.join().unwrap();
@@ -259,7 +259,7 @@ pub fn prepare_procesing_im<
     };
 
     if !has_ms1 {
-        group_iter.max_ms1_seeking_depth = 1;
+        group_iter.set_max_ms1_seeking_depth(1);
     }
 
     let (ms1_deconv_params, ms1_engine) = build_ms1_engine.join().unwrap();
